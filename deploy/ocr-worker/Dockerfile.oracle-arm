@@ -1,0 +1,33 @@
+# Dockerfile adaptado para Oracle Cloud ARM (aarch64).
+# La unica diferencia respecto al original es que se usa el tag sin digest
+# para permitir que Docker resuelva la imagen multi-arch correcta para ARM.
+# Las versiones efectivas de Tesseract y Poppler se inspeccionan en runtime.
+FROM node:22-bookworm-slim
+
+ARG KCM_OCR_WORKER_BUILD_ID=local-unversioned
+LABEL org.opencontainers.image.revision="${KCM_OCR_WORKER_BUILD_ID}"
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+      ca-certificates \
+      poppler-utils \
+      tesseract-ocr \
+      tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+COPY src ./src
+COPY deploy/ocr-worker ./deploy/ocr-worker
+
+ENV NODE_ENV=production \
+    PORT=8080 \
+    KCM_OCR_WORKER_BUILD_ID="${KCM_OCR_WORKER_BUILD_ID}"
+
+USER node
+EXPOSE 8080
+
+CMD ["node", "deploy/ocr-worker/server.js"]

@@ -1,0 +1,47 @@
+# Docker Compose para despliegue en Oracle Cloud ARM
+# Levanta el worker OCR + Nginx reverse proxy + Certbot para HTTPS
+
+services:
+  ocr-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/ocr-worker/Dockerfile.oracle-arm
+      args:
+        KCM_OCR_WORKER_BUILD_ID: "${KCM_OCR_WORKER_BUILD_ID:-oracle-arm-001}"
+    container_name: kcm-ocr-worker
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - KCM_OCR_WORKER_SECRET=${KCM_OCR_WORKER_SECRET}
+    expose:
+      - "8080"
+    # No se publica el puerto directamente; Nginx lo proxea
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  nginx:
+    image: nginx:alpine
+    container_name: kcm-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      ocr-worker:
+        condition: service_healthy
+
+  certbot:
+    image: certbot/certbot
+    container_name: kcm-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"

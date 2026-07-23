@@ -1,0 +1,27 @@
+{
+  "fixtureVersion": "1.0.0",
+  "privacy": "SYNTHETIC_ONLY",
+  "sheets": [
+    {
+      "fixtureId": "clean-high-confidence",
+      "employeeRoster": ["00001", "01234", "54321", "90807"],
+      "rows": [
+        { "rowIndex": 1, "expectedDigits": "00001", "digitConfidences": [0.999, 0.998, 0.999, 0.997, 0.999] },
+        { "rowIndex": 2, "expectedDigits": "01234", "digitConfidences": [0.997, 0.998, 0.996, 0.999, 0.998] },
+        { "rowIndex": 3, "expectedDigits": "54321", "digitConfidences": [0.998, 0.997, 0.997, 0.998, 0.999] },
+        { "rowIndex": 4, "expectedDigits": "90807", "digitConfidences": [0.999, 0.997, 0.998, 0.998, 0.997] }
+      ]
+    },
+    {
+      "fixtureId": "review-conservative",
+      "employeeRoster": ["11111", "22222", "33333", "44444"],
+      "rows": [
+        { "rowIndex": 1, "expectedDigits": "11111", "digitConfidences": [0.998, 0.998, 0.997, 0.999, 0.998] },
+        { "rowIndex": 2, "expectedDigits": "22222", "digitConfidences": [0.998, 0.998, 0.71, 0.997, 0.998] },
+        { "rowIndex": 3, "expectedDigits": "33333", "observedDigits": "33833", "digitConfidences": [0.998, 0.998, 0.973, 0.998, 0.998] },
+        { "rowIndex": 4, "expectedDigits": "44444", "digitConfidences": [0.999, 0.998, 0.999, 0.998, 0.999] },
+        { "rowIndex": 40, "expectedDigits": "", "detected": false, "expectedDetected": true }
+      ]
+    }
+  ]
+}

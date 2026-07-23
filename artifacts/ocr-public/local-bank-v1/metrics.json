@@ -1,0 +1,733 @@
+{
+  "metricVersion": "local-tesseract-bank-v1",
+  "privacy": "SYNTHETIC_ANONYMIZED_NO_REAL_PERSONAL_DATA",
+  "engine": {
+    "name": "tesseract",
+    "version": "5.5.2",
+    "provider": "LOCAL_TESSERACT_DIGITS_V1"
+  },
+  "warning": "Banco tipografico sintetico; no estima precision sobre escritura manuscrita real.",
+  "aggregate": {
+    "sheets": 2,
+    "fullNumberAccuracyPercent": 50,
+    "digitAccuracyPercent": 89.16666666666667,
+    "falseAcceptanceRatePercent": 0,
+    "falseAcceptanceRateEstimable": false,
+    "manualReviewRatePercent": 100,
+    "correctlyDetectedRowsPercent": 100,
+    "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+    "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+    "totalProcessingTimeMs": 36808.432999,
+    "averageProcessingTimeMs": 18404.2164995,
+    "counts": {
+      "expectedNumbers": 48,
+      "correctNumbers": 24,
+      "expectedDigits": 240,
+      "correctDigits": 214,
+      "autoAccepted": 0,
+      "falseAccepted": 0,
+      "manualReview": 48,
+      "expectedRows": 80,
+      "detectedRowsCorrect": 80,
+      "processingTimeMs": 36808.432999
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "dense-moderate",
+      "privacy": "SYNTHETIC_ANONYMIZED_NO_REAL_PERSONAL_DATA",
+      "participants": 40,
+      "sourceSha256": "4c6d94f1a5ff011a4fdd7cf638aee7cbec94611640f20563d1e742b01e6a2a66",
+      "normalizedSha256": "34b5f9c00bd68bd9cbb8a4405757ea087efb7855b33abde36a72d3ba670d95dd",
+      "distortion": {
+        "rotationDegrees": 2.5,
+        "perspective": 0.02,
+        "brightness": 0.96,
+        "illuminationGradient": 0.18,
+        "vignette": 0.08,
+        "noiseAmplitude": 2.5,
+        "digitRenderer": "SYSTEM_FONT",
+        "fontFamily": "Helvetica Neue",
+        "participantCount": 40
+      },
+      "normalization": {
+        "boxesMeasured": 200,
+        "cornersMeasured": 800,
+        "meanCenterErrorPx": 0.12763699902780143,
+        "rootMeanSquareCenterErrorPx": 0.1293123921146231,
+        "p95CenterErrorPx": 0.16300568160374612,
+        "maximumCenterErrorPx": 0.17544175111879035,
+        "meanCornerErrorPx": 0.12766475798517662,
+        "meanBoundingBoxIou": 0.9828587182579479,
+        "minimumBoundingBoxIou": 0.9759544714079132,
+        "normalizedMeanCenterError": 0.00007943189301550934,
+        "passed": true,
+        "thresholds": {
+          "centerErrorThresholdPx": 4,
+          "meanIouThreshold": 0.75
+        }
+      },
+      "ocr": {
+        "counts": {
+          "expectedNumbers": 40,
+          "correctNumbers": 17,
+          "expectedDigits": 200,
+          "correctDigits": 175,
+          "autoAccepted": 0,
+          "falseAccepted": 0,
+          "manualReview": 40,
+          "expectedRows": 40,
+          "detectedRowsCorrect": 40
+        },
+        "fullNumberAccuracyPercent": 42.5,
+        "digitAccuracyPercent": 87.5,
+        "falseAcceptanceRatePercent": 0,
+        "falseAcceptanceRateEstimable": false,
+        "manualReviewRatePercent": 100,
+        "correctlyDetectedRowsPercent": 100,
+        "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+        "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+        "processingTimeMs": 29368.314041
+      },
+      "decisionCounts": {
+        "ACEPTADO_AUTOMATICO": 0,
+        "REVISION_REQUERIDA": 40,
+        "RECHAZADO": 0
+      },
+      "reviewRows": [
+        {
+          "rowIndex": 1,
+          "expectedDigits": "07249",
+          "observedDigits": "07249",
+          "overallConfidence": 0.738923,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 2,
+          "expectedDigits": "75201",
+          "observedDigits": "75201",
+          "overallConfidence": 0.442042,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 3,
+          "expectedDigits": "90889",
+          "observedDigits": "4088",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 4,
+          "expectedDigits": "04757",
+          "observedDigits": "4757",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 5,
+          "expectedDigits": "58931",
+          "observedDigits": "58934",
+          "overallConfidence": 0.722366,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 6,
+          "expectedDigits": "91143",
+          "observedDigits": "41143",
+          "overallConfidence": 0.897302,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 7,
+          "expectedDigits": "67983",
+          "observedDigits": "6783",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 8,
+          "expectedDigits": "03529",
+          "observedDigits": "3529",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 9,
+          "expectedDigits": "08096",
+          "observedDigits": "08096",
+          "overallConfidence": 0.635191,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 10,
+          "expectedDigits": "04658",
+          "observedDigits": "04658",
+          "overallConfidence": 0.902,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 11,
+          "expectedDigits": "82803",
+          "observedDigits": "2803",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 12,
+          "expectedDigits": "05747",
+          "observedDigits": "5747",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 13,
+          "expectedDigits": "16497",
+          "observedDigits": "16497",
+          "overallConfidence": 0.642046,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 14,
+          "expectedDigits": "66379",
+          "observedDigits": "66349",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 15,
+          "expectedDigits": "63070",
+          "observedDigits": "6307",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 16,
+          "expectedDigits": "00289",
+          "observedDigits": "00289",
+          "overallConfidence": 0.555125,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 17,
+          "expectedDigits": "38838",
+          "observedDigits": "3838",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 18,
+          "expectedDigits": "58277",
+          "observedDigits": "58277",
+          "overallConfidence": 0.774141,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 19,
+          "expectedDigits": "22363",
+          "observedDigits": "22383",
+          "overallConfidence": 0.835266,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 20,
+          "expectedDigits": "05074",
+          "observedDigits": "05174",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 21,
+          "expectedDigits": "07760",
+          "observedDigits": "97760",
+          "overallConfidence": 0.459366,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 22,
+          "expectedDigits": "38537",
+          "observedDigits": "38537",
+          "overallConfidence": 0.37169,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 23,
+          "expectedDigits": "98587",
+          "observedDigits": "98587",
+          "overallConfidence": 0.332541,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 24,
+          "expectedDigits": "05398",
+          "observedDigits": "05398",
+          "overallConfidence": 0.40268,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 25,
+          "expectedDigits": "06540",
+          "observedDigits": "06540",
+          "overallConfidence": 0.817647,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 26,
+          "expectedDigits": "85024",
+          "observedDigits": "8524",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 27,
+          "expectedDigits": "73335",
+          "observedDigits": "73335",
+          "overallConfidence": 0.915137,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 28,
+          "expectedDigits": "05667",
+          "observedDigits": "5667",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 29,
+          "expectedDigits": "08482",
+          "observedDigits": "08482",
+          "overallConfidence": 0.846997,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 30,
+          "expectedDigits": "64715",
+          "observedDigits": "44715",
+          "overallConfidence": 0.790711,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 31,
+          "expectedDigits": "43516",
+          "observedDigits": "43546",
+          "overallConfidence": 0.871672,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 32,
+          "expectedDigits": "04707",
+          "observedDigits": "0477",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 33,
+          "expectedDigits": "90737",
+          "observedDigits": "9737",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 34,
+          "expectedDigits": "91539",
+          "observedDigits": "94539",
+          "overallConfidence": 0.903759,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 35,
+          "expectedDigits": "38377",
+          "observedDigits": "38377",
+          "overallConfidence": 0.792966,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 36,
+          "expectedDigits": "04344",
+          "observedDigits": "04344",
+          "overallConfidence": 0.807635,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 37,
+          "expectedDigits": "33420",
+          "observedDigits": "3342",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 38,
+          "expectedDigits": "51482",
+          "observedDigits": "51482",
+          "overallConfidence": 0.821931,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 39,
+          "expectedDigits": "37164",
+          "observedDigits": "37164",
+          "overallConfidence": 0.703371,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 40,
+          "expectedDigits": "03333",
+          "observedDigits": "2333",
+          "overallConfidence": 0,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "INVALID_FIVE_DIGIT_FORMAT",
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        }
+      ],
+      "artifacts": {
+        "sourceDistortedSha256": "4c6d94f1a5ff011a4fdd7cf638aee7cbec94611640f20563d1e742b01e6a2a66",
+        "normalizedSha256": "34b5f9c00bd68bd9cbb8a4405757ea087efb7855b33abde36a72d3ba670d95dd",
+        "reviewCropsSha256": "08c9b3f00eb6dd32da39d855bfc608ec39e0d28edac9c5d6c654bb99fcd3e842",
+        "reviewManifestSha256": "5da5550c8bdc57fab4860597b723293e4bb53b47bb2b6618fb9903163efcb769",
+        "contactSheetRows": 40,
+        "contactSheetCrops": 200
+      }
+    },
+    {
+      "scenario": "sparse-strong",
+      "privacy": "SYNTHETIC_ANONYMIZED_NO_REAL_PERSONAL_DATA",
+      "participants": 8,
+      "sourceSha256": "5bdb7f6b674940ea97f1d5a3697fd6925f91c4f06775ccfb3f51a70f5c04df52",
+      "normalizedSha256": "7c610a19e8da4f93acf6f4d7c0b4f3c3d6a19dd0908b40bfc1709f3c14a2bc5d",
+      "distortion": {
+        "rotationDegrees": -4.5,
+        "perspective": 0.045,
+        "brightness": 0.96,
+        "illuminationGradient": 0.18,
+        "vignette": 0.08,
+        "noiseAmplitude": 2.5,
+        "digitRenderer": "SYSTEM_FONT",
+        "fontFamily": "Helvetica Neue",
+        "participantCount": 8
+      },
+      "normalization": {
+        "boxesMeasured": 200,
+        "cornersMeasured": 800,
+        "meanCenterErrorPx": 0.14602585365200454,
+        "rootMeanSquareCenterErrorPx": 0.1474456840751404,
+        "p95CenterErrorPx": 0.18175626964010702,
+        "maximumCenterErrorPx": 0.19736557113012904,
+        "meanCornerErrorPx": 0.14605072994897628,
+        "meanBoundingBoxIou": 0.980409502695471,
+        "minimumBoundingBoxIou": 0.9734968100242539,
+        "normalizedMeanCenterError": 0.00009087887800509371,
+        "passed": true,
+        "thresholds": {
+          "centerErrorThresholdPx": 4,
+          "meanIouThreshold": 0.75
+        }
+      },
+      "ocr": {
+        "counts": {
+          "expectedNumbers": 8,
+          "correctNumbers": 7,
+          "expectedDigits": 40,
+          "correctDigits": 39,
+          "autoAccepted": 0,
+          "falseAccepted": 0,
+          "manualReview": 8,
+          "expectedRows": 40,
+          "detectedRowsCorrect": 40
+        },
+        "fullNumberAccuracyPercent": 87.5,
+        "digitAccuracyPercent": 97.5,
+        "falseAcceptanceRatePercent": 0,
+        "falseAcceptanceRateEstimable": false,
+        "manualReviewRatePercent": 100,
+        "correctlyDetectedRowsPercent": 100,
+        "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+        "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+        "processingTimeMs": 7440.118957999999
+      },
+      "decisionCounts": {
+        "ACEPTADO_AUTOMATICO": 0,
+        "REVISION_REQUERIDA": 8,
+        "RECHAZADO": 0
+      },
+      "reviewRows": [
+        {
+          "rowIndex": 1,
+          "expectedDigits": "75404",
+          "observedDigits": "75404",
+          "overallConfidence": 0.802172,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 2,
+          "expectedDigits": "01235",
+          "observedDigits": "01235",
+          "overallConfidence": 0.781469,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 3,
+          "expectedDigits": "40941",
+          "observedDigits": "40941",
+          "overallConfidence": 0.886044,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 4,
+          "expectedDigits": "04418",
+          "observedDigits": "04448",
+          "overallConfidence": 0.74871,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE",
+            "EMPLOYEE_NOT_FOUND"
+          ]
+        },
+        {
+          "rowIndex": 5,
+          "expectedDigits": "44194",
+          "observedDigits": "44194",
+          "overallConfidence": 0.472406,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 6,
+          "expectedDigits": "29796",
+          "observedDigits": "29796",
+          "overallConfidence": 0.9041,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 7,
+          "expectedDigits": "94436",
+          "observedDigits": "94436",
+          "overallConfidence": 0.908016,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        },
+        {
+          "rowIndex": 8,
+          "expectedDigits": "06481",
+          "observedDigits": "06481",
+          "overallConfidence": 0.559417,
+          "decision": "REVISION_REQUERIDA",
+          "validationFlags": [
+            "LOW_DIGIT_CONFIDENCE",
+            "LOW_OVERALL_CONFIDENCE"
+          ]
+        }
+      ],
+      "artifacts": {
+        "sourceDistortedSha256": "5bdb7f6b674940ea97f1d5a3697fd6925f91c4f06775ccfb3f51a70f5c04df52",
+        "normalizedSha256": "7c610a19e8da4f93acf6f4d7c0b4f3c3d6a19dd0908b40bfc1709f3c14a2bc5d",
+        "reviewCropsSha256": "d29f049d281510223bed9683f7b490c843eae181347fef025fc40a4ed744a2d9",
+        "reviewManifestSha256": "540fcac77fb756cc80e9eefdbcecc535b552ca10fec0256402c3b95d8a34e669",
+        "contactSheetRows": 12,
+        "contactSheetCrops": 60
+      }
+    }
+  ]
+}

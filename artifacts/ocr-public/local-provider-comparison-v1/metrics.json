@@ -1,0 +1,584 @@
+{
+  "metricVersion": "local-provider-comparison-v1",
+  "createdAt": "2026-07-21T17:34:01.651Z",
+  "privacy": "SYNTHETIC_ANONYMIZED_NO_REAL_PERSONAL_DATA",
+  "inferenceIsolation": {
+    "expectedTruthPassedToProvider": false,
+    "employeeRosterPassedToProvider": false,
+    "expectedTruthUsage": "METRICS_ONLY_AFTER_INFERENCE"
+  },
+  "businessThresholdsUnchanged": {
+    "autoAcceptOverall": 0.96,
+    "autoAcceptPerDigit": 0.94
+  },
+  "warning": "Banco tipografico sintetico Helvetica Neue; no estima precision sobre escritura manuscrita real.",
+  "templateBankCost": {
+    "templates": 300,
+    "buildOnceMs": 132.33012499999995,
+    "providerConstructionWithReusedBankMeanMs": 0.06218335999999681,
+    "providerConstructionWithReusedBankMaximumMs": 0.3437080000000492,
+    "reuseSamples": 25,
+    "scenarioRunsReuseSameBank": true
+  },
+  "adversarialNegative": {
+    "privacy": "SYNTHETIC_NON_DIGIT_GLYPHS_NO_PERSONAL_DATA",
+    "challenges": 1,
+    "inferredFiveDigitFormat": true,
+    "inferredValueSha256": "49dd314202546f655b074d79767dcae138d287d924dc14b490777e6e8ea43a15",
+    "decision": "REVISION_REQUERIDA",
+    "validationFlags": [
+      "LOW_DIGIT_CONFIDENCE",
+      "LOW_OVERALL_CONFIDENCE"
+    ],
+    "maximumDigitConfidence": 0.547177,
+    "falseAcceptanceCount": 0,
+    "falseAcceptanceRatePercent": 0,
+    "passed": true
+  },
+  "aggregate": {
+    "tesseract-baseline": {
+      "sheets": 2,
+      "fullNumberAccuracyPercent": 50,
+      "digitAccuracyPercent": 89.16666666666667,
+      "falseAcceptanceRatePercent": 0,
+      "falseAcceptanceRateEstimable": false,
+      "manualReviewRatePercent": 100,
+      "correctlyDetectedRowsPercent": 100,
+      "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+      "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+      "totalProcessingTimeMs": 36526.12637500001,
+      "averageProcessingTimeMs": 18263.063187500004,
+      "counts": {
+        "expectedNumbers": 48,
+        "correctNumbers": 24,
+        "expectedDigits": 240,
+        "correctDigits": 214,
+        "autoAccepted": 0,
+        "falseAccepted": 0,
+        "manualReview": 48,
+        "expectedRows": 80,
+        "detectedRowsCorrect": 80,
+        "processingTimeMs": 36526.12637500001
+      }
+    },
+    "glyph-template-conservative": {
+      "sheets": 2,
+      "fullNumberAccuracyPercent": 100,
+      "digitAccuracyPercent": 100,
+      "falseAcceptanceRatePercent": 0,
+      "falseAcceptanceRateEstimable": false,
+      "manualReviewRatePercent": 100,
+      "correctlyDetectedRowsPercent": 100,
+      "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+      "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+      "totalProcessingTimeMs": 8162.070125000002,
+      "averageProcessingTimeMs": 4081.035062500001,
+      "counts": {
+        "expectedNumbers": 48,
+        "correctNumbers": 48,
+        "expectedDigits": 240,
+        "correctDigits": 240,
+        "autoAccepted": 0,
+        "falseAccepted": 0,
+        "manualReview": 48,
+        "expectedRows": 80,
+        "detectedRowsCorrect": 80,
+        "processingTimeMs": 8162.070125000002
+      }
+    }
+  },
+  "aggregateSlotAware": {
+    "tesseract-baseline": {
+      "expectedDigits": 240,
+      "correctDigits": 214,
+      "digitAccuracyPercent": 89.16666666666667,
+      "meaning": "DIGIT_COMPARED_IN_ITS_ORIGINAL_BOX_SLOT"
+    },
+    "glyph-template-conservative": {
+      "expectedDigits": 240,
+      "correctDigits": 240,
+      "digitAccuracyPercent": 100,
+      "meaning": "DIGIT_COMPARED_IN_ITS_ORIGINAL_BOX_SLOT"
+    }
+  },
+  "deltaAgainstBaseline": {
+    "fullNumberAccuracyPercentagePoints": 50,
+    "digitAccuracyPercentagePoints": 10.833333333333329,
+    "totalProcessingTimeMs": -28364.056250000005,
+    "manualReviewRatePercentagePoints": 0
+  },
+  "scenarios": [
+    {
+      "scenario": "dense-moderate",
+      "privacy": "SYNTHETIC_ANONYMIZED_NO_REAL_PERSONAL_DATA",
+      "participants": 40,
+      "sourceSha256": "4c6d94f1a5ff011a4fdd7cf638aee7cbec94611640f20563d1e742b01e6a2a66",
+      "distortion": {
+        "rotationDegrees": 2.5,
+        "perspective": 0.02,
+        "brightness": 0.96,
+        "illuminationGradient": 0.18,
+        "vignette": 0.08,
+        "noiseAmplitude": 2.5,
+        "digitRenderer": "SYSTEM_FONT",
+        "fontFamily": "Helvetica Neue",
+        "participantCount": 40
+      },
+      "providers": [
+        {
+          "providerId": "tesseract-baseline",
+          "engine": {
+            "name": "tesseract",
+            "version": "5.5.2"
+          },
+          "metrics": {
+            "counts": {
+              "expectedNumbers": 40,
+              "correctNumbers": 17,
+              "expectedDigits": 200,
+              "correctDigits": 175,
+              "autoAccepted": 0,
+              "falseAccepted": 0,
+              "manualReview": 40,
+              "expectedRows": 40,
+              "detectedRowsCorrect": 40
+            },
+            "fullNumberAccuracyPercent": 42.5,
+            "digitAccuracyPercent": 87.5,
+            "falseAcceptanceRatePercent": 0,
+            "falseAcceptanceRateEstimable": false,
+            "manualReviewRatePercent": 100,
+            "correctlyDetectedRowsPercent": 100,
+            "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+            "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+            "processingTimeMs": 28816.904625
+          },
+          "slotAware": {
+            "expectedDigits": 200,
+            "correctDigits": 175,
+            "digitAccuracyPercent": 87.5,
+            "positions": [
+              {
+                "position": 1,
+                "expected": 40,
+                "correct": 30,
+                "blank": 6,
+                "accuracyPercent": 75
+              },
+              {
+                "position": 2,
+                "expected": 40,
+                "correct": 36,
+                "blank": 2,
+                "accuracyPercent": 90
+              },
+              {
+                "position": 3,
+                "expected": 40,
+                "correct": 37,
+                "blank": 2,
+                "accuracyPercent": 92.5
+              },
+              {
+                "position": 4,
+                "expected": 40,
+                "correct": 36,
+                "blank": 1,
+                "accuracyPercent": 90
+              },
+              {
+                "position": 5,
+                "expected": 40,
+                "correct": 36,
+                "blank": 3,
+                "accuracyPercent": 90
+              }
+            ],
+            "topConfusions": [
+              [
+                "0->BLANK",
+                10
+              ],
+              [
+                "1->4",
+                3
+              ],
+              [
+                "8->BLANK",
+                2
+              ],
+              [
+                "9->4",
+                2
+              ],
+              [
+                "9->BLANK",
+                2
+              ],
+              [
+                "0->1",
+                1
+              ],
+              [
+                "0->9",
+                1
+              ],
+              [
+                "3->2",
+                1
+              ],
+              [
+                "6->4",
+                1
+              ],
+              [
+                "6->8",
+                1
+              ],
+              [
+                "7->4",
+                1
+              ]
+            ]
+          },
+          "confidence": {
+            "correct": {
+              "count": 175,
+              "minimum": 0,
+              "mean": 0.8755045314285718,
+              "maximum": 0.969905,
+              "atLeast094": 92,
+              "atLeast096": 59
+            },
+            "incorrect": {
+              "count": 25,
+              "minimum": 0,
+              "mean": 0.28515144000000003,
+              "maximum": 0.968265,
+              "atLeast094": 2,
+              "atLeast096": 2
+            }
+          },
+          "decisionCounts": {
+            "ACEPTADO_AUTOMATICO": 0,
+            "REVISION_REQUERIDA": 40,
+            "RECHAZADO": 0
+          }
+        },
+        {
+          "providerId": "glyph-template-conservative",
+          "engine": {
+            "name": "glyph-template",
+            "version": "1.0.0",
+            "fontFamily": "Helvetica Neue",
+            "confidenceCap": 0.93
+          },
+          "metrics": {
+            "counts": {
+              "expectedNumbers": 40,
+              "correctNumbers": 40,
+              "expectedDigits": 200,
+              "correctDigits": 200,
+              "autoAccepted": 0,
+              "falseAccepted": 0,
+              "manualReview": 40,
+              "expectedRows": 40,
+              "detectedRowsCorrect": 40
+            },
+            "fullNumberAccuracyPercent": 100,
+            "digitAccuracyPercent": 100,
+            "falseAcceptanceRatePercent": 0,
+            "falseAcceptanceRateEstimable": false,
+            "manualReviewRatePercent": 100,
+            "correctlyDetectedRowsPercent": 100,
+            "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+            "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+            "processingTimeMs": 5411.593333000001
+          },
+          "slotAware": {
+            "expectedDigits": 200,
+            "correctDigits": 200,
+            "digitAccuracyPercent": 100,
+            "positions": [
+              {
+                "position": 1,
+                "expected": 40,
+                "correct": 40,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 2,
+                "expected": 40,
+                "correct": 40,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 3,
+                "expected": 40,
+                "correct": 40,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 4,
+                "expected": 40,
+                "correct": 40,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 5,
+                "expected": 40,
+                "correct": 40,
+                "blank": 0,
+                "accuracyPercent": 100
+              }
+            ],
+            "topConfusions": []
+          },
+          "confidence": {
+            "correct": {
+              "count": 200,
+              "minimum": 0.371972,
+              "mean": 0.7793351500000004,
+              "maximum": 0.93,
+              "atLeast094": 0,
+              "atLeast096": 0
+            },
+            "incorrect": {
+              "count": 0,
+              "minimum": null,
+              "mean": null,
+              "maximum": null,
+              "atLeast094": 0,
+              "atLeast096": 0
+            }
+          },
+          "decisionCounts": {
+            "ACEPTADO_AUTOMATICO": 0,
+            "REVISION_REQUERIDA": 40,
+            "RECHAZADO": 0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "sparse-strong",
+      "privacy": "SYNTHETIC_ANONYMIZED_NO_REAL_PERSONAL_DATA",
+      "participants": 8,
+      "sourceSha256": "5bdb7f6b674940ea97f1d5a3697fd6925f91c4f06775ccfb3f51a70f5c04df52",
+      "distortion": {
+        "rotationDegrees": -4.5,
+        "perspective": 0.045,
+        "brightness": 0.96,
+        "illuminationGradient": 0.18,
+        "vignette": 0.08,
+        "noiseAmplitude": 2.5,
+        "digitRenderer": "SYSTEM_FONT",
+        "fontFamily": "Helvetica Neue",
+        "participantCount": 8
+      },
+      "providers": [
+        {
+          "providerId": "tesseract-baseline",
+          "engine": {
+            "name": "tesseract",
+            "version": "5.5.2"
+          },
+          "metrics": {
+            "counts": {
+              "expectedNumbers": 8,
+              "correctNumbers": 7,
+              "expectedDigits": 40,
+              "correctDigits": 39,
+              "autoAccepted": 0,
+              "falseAccepted": 0,
+              "manualReview": 8,
+              "expectedRows": 40,
+              "detectedRowsCorrect": 40
+            },
+            "fullNumberAccuracyPercent": 87.5,
+            "digitAccuracyPercent": 97.5,
+            "falseAcceptanceRatePercent": 0,
+            "falseAcceptanceRateEstimable": false,
+            "manualReviewRatePercent": 100,
+            "correctlyDetectedRowsPercent": 100,
+            "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+            "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+            "processingTimeMs": 7709.221750000004
+          },
+          "slotAware": {
+            "expectedDigits": 40,
+            "correctDigits": 39,
+            "digitAccuracyPercent": 97.5,
+            "positions": [
+              {
+                "position": 1,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 2,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 3,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 4,
+                "expected": 8,
+                "correct": 7,
+                "blank": 0,
+                "accuracyPercent": 87.5
+              },
+              {
+                "position": 5,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              }
+            ],
+            "topConfusions": [
+              [
+                "1->4",
+                1
+              ]
+            ]
+          },
+          "confidence": {
+            "correct": {
+              "count": 39,
+              "minimum": 0.472406,
+              "mean": 0.89642858974359,
+              "maximum": 0.969975,
+              "atLeast094": 23,
+              "atLeast096": 19
+            },
+            "incorrect": {
+              "count": 1,
+              "minimum": 0.963021,
+              "mean": 0.963021,
+              "maximum": 0.963021,
+              "atLeast094": 1,
+              "atLeast096": 1
+            }
+          },
+          "decisionCounts": {
+            "ACEPTADO_AUTOMATICO": 0,
+            "REVISION_REQUERIDA": 8,
+            "RECHAZADO": 0
+          }
+        },
+        {
+          "providerId": "glyph-template-conservative",
+          "engine": {
+            "name": "glyph-template",
+            "version": "1.0.0",
+            "fontFamily": "Helvetica Neue",
+            "confidenceCap": 0.93
+          },
+          "metrics": {
+            "counts": {
+              "expectedNumbers": 8,
+              "correctNumbers": 8,
+              "expectedDigits": 40,
+              "correctDigits": 40,
+              "autoAccepted": 0,
+              "falseAccepted": 0,
+              "manualReview": 8,
+              "expectedRows": 40,
+              "detectedRowsCorrect": 40
+            },
+            "fullNumberAccuracyPercent": 100,
+            "digitAccuracyPercent": 100,
+            "falseAcceptanceRatePercent": 0,
+            "falseAcceptanceRateEstimable": false,
+            "manualReviewRatePercent": 100,
+            "correctlyDetectedRowsPercent": 100,
+            "digitMetricMeaning": "DIGIT_COMPARED_IN_ORIGINAL_BOX_SLOT_WITH_RAW_FALLBACK",
+            "rowDetectionMetricMeaning": "OCCUPIED_VS_BLANK_CLASSIFICATION",
+            "processingTimeMs": 2750.4767920000013
+          },
+          "slotAware": {
+            "expectedDigits": 40,
+            "correctDigits": 40,
+            "digitAccuracyPercent": 100,
+            "positions": [
+              {
+                "position": 1,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 2,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 3,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 4,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              },
+              {
+                "position": 5,
+                "expected": 8,
+                "correct": 8,
+                "blank": 0,
+                "accuracyPercent": 100
+              }
+            ],
+            "topConfusions": []
+          },
+          "confidence": {
+            "correct": {
+              "count": 40,
+              "minimum": 0.494016,
+              "mean": 0.8347812750000001,
+              "maximum": 0.93,
+              "atLeast094": 0,
+              "atLeast096": 0
+            },
+            "incorrect": {
+              "count": 0,
+              "minimum": null,
+              "mean": null,
+              "maximum": null,
+              "atLeast094": 0,
+              "atLeast096": 0
+            }
+          },
+          "decisionCounts": {
+            "ACEPTADO_AUTOMATICO": 0,
+            "REVISION_REQUERIDA": 8,
+            "RECHAZADO": 0
+          }
+        }
+      ]
+    }
+  ]
+}

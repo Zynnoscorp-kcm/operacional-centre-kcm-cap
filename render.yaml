@@ -1,0 +1,20 @@
+# Render Blueprint — Worker OCR para KCM Cap
+# Este archivo define la infraestructura como codigo para Render.
+# Se despliega automaticamente al conectar el repositorio.
+
+services:
+  - type: web
+    name: kcm-ocr-worker
+    runtime: docker
+    dockerfilePath: ./deploy/ocr-worker/Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: KCM_OCR_WORKER_BUILD_ID
+        value: render-001
+      - key: KCM_OCR_WORKER_SECRET
+        sync: false  # Se configura manualmente en el dashboard (secreto)

@@ -1,0 +1,17 @@
+# Fase 1: Solo HTTP para obtener el certificado SSL.
+# Despues de obtener el certificado, reemplazar este archivo con la version HTTPS.
+
+server {
+    listen 80;
+    server_name TU_DOMINIO.com;
+
+    # Certbot usa esta ruta para validar el dominio
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Todo lo demas redirige a HTTPS (una vez que tengas el certificado)
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

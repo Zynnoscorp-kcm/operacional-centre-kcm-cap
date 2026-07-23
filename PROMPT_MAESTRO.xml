@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<proyecto_codex version="1.0" idioma="es-MX">
+  <nota>
+    Mandato maestro recibido el 2026-07-21. Este archivo conserva sus reglas
+    operativas duraderas; la especificacion completa permanece en el hilo fuente.
+  </nota>
+  <prioridades>
+    <prioridad orden="1">OCR geometrico y revisable</prioridad>
+    <prioridad orden="2">Nucleo, datos y plataforma compartiendo contratos versionados</prioridad>
+    <prioridad orden="3">Calidad, seguridad, operacion y actas verificables</prioridad>
+  </prioridades>
+  <elegibilidad>
+    IDENTIDAD_VALIDADA y ASISTENCIA_COMPROBADA y EXAMEN_CONFIRMADO y
+    SESION_AUTORIZADA y REGISTRO_NO_LIBERADO_PREVIAMENTE.
+  </elegibilidad>
+  <privacidad>No usar informacion personal real fuera de referencias privadas locales.</privacidad>
+  <matriz>No sobrescribir fechas existentes; usar gateway simulado hasta autorizacion.</matriz>
+</proyecto_codex>
+

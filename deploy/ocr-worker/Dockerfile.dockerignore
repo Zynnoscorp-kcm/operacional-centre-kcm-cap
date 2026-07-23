@@ -1,0 +1,14 @@
+**
+!package.json
+!package-lock.json
+!src/
+!src/**
+!deploy/
+!deploy/ocr-worker/
+!deploy/ocr-worker/**
+artifacts/
+referencias/
+tests/
+docs/
+.git/
+.env*

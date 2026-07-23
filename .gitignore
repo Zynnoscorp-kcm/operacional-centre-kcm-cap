@@ -1,0 +1,19 @@
+# Dependencias y resultados locales
+node_modules/
+coverage/
+.DS_Store
+*.log
+
+# Configuracion/credenciales locales
+.clasp.json
+.env
+.env.*
+!.env.example
+
+# Material privado: matrices, listas llenadas, fotos y OCR real
+referencias/privado/
+
+# Temporales y salidas OCR locales
+tmp/
+artifacts/ocr-private/
+

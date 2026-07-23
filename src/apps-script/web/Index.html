@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Control de capacitaciones KCM</title>
+  <style>
+    :root{--ink:#13243a;--muted:#526176;--line:#d6dde8;--surface:#fff;--canvas:#f4f7fb;--brand:#0b5d50;--brand2:#08463d;--warn:#8a4b08;--danger:#a32929;--radius:14px;--shadow:0 8px 24px rgba(20,36,58,.08)}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}.skip{position:absolute;left:-999px}.skip:focus{left:1rem;top:1rem;background:#fff;padding:.75rem;z-index:10}.app-header{display:flex;align-items:center;gap:1rem;background:var(--ink);color:#fff;padding:1rem 1.5rem}.mark{width:46px;height:46px;border-radius:10px;background:#fff;color:var(--brand);display:grid;place-items:center;font-weight:800}.app-header h1{font-size:1.1rem;margin:0}.app-header p{font-size:.85rem;margin:.15rem 0 0;color:#dce4ee}.layout{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 78px)}nav{background:#fff;border-right:1px solid var(--line);padding:1rem}.nav-group{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:1rem .5rem .4rem}.nav-button{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:.65rem .75rem;border-radius:9px;color:var(--ink);font:inherit;cursor:pointer}.nav-button:hover,.nav-button[aria-current="page"]{background:#e5f2ef;color:var(--brand2);font-weight:650}main{padding:1.5rem;max-width:1200px;width:100%}.view[hidden]{display:none}.view h2{margin:.2rem 0}.lede{color:var(--muted);margin-top:.25rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem}.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.1rem;margin:1rem 0}.card h3{margin-top:0}.field{display:grid;gap:.35rem;margin:.8rem 0}label{font-weight:650}input,select,textarea{width:100%;min-height:44px;border:1px solid #9aa8ba;border-radius:8px;padding:.65rem;font:inherit;background:#fff}input:focus,select:focus,textarea:focus,button:focus{outline:3px solid #9bd6ca;outline-offset:2px}.actions{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1rem}button.primary,button.secondary,button.danger{min-height:44px;border-radius:8px;padding:.65rem 1rem;font:inherit;font-weight:700;cursor:pointer}.primary{background:var(--brand);color:#fff;border:1px solid var(--brand)}.primary:hover{background:var(--brand2)}.secondary{background:#fff;color:var(--ink);border:1px solid #8998aa}.danger{background:#fff;color:var(--danger);border:1px solid var(--danger)}.status{display:inline-flex;border-radius:999px;padding:.25rem .6rem;background:#e5f2ef;color:var(--brand2);font-weight:700;font-size:.83rem}.result{white-space:pre-wrap;background:#101d2c;color:#e9f1fa;border-radius:10px;padding:1rem;min-height:90px;overflow:auto}.notice{border-left:4px solid var(--warn);background:#fff7e8;padding:.8rem 1rem;border-radius:6px}table{border-collapse:collapse;width:100%}th,td{text-align:left;border-bottom:1px solid var(--line);padding:.65rem}.live{position:fixed;right:1rem;bottom:1rem;background:var(--ink);color:#fff;padding:.8rem 1rem;border-radius:8px;max-width:360px}.meta{font-size:.85rem;color:var(--muted)}
+    .review-toolbar{align-items:center;justify-content:space-between}.review-layout{display:grid;grid-template-columns:minmax(190px,240px) 1fr;gap:1rem;align-items:start}.review-candidate-panel{position:sticky;top:1rem;max-height:72vh;overflow:auto}.review-candidate-list{list-style:none;margin:0;padding:0;display:grid;gap:.4rem}.review-candidate-button{width:100%;min-height:48px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:.55rem .65rem;text-align:left;cursor:pointer}.review-candidate-button[aria-current="true"]{border-color:var(--brand);background:#e5f2ef}.review-candidate-button.reviewed{border-left:5px solid var(--brand)}.review-candidate-button.pending{border-left:5px solid var(--warn)}.review-card{min-width:0}.review-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin:1rem 0}.review-summary div{background:#f5f7fa;border-radius:8px;padding:.65rem}.review-summary dt{color:var(--muted);font-size:.8rem}.review-summary dd{margin:.2rem 0 0;font-weight:750;overflow-wrap:anywhere}.review-flags{display:flex;gap:.45rem;flex-wrap:wrap;margin:.75rem 0}.review-flag{background:#fff1d8;color:#6c3a05;border-radius:999px;padding:.2rem .55rem;font-size:.8rem;font-weight:700}.crop-fieldset{border:1px solid var(--line);border-radius:10px;margin:1rem 0;padding:1rem}.crop-grid{display:grid;grid-template-columns:repeat(5,minmax(115px,1fr));gap:.7rem}.crop-pair{border:1px solid var(--line);border-radius:9px;padding:.5rem;background:#f8fafc}.crop-pair h4{margin:.1rem 0 .45rem;font-size:.9rem}.crop-variant{margin:.45rem 0}.crop-variant figcaption{font-size:.75rem;color:var(--muted)}.crop-image{display:block;width:100%;height:88px;object-fit:contain;background:#fff;border:1px dashed #8795a7;border-radius:6px}.crop-loading{color:var(--muted);font-size:.85rem}.review-navigation{display:flex;gap:.7rem;justify-content:space-between;flex-wrap:wrap}.review-empty{text-align:center;color:var(--muted);padding:2rem}.required-note{font-size:.85rem;color:var(--muted)}
+    @media(max-width:900px){.crop-grid{grid-template-columns:repeat(2,minmax(130px,1fr))}}@media(max-width:800px){.layout{grid-template-columns:1fr}nav{display:flex;overflow:auto;border-right:0;border-bottom:1px solid var(--line);padding:.5rem}.nav-group{display:none}.nav-button{min-width:max-content}main{padding:1rem}.review-layout{grid-template-columns:1fr}.review-candidate-panel{position:static;max-height:240px}.review-summary{grid-template-columns:1fr}}@media(max-width:520px){.crop-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <header class="app-header"><div class="mark" aria-hidden="true">KCM</div><div><h1>Control de capacitaciones</h1><p id="environment">Cargando entorno…</p></div></header>
+  <div class="layout">
+    <nav aria-label="Funciones principales">
+      <p class="nav-group">General</p>
+      <button class="nav-button" data-view="home" aria-current="page">Inicio</button>
+      <button class="nav-button" data-view="sessions">Sesiones y cierre</button>
+      <button class="nav-button" data-view="kiosk">Preparar quioscos</button>
+      <button class="nav-button" data-view="search">Buscar código</button>
+      <p class="nav-group">Evidencia y OCR</p>
+      <button class="nav-button" data-view="upload">Carga de lista</button>
+      <button class="nav-button" data-view="tracking">Seguimiento OCR</button>
+      <button class="nav-button" data-view="review">Revisión OCR</button>
+      <p class="nav-group">Liberación</p>
+      <button class="nav-button" data-view="prerelease">Preliberación</button>
+      <button class="nav-button" data-view="exams">Exámenes</button>
+      <button class="nav-button" data-view="release">Vista previa y liberación</button>
+      <button class="nav-button" data-view="result">Resultado</button>
+      <button class="nav-button" data-view="audit">Auditoría</button>
+    </nav>
+    <main id="main" tabindex="-1">
+      <section class="view" id="view-home"><h2>Inicio</h2><p class="lede">Seleccione una función según su rol. Ninguna asistencia llega a matriz sin identidad, cotejo físico, examen y autorización.</p><div class="grid"><article class="card"><h3>Sesión activa</h3><p id="active-session">Sin sesión seleccionada</p><span class="status" id="active-status">BORRADOR</span></article><article class="card"><h3>Regla de liberación</h3><p>Identidad validada + asistencia comprobada + examen confirmado + sesión autorizada + no liberado.</p></article><article class="card"><h3>Entorno</h3><p id="mode-card">HTML Service</p><p class="meta">Contrato v1.0.0 · America/Mexico_City</p></article></div></section>
+
+      <section class="view" id="view-sessions" hidden><h2>Creación, administración y cierre</h2><p class="lede">Seleccione una sesión existente o cree una nueva. El código legible se genera en el servidor.</p><div class="card"><div class="field"><label for="session-picker">Sesión de trabajo</label><select id="session-picker"><option value="">Sin sesión seleccionada</option></select></div><div class="actions"><button class="secondary" id="select-session" type="button">Usar sesión</button><button class="secondary" id="refresh-sessions" type="button">Actualizar lista</button></div></div><form id="session-form" class="card"><div class="grid"><div class="field"><label for="training">Capacitación</label><select id="training" required><option value="CAP-SINT-001">Capacitación sintética</option></select></div><div class="field"><label for="session-date">Fecha</label><input id="session-date" type="date" required></div><div class="field"><label for="duration">Duración (minutos)</label><input id="duration" type="number" min="1" max="1440" value="60" required></div><div class="field"><label for="instructor">Instructor</label><input id="instructor" maxlength="120" value="Instructor de prueba" required></div><div class="field"><label for="room">Sala</label><input id="room" maxlength="80" value="Sala A"></div><div class="field"><label for="shift">Turno</label><input id="shift" maxlength="30" value="1"></div><div class="field"><label for="event-type">Tipo de evento</label><input id="event-type" maxlength="80" value="Capacitación" required></div></div><div class="actions"><button class="primary" type="submit">Crear sesión</button><button class="secondary" type="button" data-action="open">Abrir seleccionada</button><button class="secondary" type="button" data-action="close">Cerrar y ver resumen</button></div></form><pre class="result" id="session-output">Aún no hay resultado.</pre></section>
+
+      <section class="view" id="view-kiosk" hidden><h2>Preparar computadoras de la sala</h2><p class="lede">Genere un vínculo distinto para cada equipo. El token viaja en el fragmento de la URL, vence automáticamente y nunca se muestra en la pantalla del participante.</p><form id="kiosk-setup-form" class="card"><div class="field"><label for="station-label">Nombre del equipo</label><input id="station-label" maxlength="60" placeholder="Sala A · Equipo 01" required></div><button class="primary" id="issue-token" type="submit">Generar vínculo seguro</button><div class="field"><label for="kiosk-url">Vínculo del quiosco</label><textarea id="kiosk-url" rows="3" readonly></textarea></div><p class="meta" id="kiosk-expiration">Seleccione primero una sesión ABIERTA.</p><div class="actions"><button class="secondary" id="copy-kiosk-url" type="button" disabled>Copiar vínculo</button><button class="secondary" id="open-kiosk-url" type="button" disabled>Abrir en esta computadora</button></div></form><pre class="result" id="kiosk-output">Cada computadora debe usar su propio vínculo.</pre></section>
+
+      <section class="view" id="view-search" hidden><h2>Búsqueda por código de sesión</h2><form id="search-form" class="card"><div class="field"><label for="session-code">Código</label><input id="session-code" placeholder="KCM-260721-ABC123" required></div><button class="primary" type="submit">Buscar</button></form><pre class="result" id="search-output">Sin búsqueda.</pre></section>
+
+      <section class="view" id="view-upload" hidden><h2>Carga de fotografía o escaneo</h2><p class="notice">Se aceptan JPG, PNG o PDF de una página. El original se conserva como evidencia; una carga no comprueba por sí misma el examen.</p><form id="upload-form" class="card"><div class="field"><label for="evidence-file">Lista física</label><input id="evidence-file" type="file" accept="image/jpeg,image/png,application/pdf" required></div><button class="primary" type="submit">Validar y cargar</button></form><pre class="result" id="upload-output">Sin archivo cargado.</pre></section>
+
+      <section class="view" id="view-tracking" hidden><h2>Procesamiento OCR y seguimiento</h2><div class="card"><div class="field"><label for="document-picker">Documento de la sesión</label><select id="document-picker"><option value="">Ningún documento</option></select></div><p>Documento seleccionado: <strong id="active-document">Ninguno</strong></p><p id="ocr-control-note" class="meta">Cargando permisos y modo OCR…</p><div class="actions"><button class="secondary" id="refresh-documents" type="button">Actualizar documentos</button><button class="secondary" id="select-document" type="button">Usar documento</button><button class="primary" id="process-remote-ocr" type="button" hidden disabled>Procesar OCR real y abrir revisión</button><button class="secondary" id="begin-ocr" type="button" hidden>Preparar estado OCR (sólo MOCK)</button><button class="secondary" id="mock-ocr" type="button" hidden>Ingresar resultado simulado (sólo MOCK)</button></div></div><pre class="result" id="tracking-output">Pendiente.</pre></section>
+
+      <section class="view" id="view-review" hidden>
+        <h2>Revisión OCR por renglón</h2>
+        <p class="lede">Compare las cinco casillas originales con sus versiones procesadas. Toda corrección conserva antes, después, actor, fecha y motivo.</p>
+        <div class="actions review-toolbar">
+          <p id="review-progress" class="status" role="status">0 candidatos · 0 pendientes</p>
+          <button class="secondary" id="load-review-candidates" type="button">Cargar candidatos</button>
+        </div>
+        <div class="review-layout">
+          <aside class="card review-candidate-panel" aria-labelledby="review-list-title">
+            <h3 id="review-list-title">Renglones OCR</h3>
+            <ol id="review-candidate-list" class="review-candidate-list"></ol>
+          </aside>
+          <article class="card review-card" id="review-card" aria-labelledby="review-title">
+            <div id="review-empty" class="review-empty">Seleccione una sesión con documento OCR y cargue sus candidatos.</div>
+            <div id="review-detail" hidden>
+              <h3 id="review-title" tabindex="-1">Renglón OCR</h3>
+              <dl class="review-summary">
+                <div><dt>Lectura original</dt><dd id="review-original">—</dd></div>
+                <div><dt>Confianza total</dt><dd id="review-confidence">—</dd></div>
+                <div><dt>Decisión</dt><dd id="review-decision">—</dd></div>
+              </dl>
+              <div><strong>Banderas de validación</strong><div id="review-flags" class="review-flags"></div></div>
+              <fieldset class="crop-fieldset">
+                <legend>Comparación visual de cinco casillas</legend>
+                <p id="review-evidence-status" class="crop-loading" role="status">La evidencia se carga al seleccionar el renglón.</p>
+                <div id="review-crop-grid" class="crop-grid"></div>
+              </fieldset>
+              <form id="review-form">
+                <div class="field">
+                  <label for="review-correction">Número confirmado, exactamente 5 dígitos</label>
+                  <input id="review-correction" name="correctedValue" inputmode="numeric" autocomplete="off" pattern="[0-9]{5}" minlength="5" maxlength="5" required aria-describedby="review-correction-help">
+                  <span id="review-correction-help" class="required-note">Se conservan ceros iniciales. No use espacios ni separadores.</span>
+                </div>
+                <div class="field">
+                  <label for="review-reason">Motivo de confirmación o corrección</label>
+                  <textarea id="review-reason" name="reason" rows="3" maxlength="300" required></textarea>
+                </div>
+                <div class="actions"><button class="primary" id="confirm-review-candidate" type="submit" disabled>Confirmar número</button><button class="secondary" id="confirm-empty-ocr-row" type="button" disabled>Confirmar renglón vacío / sin participante</button></div>
+              </form>
+              <nav class="review-navigation" aria-label="Navegación entre candidatos pendientes">
+                <button class="secondary" id="previous-pending" type="button">Anterior pendiente</button>
+                <button class="secondary" id="next-pending" type="button">Siguiente pendiente</button>
+              </nav>
+            </div>
+          </article>
+        </div>
+        <pre class="result" id="review-output">No hay candidatos cargados.</pre>
+      </section>
+
+      <section class="view" id="view-prerelease" hidden><h2>Preliberación y cotejo físico</h2><form id="prerelease-form" class="card"><div class="field"><label for="evidence-id">ID de evidencia vinculada</label><input id="evidence-id" required></div><div class="field"><label for="attended-ids">Asistentes cotejados (uno por línea)</label><textarea id="attended-ids" rows="5" placeholder="00123&#10;04567"></textarea></div><button class="primary" type="submit">Guardar cotejo</button><button class="secondary" id="preview-prerelease" type="button">Actualizar vista previa</button></form><pre class="result" id="prerelease-output">Sin cotejo.</pre></section>
+
+      <section class="view" id="view-exams" hidden><h2>Conciliación de exámenes</h2><form id="exam-form" class="card"><div class="field"><label for="exam-count">Total de exámenes físicos recibidos</label><input id="exam-count" type="number" min="0" value="0" required></div><div class="field"><label for="missing-ids">Exámenes no encontrados (uno por línea)</label><textarea id="missing-ids" rows="4"></textarea></div><button class="primary" type="submit">Conciliar explícitamente</button></form><pre class="result" id="exam-output">Pendiente.</pre></section>
+
+      <section class="view" id="view-release" hidden><h2>Vista previa de liberación</h2><p class="notice">La matriz no sobrescribe fechas existentes. Los conflictos se excluyen y quedan auditados.</p><div class="card"><div class="actions"><button class="secondary" id="authorize-session" type="button">Autorizar sesión</button><button class="secondary" id="release-preview" type="button">Generar vista previa</button><button class="primary" id="execute-release" type="button">Confirmar liberación idempotente</button></div></div><pre class="result" id="release-output">Sin vista previa.</pre></section>
+
+      <section class="view" id="view-result" hidden><h2>Resultado y evidencia</h2><div class="card"><table><thead><tr><th>Estado</th><th>Incluidos</th><th>Excluidos</th></tr></thead><tbody><tr><td id="result-status">Pendiente</td><td id="result-included">0</td><td id="result-excluded">0</td></tr></tbody></table></div><pre class="result" id="result-output">Aún no se ejecuta una liberación.</pre></section>
+
+      <section class="view" id="view-audit" hidden><h2>Consulta de auditoría</h2><p class="lede">Sólo lectura para personal autorizado.</p><button class="primary" id="load-audit" type="button">Consultar sesión activa</button><pre class="result" id="audit-output">Sin consulta.</pre></section>
+    </main>
+  </div>
+  <div class="live" id="live" role="status" aria-live="polite" hidden></div>
+  <script>
+    (function(){
+      "use strict";
+      var hasGoogleRunner=Boolean(window.google&&google.script&&google.script.run);
+      var state={session:null,document:null,candidate:null,evidence:null,lastRelease:null,mock:!hasGoogleRunner,role:"",mode:"",remoteOcrRequestId:"",releaseRequestId:"",sessionCreateRequestId:"",sessions:[],documents:[],maxUploadBytes:10485760,reviewCandidates:[],reviewIndex:-1,reviewEvidenceReady:false,reviewEvidenceRequest:0};
+      function $(id){return document.getElementById(id)}
+      function notify(message){var live=$("live");live.textContent=message;live.hidden=false;setTimeout(function(){live.hidden=true},3500)}
+      function showOutput(id,data){$(id).textContent=typeof data==="string"?data:JSON.stringify(data,null,2)}
+      function uid(prefix){return prefix+"-"+Math.random().toString(36).slice(2,10)}
+      function parseArray(value){if(Array.isArray(value))return value;if(!value)return[];try{var parsed=JSON.parse(String(value));return Array.isArray(parsed)?parsed:[]}catch(error){return[]}}
+      function syntheticCandidates(){return[
+        {candidateId:"candidate-demo-01",documentId:state.document&&state.document.documentId||"document-demo",rowIndex:1,rawDigits:"00123",digitConfidences:[.99,.98,.91,.99,.98],overallConfidence:.91,normalizedEmployeeId:"00123",decision:"REVISION_REQUERIDA",validationFlags:["LOW_DIGIT_CONFIDENCE","LOW_OVERALL_CONFIDENCE"]},
+        {candidateId:"candidate-demo-02",documentId:state.document&&state.document.documentId||"document-demo",rowIndex:2,rawDigits:"04567",digitConfidences:[.95,.97,.96,.94,.97],overallConfidence:.94,normalizedEmployeeId:"04567",decision:"REVISION_REQUERIDA",validationFlags:["LOW_OVERALL_CONFIDENCE"]},
+        {candidateId:"candidate-demo-03",documentId:state.document&&state.document.documentId||"document-demo",rowIndex:3,rawDigits:"89012",digitConfidences:[.99,.99,.99,.99,.99],overallConfidence:.99,normalizedEmployeeId:"89012",decision:"CONFIRMADO_HUMANO",validationFlags:[],correctedValue:"89012",correctionReason:"Confirmación sintética previa"}
+      ]}
+      function syntheticCropDataUrl(digit,processed){
+        var canvas=document.createElement("canvas");canvas.width=84;canvas.height=100;var context=canvas.getContext("2d");
+        context.fillStyle=processed?"#ffffff":"#f3efe3";context.fillRect(0,0,canvas.width,canvas.height);
+        if(!processed){context.strokeStyle="#c5bca8";context.lineWidth=2;context.strokeRect(4,4,76,92)}
+        context.fillStyle=processed?"#000000":"#24374a";context.font=(processed?"bold ":"")+"64px sans-serif";context.textAlign="center";context.textBaseline="middle";context.fillText(String(digit||""),42,52);
+        return canvas.toDataURL("image/png")
+      }
+      function syntheticEvidence(candidate){
+        var digits=String(candidate&&candidate.rawDigits||"").split("");var crops=[];
+        for(var index=0;index<5;index+=1)crops.push({digitIndex:index,originalUrl:syntheticCropDataUrl(digits[index]||"",false),processedUrl:syntheticCropDataUrl(digits[index]||"",true)});
+        return{candidateId:candidate&&candidate.candidateId,crops:crops}
+      }
+      function localApi(action,payload){
+        var session=state.session||{sessionId:"session-demo",sessionCode:"KCM-260721-DEMO01",trainingId:"CAP-SINT-001",date:new Date().toISOString().slice(0,10),status:"BORRADOR",authorized:false};
+        var localCandidate=state.reviewCandidates.filter(function(candidate){return candidate.candidateId===payload.candidateId})[0]||syntheticCandidates()[0];
+        var responses={
+          bootstrap:{actor:"qa-local@example.invalid",role:"ADMINISTRADOR",mode:"LOCAL_PREVIEW",contractVersion:"1.0.0",today:new Date().toISOString().slice(0,10),maxUploadBytes:10485760,trainings:[{trainingId:"CAP-SINT-001",trainingName:"Capacitación sintética"}],sessions:state.sessions},
+          createSession:Object.assign({},session,{sessionId:uid("session"),sessionCode:"KCM-260721-DEMO01"}),
+          openSession:Object.assign({},session,{status:"ABIERTA"}),closeSession:Object.assign({},session,{status:"CERRADA"}),
+          listSessions:state.sessions,
+          issueKioskToken:{expiresAt:new Date(Date.now()+7200000).toISOString(),stationLabel:String(payload.stationLabel||"Equipo local"),kioskUrl:new URL("?view=kiosk#kioskToken=token-local-solo-qa",window.location.href).href},
+          kioskBootstrap:{sessionId:session.sessionId,sessionCode:session.sessionCode,status:session.status,trainingId:session.trainingId,stationLabel:String(payload.stationLabel||"Equipo local"),availability:{maximum:40,available:true},acceptingRegistrations:true},
+          kioskRegister:{received:true,message:"Solicitud recibida; la asistencia se confirmará durante el cotejo físico"},
+          findSession:session,uploadOcrDocument:{duplicate:false,document:{documentId:uid("document"),status:"RECIBIDO",evidenceId:uid("evidence")},evidence:{evidenceId:uid("evidence")}},
+          listSessionDocuments:state.documents,
+          beginOcrProcessing:{documentId:state.document&&state.document.documentId,status:"OCR_EN_PROCESO"},
+          ingestOcrCandidates:[{candidateId:uid("candidate"),rowIndex:1,rawDigits:"00123",normalizedEmployeeId:"00123",decision:"REVISION_REQUERIDA",overallConfidence:.91}],
+          listOcrCandidates:syntheticCandidates(),
+          reviewEvidence:syntheticEvidence(localCandidate),
+          reviewOcrCandidate:{candidateId:payload.candidateId,originalValue:localCandidate.rawDigits,correctedValue:payload.correctedValue,correctionReason:payload.reason,decision:"CONFIRMADO_HUMANO"},
+          reconcilePhysicalAttendance:{counts:{total:1,included:0,excluded:1},participants:[{employeeId:"00123",attendanceProven:true,examStatus:"EXAMEN_PENDIENTE",blockingReasons:["EXAMEN_NO_CONFIRMADO","SESION_NO_AUTORIZADA"]}]},
+          preReleasePreview:{counts:{total:1,included:0,excluded:1}},reconcileExams:{reconciliation:{eligibleAttendanceCount:1,receivedExamCount:Number(payload.receivedExamCount)},preview:{counts:{total:1,included:0,excluded:1}}},
+          authorizeSession:Object.assign({},session,{authorized:true,status:"LISTA_PARA_LIBERAR"}),
+          releasePreview:{included:[{employeeId:"00123"}],excluded:[],counts:{total:1,included:1,excluded:0},mapping:{mappingVersion:"mock-v1"}},
+          executeRelease:{repeated:false,release:{releaseId:uid("release"),status:"LIBERADA_TOTAL",included:"[{\"employeeId\":\"00123\"}]",excluded:"[]"},results:[{employeeId:"00123",status:"WRITTEN"}]},
+          sessionAudit:[{action:"SESSION_CREATED",timestamp:new Date().toISOString(),actor:"qa-local@example.invalid"}]
+        };
+        return Promise.resolve({ok:true,requestId:uid("request"),data:responses[action]||{localPreview:true,action:action}});
+      }
+      function usesReviewHttp(action){return Boolean(window.KCM_LOCAL_API_BASE)&&["listOcrCandidates","reviewEvidence","reviewOcrCandidate"].indexOf(action)!==-1}
+      function httpReviewApi(action,payload){
+        return fetch(window.KCM_LOCAL_API_BASE,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:action,payload:payload})}).then(function(response){if(!response.ok)throw new Error("La API local de revisión no respondió correctamente");return response.json()}).then(function(envelope){if(!envelope||typeof envelope.ok!=="boolean")throw new Error("La API local devolvió una respuesta inválida");return envelope})
+      }
+      function call(action,payload){
+        payload=payload||{};payload.requestId=payload.requestId||uid("request");
+        if(usesReviewHttp(action))return httpReviewApi(action,payload);
+        if(state.mock)return localApi(action,payload);
+        return new Promise(function(resolve,reject){google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).api(action,payload)}).then(function(response){if(!response.ok)throw new Error(response.error.message);return response});
+      }
+      function run(action,payload,output,after){notify("Procesando…");return call(action,payload).then(function(response){if(output)showOutput(output,response.data);if(after)after(response.data);notify("Operación completada");return response.data}).catch(function(error){if(output)showOutput(output,{error:error.message});notify(error.message)})}
+      function canManageOcr(){return state.role==="CAPACITACION"||state.role==="ADMINISTRADOR"}
+      function setDocument(document){
+        state.document=document||null;state.evidence=document&&document.evidenceId?{evidenceId:String(document.evidenceId)}:null;state.remoteOcrRequestId=String(document&&document.ocrRequestId||"");
+        $("active-document").textContent=document?String(document.documentId):"Ninguno";if(state.evidence)$("evidence-id").value=state.evidence.evidenceId;updateOcrControls()
+      }
+      function renderDocuments(){
+        var picker=$("document-picker");picker.textContent="";var empty=document.createElement("option");empty.value="";empty.textContent="Ningún documento";picker.appendChild(empty);
+        state.documents.forEach(function(item){var option=document.createElement("option");option.value=String(item.documentId);option.textContent=String(item.status||"SIN_ESTADO")+" · "+String(item.documentId);picker.appendChild(option)});
+        if(state.document)picker.value=String(state.document.documentId)
+      }
+      function loadDocuments(){
+        state.documents=[];renderDocuments();if(!state.session||["CAPACITACION","ADMINISTRADOR","AUDITOR"].indexOf(state.role)===-1)return Promise.resolve([]);
+        return call("listSessionDocuments",{sessionId:state.session.sessionId}).then(function(response){state.documents=Array.isArray(response.data)?response.data:[];renderDocuments();if(state.document){var persisted=state.documents.filter(function(item){return String(item.documentId)===String(state.document.documentId)})[0];if(persisted)setDocument(persisted)}return state.documents}).catch(function(error){showOutput("tracking-output",{error:error.message});return[]})
+      }
+      function setSession(session){
+        var changed=!state.session||!session||String(state.session.sessionId)!==String(session.sessionId);state.session=session||null;
+        $("active-session").textContent=session?String(session.sessionCode):"Sin sesión seleccionada";$("active-status").textContent=session?String(session.status):"SIN_SESION";$("session-code").value=session?String(session.sessionCode):"";
+        if(session)$("session-picker").value=String(session.sessionId);if(changed){setDocument(null);state.releaseRequestId="";loadDocuments()}updateOcrControls();return session
+      }
+      function renderSessions(){
+        var picker=$("session-picker");picker.textContent="";var empty=document.createElement("option");empty.value="";empty.textContent="Sin sesión seleccionada";picker.appendChild(empty);
+        state.sessions.forEach(function(item){var option=document.createElement("option");option.value=String(item.sessionId);option.textContent=String(item.status||"SIN_ESTADO")+" · "+String(item.sessionCode||item.sessionId);picker.appendChild(option)});if(state.session)picker.value=String(state.session.sessionId)
+      }
+      function refreshSessions(){
+        return call("listSessions",{}).then(function(response){state.sessions=Array.isArray(response.data)?response.data:[];renderSessions();if(state.session){var persisted=state.sessions.filter(function(item){return String(item.sessionId)===String(state.session.sessionId)})[0];if(persisted)setSession(persisted)}showOutput("session-output",{sessions:state.sessions.length});return state.sessions}).catch(function(error){showOutput("session-output",{error:error.message});notify(error.message);return[]})
+      }
+      function updateOcrControls(){
+        var allowed=canManageOcr();var hasDocument=Boolean(state.document&&state.document.documentId);var realMode=state.mode==="GOOGLE";var mockMode=state.mode==="MOCK";
+        $("process-remote-ocr").hidden=!(allowed&&realMode);$("process-remote-ocr").disabled=!hasDocument;
+        $("begin-ocr").hidden=!(allowed&&mockMode);$("mock-ocr").hidden=!(allowed&&mockMode);
+        if(!allowed)$("ocr-control-note").textContent="Su rol no permite ejecutar procesamiento OCR.";
+        else if(realMode)$("ocr-control-note").textContent=hasDocument?"El worker real está disponible para el documento seleccionado.":"Cargue o vincule una evidencia para habilitar el worker real.";
+        else if(mockMode)$("ocr-control-note").textContent="Modo MOCK: estas acciones son simuladas y no invocan el worker real.";
+        else $("ocr-control-note").textContent="Vista local: el procesamiento remoto está deshabilitado.";
+      }
+      function candidateIsPending(candidate){return !candidate.decision||candidate.decision==="REVISION_REQUERIDA"}
+      function confidenceLabel(value){var number=Number(value);return isFinite(number)?(Math.max(0,Math.min(1,number))*100).toFixed(1)+"%":"—"}
+      function candidateFlags(candidate){return parseArray(candidate.validationFlags)}
+      function candidateConfidences(candidate){return parseArray(candidate.digitConfidences).map(Number)}
+      function safeImageUrl(value){
+        var url=typeof value==="string"?value.trim():"";
+        if(/^data:image\/(png|jpe?g|webp);base64,[a-z0-9+/=_-]+$/i.test(url))return url;
+        if(/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\//i.test(url))return url;
+        if(url&&!/^[a-z][a-z0-9+.-]*:/i.test(url)&&!/^\/\//.test(url)&&!/^[\\]|[\s<>"']/.test(url)){
+          var anchor=document.createElement("a");anchor.href=url;
+          if(anchor.protocol===window.location.protocol&&anchor.host===window.location.host)return anchor.href
+        }
+        return""
+      }
+      function evidenceItems(source,candidate){
+        var data=source||candidate||{};var sourceCrops=Array.isArray(data)?data:(data.crops||data.reviewCrops||(data.reviewEvidence&&data.reviewEvidence.crops)||[]);
+        var originals=parseArray(data.originalCropUrls||candidate.originalCropUrls);var processed=parseArray(data.processedCropUrls||candidate.processedCropUrls);var result=[];
+        for(var index=0;index<5;index+=1){
+          var supplied=sourceCrops.filter(function(crop){return Number(crop.digitIndex)===index})[0]||sourceCrops[index]||{};
+          result.push({digitIndex:index,originalUrl:safeImageUrl(supplied.originalUrl||supplied.originalDataUrl||supplied.rawUrl||originals[index]),processedUrl:safeImageUrl(supplied.processedUrl||supplied.processedDataUrl||supplied.thresholdedUrl||processed[index])})
+        }
+        return result
+      }
+      function evidenceIsComplete(crops){return crops.length===5&&crops.every(function(crop){return Boolean(crop.originalUrl&&crop.processedUrl)})}
+      function appendTextElement(parent,tag,className,text){var element=document.createElement(tag);if(className)element.className=className;element.textContent=text;parent.appendChild(element);return element}
+      function renderCropGrid(crops,candidate,imageObserver){
+        var grid=$("review-crop-grid");grid.textContent="";var confidences=candidateConfidences(candidate);
+        for(var digitIndex=0;digitIndex<5;digitIndex+=1){
+          var crop=crops[digitIndex]||{};var pair=document.createElement("section");pair.className="crop-pair";pair.setAttribute("aria-label","Casilla "+(digitIndex+1));
+          appendTextElement(pair,"h4","","Casilla "+(digitIndex+1)+" · "+confidenceLabel(confidences[digitIndex]));
+          [{key:"originalUrl",label:"Original sin umbralizar"},{key:"processedUrl",label:"Procesada para OCR"}].forEach(function(variant){
+            var figure=document.createElement("figure");figure.className="crop-variant";var image=document.createElement("img");image.className="crop-image";image.loading="lazy";image.alt="Renglón "+candidate.rowIndex+", casilla "+(digitIndex+1)+", "+variant.label.toLowerCase();
+            if(crop[variant.key]){var settled=false;image.addEventListener("load",function(){if(settled)return;settled=true;if(imageObserver)imageObserver("load")});image.addEventListener("error",function(){if(settled)return;settled=true;if(imageObserver)imageObserver("error")});image.src=crop[variant.key]}
+            figure.appendChild(image);appendTextElement(figure,"figcaption","",variant.label);pair.appendChild(figure)
+          });
+          grid.appendChild(pair)
+        }
+      }
+      function renderFlags(candidate){
+        var container=$("review-flags");container.textContent="";var flags=candidateFlags(candidate);
+        if(!flags.length)flags=["SIN_BANDERAS"];
+        flags.forEach(function(flag){appendTextElement(container,"span","review-flag",String(flag))})
+      }
+      function currentCandidate(){return state.reviewIndex>=0?state.reviewCandidates[state.reviewIndex]:null}
+      function pendingIndex(direction){
+        var index=state.reviewIndex+direction;
+        while(index>=0&&index<state.reviewCandidates.length){if(candidateIsPending(state.reviewCandidates[index]))return index;index+=direction}
+        return-1
+      }
+      function updatePendingNavigation(){var previous=pendingIndex(-1);var next=pendingIndex(1);$("previous-pending").disabled=previous===-1;$("previous-pending").dataset.targetIndex=String(previous);$("next-pending").disabled=next===-1;$("next-pending").dataset.targetIndex=String(next)}
+      function renderCandidateList(){
+        var list=$("review-candidate-list");list.textContent="";var pendingCount=state.reviewCandidates.filter(candidateIsPending).length;$("review-progress").textContent=state.reviewCandidates.length+" candidatos · "+pendingCount+" pendientes";
+        state.reviewCandidates.forEach(function(candidate,index){
+          var item=document.createElement("li");var button=document.createElement("button");button.type="button";button.className="review-candidate-button "+(candidateIsPending(candidate)?"pending":"reviewed");button.setAttribute("aria-current",index===state.reviewIndex?"true":"false");button.textContent="Renglón "+candidate.rowIndex+" · "+String(candidate.rawDigits||"sin lectura")+" · "+String(candidate.decision||"PENDIENTE");button.addEventListener("click",function(){selectReviewCandidate(index,true)});item.appendChild(button);list.appendChild(item)
+        })
+      }
+      function applyReviewEvidence(crops,candidate,requestNumber){
+        if(requestNumber!==state.reviewEvidenceRequest||candidate!==currentCandidate())return;
+        state.reviewEvidenceReady=false;$("confirm-review-candidate").disabled=true;$("confirm-empty-ocr-row").disabled=true;
+        if(!evidenceIsComplete(crops)){renderCropGrid(crops,candidate);$("review-evidence-status").textContent="La evidencia está incompleta; no se puede confirmar este renglón.";return}
+        var loaded=0;var failed=0;$("review-evidence-status").textContent="Cargando imágenes: 0 de 10…";
+        renderCropGrid(crops,candidate,function(result){
+          if(requestNumber!==state.reviewEvidenceRequest||candidate!==currentCandidate())return;
+          if(result==="load")loaded+=1;else failed+=1;var completed=loaded+failed;
+          if(completed===10&&failed===0){state.reviewEvidenceReady=true;$("confirm-review-candidate").disabled=false;$("confirm-empty-ocr-row").disabled=false;$("review-evidence-status").textContent="Diez imágenes cargadas y listas para comparación.";return}
+          state.reviewEvidenceReady=false;$("confirm-review-candidate").disabled=true;$("confirm-empty-ocr-row").disabled=true;
+          if(completed===10)$("review-evidence-status").textContent=failed+" de 10 imágenes fallaron. Confirmación bloqueada.";
+          else $("review-evidence-status").textContent="Cargando imágenes: "+loaded+" de 10; errores: "+failed+"."
+        })
+      }
+      function loadReviewEvidence(candidate){
+        state.reviewEvidenceReady=false;$("confirm-review-candidate").disabled=true;$("confirm-empty-ocr-row").disabled=true;$("review-evidence-status").textContent="Cargando evidencia de cinco casillas…";var placeholders=evidenceItems([],candidate);renderCropGrid(placeholders,candidate);var requestNumber=state.reviewEvidenceRequest+1;state.reviewEvidenceRequest=requestNumber;
+        var embedded=evidenceItems(candidate,candidate);if(evidenceIsComplete(embedded)){applyReviewEvidence(embedded,candidate,requestNumber);return}
+        call("reviewEvidence",{documentId:candidate.documentId||state.document&&state.document.documentId,candidateId:candidate.candidateId,rowIndex:candidate.rowIndex,cropEvidenceIds:parseArray(candidate.cropEvidenceIds)}).then(function(response){if(!response.ok)throw new Error(response.error&&response.error.message||"No fue posible cargar la evidencia");applyReviewEvidence(evidenceItems(response.data,candidate),candidate,requestNumber)}).catch(function(error){if(requestNumber!==state.reviewEvidenceRequest)return;$("review-evidence-status").textContent="No fue posible cargar las imágenes: "+error.message;showOutput("review-output",{error:error.message});notify("Evidencia visual no disponible")})
+      }
+      function selectReviewCandidate(index,focusTitle){
+        if(index<0||index>=state.reviewCandidates.length)return;state.reviewIndex=index;state.candidate=state.reviewCandidates[index];var candidate=state.candidate;$("review-empty").hidden=true;$("review-detail").hidden=false;$("review-title").textContent="Renglón "+candidate.rowIndex;$("review-original").textContent=String(candidate.rawDigits||"SIN LECTURA");$("review-confidence").textContent=confidenceLabel(candidate.overallConfidence);$("review-decision").textContent=String(candidate.decision||"PENDIENTE");renderFlags(candidate);$("review-correction").value=/^\d{5}$/.test(String(candidate.correctedValue||candidate.normalizedEmployeeId||candidate.rawDigits||""))?String(candidate.correctedValue||candidate.normalizedEmployeeId||candidate.rawDigits):"";$("review-reason").value=String(candidate.correctionReason||"");renderCandidateList();updatePendingNavigation();loadReviewEvidence(candidate);if(focusTitle)$("review-title").focus()
+      }
+      function loadReviewCandidates(){
+        if(!state.document&&window.KCM_LOCAL_API_BASE){state.document={documentId:"document-local-raster-v1",status:"REVISION_OCR"};$("active-document").textContent=state.document.documentId}
+        if(!state.document){notify("Seleccione primero un documento OCR");showOutput("review-output","No hay un documento OCR seleccionado.");return Promise.resolve([])}
+        $("review-output").textContent="Cargando candidatos…";
+        return call("listOcrCandidates",{documentId:state.document.documentId}).then(function(response){if(!response.ok)throw new Error(response.error&&response.error.message||"No fue posible listar candidatos");var received=Array.isArray(response.data)?response.data:response.data&&response.data.candidates||[];state.reviewCandidates=received.slice(0,40).sort(function(left,right){return Number(left.rowIndex)-Number(right.rowIndex)});state.reviewIndex=-1;renderCandidateList();if(!state.reviewCandidates.length){$("review-empty").hidden=false;$("review-detail").hidden=true;showOutput("review-output","El documento no tiene candidatos OCR.");return[]};var firstPending=state.reviewCandidates.findIndex(candidateIsPending);selectReviewCandidate(firstPending===-1?0:firstPending,false);showOutput("review-output",{documentId:state.document.documentId,candidates:state.reviewCandidates.length,pending:state.reviewCandidates.filter(candidateIsPending).length});return state.reviewCandidates}).catch(function(error){showOutput("review-output",{error:error.message});notify(error.message);return[]})
+      }
+      function openReview(){loadReviewCandidates()}
+      document.querySelectorAll(".nav-button").forEach(function(button){button.addEventListener("click",function(){document.querySelectorAll(".nav-button").forEach(function(item){item.removeAttribute("aria-current")});button.setAttribute("aria-current","page");document.querySelectorAll(".view").forEach(function(view){view.hidden=true});$("view-"+button.dataset.view).hidden=false;$("main").focus();if(button.dataset.view==="review")openReview()})});
+      $("session-date").value=new Date().toISOString().slice(0,10);
+      ["training","session-date","duration","instructor","room","shift","event-type"].forEach(function(id){$(id).addEventListener("input",function(){state.sessionCreateRequestId=""})});
+      $("session-form").addEventListener("submit",function(event){event.preventDefault();state.sessionCreateRequestId=state.sessionCreateRequestId||uid("session-create");run("createSession",{trainingId:$("training").value,date:$("session-date").value,durationMinutes:Number($("duration").value),instructor:$("instructor").value,room:$("room").value,shift:$("shift").value,eventType:$("event-type").value,requestId:state.sessionCreateRequestId},"session-output",function(data){state.sessionCreateRequestId="";state.sessions=[data].concat(state.sessions.filter(function(item){return String(item.sessionId)!==String(data.sessionId)}));renderSessions();setSession(data)})});
+      $("select-session").addEventListener("click",function(){var selected=state.sessions.filter(function(item){return String(item.sessionId)===$("session-picker").value})[0];if(selected)setSession(selected);else notify("Seleccione una sesión")});
+      $("refresh-sessions").addEventListener("click",refreshSessions);
+      document.querySelector('[data-action="open"]').addEventListener("click",function(){if(state.session)run("openSession",{sessionId:state.session.sessionId},"session-output",setSession);else notify("Seleccione una sesión")});
+      document.querySelector('[data-action="close"]').addEventListener("click",function(){if(state.session)run("closeSession",{sessionId:state.session.sessionId},"session-output",setSession);else notify("Seleccione una sesión")});
+      $("kiosk-setup-form").addEventListener("submit",function(event){
+        event.preventDefault();if(!state.session){notify("Seleccione una sesión");return}var stationLabel=$("station-label").value.trim();if(!stationLabel){notify("Asigne un nombre al equipo");return}
+        $("issue-token").disabled=true;call("issueKioskToken",{sessionId:state.session.sessionId,stationLabel:stationLabel}).then(function(response){if(!response.ok)throw new Error(response.error&&response.error.message||"No fue posible preparar el quiosco");var data=response.data||{};$("kiosk-url").value=String(data.kioskUrl||"");$("kiosk-expiration").textContent="Vigente hasta "+new Date(data.expiresAt).toLocaleString("es-MX")+" · "+String(data.stationLabel||stationLabel);$("copy-kiosk-url").disabled=!$("kiosk-url").value;$("open-kiosk-url").disabled=!$("kiosk-url").value;showOutput("kiosk-output",{stationLabel:data.stationLabel||stationLabel,expiresAt:data.expiresAt,ready:Boolean(data.kioskUrl)});notify("Vínculo de quiosco generado")}).catch(function(error){showOutput("kiosk-output",{error:error.message});notify(error.message)}).finally(function(){$("issue-token").disabled=false})
+      });
+      $("copy-kiosk-url").addEventListener("click",function(){var value=$("kiosk-url").value;if(!value)return;var copied=navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(value):Promise.reject(new Error("clipboard"));copied.then(function(){notify("Vínculo copiado")}).catch(function(){$("kiosk-url").focus();$("kiosk-url").select();notify("Use copiar desde el campo seleccionado")})});
+      $("open-kiosk-url").addEventListener("click",function(){var value=$("kiosk-url").value;if(value)window.open(value,"_blank","noopener,noreferrer")});
+      $("search-form").addEventListener("submit",function(event){event.preventDefault();run("findSession",{sessionCode:$("session-code").value},"search-output",function(data){state.sessions=[data].concat(state.sessions.filter(function(item){return String(item.sessionId)!==String(data.sessionId)}));renderSessions();setSession(data)})});
+      $("upload-form").addEventListener("submit",function(event){event.preventDefault();var file=$("evidence-file").files[0];if(!file){notify("Seleccione un archivo");return}if(file.size>state.maxUploadBytes){notify("El archivo excede el límite permitido");showOutput("upload-output",{error:"Archivo demasiado grande",maxUploadBytes:state.maxUploadBytes});return}var reader=new FileReader();reader.onload=function(){run("uploadOcrDocument",{sessionId:state.session&&state.session.sessionId,mimeType:file.type,dataUrl:reader.result},"upload-output",function(data){state.documents=[data.document].concat(state.documents.filter(function(item){return String(item.documentId)!==String(data.document.documentId)}));state.evidence=data.evidence||{evidenceId:data.document.evidenceId};setDocument(Object.assign({},data.document,{evidenceId:state.evidence&&state.evidence.evidenceId||data.document.evidenceId}));renderDocuments();document.querySelector('[data-view="tracking"]').click()})};reader.readAsDataURL(file)});
+      $("refresh-documents").addEventListener("click",loadDocuments);
+      $("select-document").addEventListener("click",function(){var selected=state.documents.filter(function(item){return String(item.documentId)===$("document-picker").value})[0];if(selected)setDocument(selected);else notify("Seleccione un documento")});
+      $("process-remote-ocr").addEventListener("click",function(){if(!state.document||state.mode!=="GOOGLE"||!canManageOcr())return;state.remoteOcrRequestId=state.remoteOcrRequestId||uid("remote-ocr");$("process-remote-ocr").disabled=true;run("processRemoteOcrDocument",{documentId:state.document.documentId,requestId:state.remoteOcrRequestId},"tracking-output",function(data){state.document=Object.assign({},state.document,{status:data.status});$("active-status").textContent=data.status;if(data.status==="REVISION_OCR"&&!data.retryRequired){$("process-remote-ocr").textContent="Procesar OCR real y abrir revisión";document.querySelector('[data-view="review"]').click();return}$("process-remote-ocr").textContent="Reintentar OCR y completar evidencia";notify("El OCR quedó pendiente; use el mismo botón para reanudar")}).then(updateOcrControls)});
+      $("begin-ocr").addEventListener("click",function(){if(state.mode==="MOCK"&&state.document)run("beginOcrProcessing",{documentId:state.document.documentId},"tracking-output")});
+      $("mock-ocr").addEventListener("click",function(){if(state.mode==="MOCK"&&state.document)run("ingestOcrCandidates",{documentId:state.document.documentId,candidates:[{rowIndex:1,rawDigits:"00123",digitConfidences:[.99,.99,.9,.99,.99],overallConfidence:.91}]},"tracking-output",function(data){state.candidate=data[0];showOutput("review-output",data)})});
+      $("load-review-candidates").addEventListener("click",loadReviewCandidates);
+      $("previous-pending").addEventListener("click",function(){selectReviewCandidate(Number(this.dataset.targetIndex),true)});
+      $("next-pending").addEventListener("click",function(){selectReviewCandidate(Number(this.dataset.targetIndex),true)});
+      $("review-form").addEventListener("submit",function(event){
+        event.preventDefault();var candidate=currentCandidate();var corrected=$("review-correction").value;var reason=$("review-reason").value.trim();
+        if(!candidate)return;if(!/^\d{5}$/.test(corrected)){notify("Capture exactamente cinco dígitos");$("review-correction").focus();return}if(!reason){notify("El motivo es obligatorio");$("review-reason").focus();return}if(!state.reviewEvidenceReady){notify("Espere a que carguen las diez imágenes de comparación");return}
+        $("confirm-review-candidate").disabled=true;$("confirm-empty-ocr-row").disabled=true;call("reviewOcrCandidate",{candidateId:candidate.candidateId,correctedValue:corrected,reason:reason}).then(function(response){if(!response.ok)throw new Error(response.error&&response.error.message||"No fue posible confirmar el renglón");var updated=Object.assign({},candidate,response.data||{},{correctedValue:corrected,correctionReason:reason,decision:response.data&&response.data.decision||"CONFIRMADO_HUMANO"});state.reviewCandidates[state.reviewIndex]=updated;state.candidate=updated;renderCandidateList();showOutput("review-output",updated);notify("Renglón confirmado con trazabilidad");var next=pendingIndex(1);if(next!==-1)selectReviewCandidate(next,true);else selectReviewCandidate(state.reviewIndex,false)}).catch(function(error){$("confirm-review-candidate").disabled=!state.reviewEvidenceReady;$("confirm-empty-ocr-row").disabled=!state.reviewEvidenceReady;showOutput("review-output",{error:error.message});notify(error.message)})
+      });
+      $("confirm-empty-ocr-row").addEventListener("click",function(){
+        var candidate=currentCandidate();var reason=$("review-reason").value.trim();if(!candidate)return;if(!reason){notify("El motivo es obligatorio");$("review-reason").focus();return}if(!state.reviewEvidenceReady){notify("Espere a que carguen las diez imágenes de comparación");return}
+        $("confirm-review-candidate").disabled=true;$("confirm-empty-ocr-row").disabled=true;call("confirmEmptyOcrRow",{candidateId:candidate.candidateId,reason:reason}).then(function(response){if(!response.ok)throw new Error(response.error&&response.error.message||"No fue posible confirmar el renglón vacío");var updated=Object.assign({},candidate,response.data||{},{normalizedEmployeeId:"",correctedValue:"",correctionReason:reason,decision:"CONFIRMADO_VACIO"});state.reviewCandidates[state.reviewIndex]=updated;state.candidate=updated;renderCandidateList();showOutput("review-output",updated);notify("Renglón vacío confirmado sin crear asistencia");var next=pendingIndex(1);if(next!==-1)selectReviewCandidate(next,true);else selectReviewCandidate(state.reviewIndex,false)}).catch(function(error){$("confirm-review-candidate").disabled=!state.reviewEvidenceReady;$("confirm-empty-ocr-row").disabled=!state.reviewEvidenceReady;showOutput("review-output",{error:error.message});notify(error.message)})
+      });
+      $("prerelease-form").addEventListener("submit",function(event){event.preventDefault();run("reconcilePhysicalAttendance",{sessionId:state.session&&state.session.sessionId,evidenceId:$("evidence-id").value,attendedEmployeeIds:$("attended-ids").value.split(/\s+/).filter(Boolean)},"prerelease-output")});
+      $("preview-prerelease").addEventListener("click",function(){run("preReleasePreview",{sessionId:state.session&&state.session.sessionId},"prerelease-output")});
+      $("exam-form").addEventListener("submit",function(event){event.preventDefault();run("reconcileExams",{sessionId:state.session&&state.session.sessionId,receivedExamCount:Number($("exam-count").value),missingEmployeeIds:$("missing-ids").value.split(/\s+/).filter(Boolean)},"exam-output")});
+      $("authorize-session").addEventListener("click",function(){run("authorizeSession",{sessionId:state.session&&state.session.sessionId,reason:"Confirmación operativa"},"release-output",setSession)});
+      $("release-preview").addEventListener("click",function(){run("releasePreview",{sessionId:state.session&&state.session.sessionId},"release-output")});
+      $("execute-release").addEventListener("click",function(){state.releaseRequestId=state.releaseRequestId||uid("release-request");run("executeRelease",{sessionId:state.session&&state.session.sessionId,requestId:state.releaseRequestId},"release-output",function(data){state.lastRelease=data;$("result-status").textContent=data.release.status;$("result-included").textContent=data.results?data.results.length:0;$("result-excluded").textContent=data.release&&parseArray(data.release.excluded).length||0;showOutput("result-output",data)})});
+      $("load-audit").addEventListener("click",function(){run("sessionAudit",{sessionId:state.session&&state.session.sessionId},"audit-output")});
+      run("bootstrap",{},null,function(data){state.role=String(data.role||"");state.mode=String(data.mode||"");state.sessions=Array.isArray(data.sessions)?data.sessions:[];state.maxUploadBytes=Number(data.maxUploadBytes)||10485760;$("session-date").value=String(data.today||$("session-date").value);$("environment").textContent=data.role+" · "+data.mode;$("mode-card").textContent=data.mode+(window.KCM_LOCAL_API_BASE?" · revisión HTTP local":state.mock?" · fallback sin google.script.run":"");renderSessions();updateOcrControls();var select=$("training");select.textContent="";data.trainings.forEach(function(item){var option=document.createElement("option");option.value=item.trainingId;option.textContent=item.trainingName||item.trainingId;select.appendChild(option)});var preferred=state.sessions.filter(function(item){return String(item.status)==="ABIERTA"})[0]||state.sessions[0];if(preferred)setSession(preferred)});
+    }());
+  </script>
+</body>
+</html>

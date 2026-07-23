@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="theme-color" content="#123f38">
+  <title>Registro de capacitación KCM</title>
+  <style>
+    :root {
+      --ink: #10233a;
+      --muted: #526176;
+      --line: #ccd6e2;
+      --surface: #ffffff;
+      --canvas: #edf4f2;
+      --brand: #0b5d50;
+      --brand-dark: #08463d;
+      --success: #15633d;
+      --success-bg: #e5f5eb;
+      --danger: #9b2c2c;
+      --danger-bg: #fff0f0;
+      --focus: #78cdbd;
+      --shadow: 0 18px 50px rgba(16, 35, 58, .14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(145deg, #dcebe7 0%, var(--canvas) 50%, #f7fafc 100%);
+      color: var(--ink);
+      font: 18px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .shell { width: min(760px, 100%); margin: 0 auto; padding: 1.25rem; }
+    header { display: flex; align-items: center; gap: 1rem; padding: 1rem 0 1.35rem; }
+    .mark {
+      width: 58px;
+      height: 58px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 850;
+      letter-spacing: .03em;
+    }
+    header h1 { margin: 0; font-size: clamp(1.25rem, 4vw, 1.75rem); }
+    header p { margin: .15rem 0 0; color: var(--muted); font-size: .92rem; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: clamp(1.25rem, 4vw, 2.25rem);
+    }
+    .session-bar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: .75rem;
+      align-items: center;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .session-bar strong { display: block; font-size: 1.08rem; }
+    .session-bar span { color: var(--muted); font-size: .88rem; }
+    .badge {
+      border-radius: 999px;
+      background: #e2f2ee;
+      color: var(--brand-dark);
+      padding: .35rem .7rem;
+      font-size: .8rem;
+      font-weight: 800;
+    }
+    h2 { margin: 1.5rem 0 .35rem; font-size: clamp(1.45rem, 5vw, 2rem); }
+    .lede { margin: 0 0 1.35rem; color: var(--muted); }
+    label { display: block; margin-bottom: .45rem; font-weight: 760; }
+    input {
+      width: 100%;
+      min-height: 68px;
+      border: 2px solid #8796a8;
+      border-radius: 14px;
+      padding: .75rem 1rem;
+      background: #fff;
+      color: var(--ink);
+      font: 750 2rem/1.1 ui-monospace, "SFMono-Regular", Consolas, monospace;
+      letter-spacing: .35em;
+      text-align: center;
+    }
+    input:focus, button:focus { outline: 4px solid var(--focus); outline-offset: 3px; }
+    .help { display: block; margin-top: .45rem; color: var(--muted); font-size: .86rem; }
+    button {
+      width: 100%;
+      min-height: 58px;
+      margin-top: 1.1rem;
+      border: 1px solid var(--brand);
+      border-radius: 13px;
+      padding: .75rem 1rem;
+      background: var(--brand);
+      color: #fff;
+      font: 760 1rem/1.2 inherit;
+      cursor: pointer;
+    }
+    button:hover { background: var(--brand-dark); }
+    button:disabled { cursor: wait; opacity: .62; }
+    button.secondary { background: #fff; color: var(--brand-dark); }
+    .availability { margin: 1rem 0 0; text-align: center; color: var(--muted); font-size: .9rem; }
+    .message {
+      margin-top: 1.35rem;
+      border-radius: 15px;
+      padding: 1rem 1.1rem;
+      border: 1px solid transparent;
+    }
+    .message.success { color: var(--success); background: var(--success-bg); border-color: #acd8bc; }
+    .message.error { color: var(--danger); background: var(--danger-bg); border-color: #efb8b8; }
+    .message h3 { margin: 0 0 .25rem; font-size: 1.1rem; }
+    .message p { margin: .15rem 0; }
+    .loading { padding: 2.5rem 0; text-align: center; color: var(--muted); }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 1rem;
+      border: 5px solid #d8e5e2;
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    .unavailable { text-align: center; padding: 1.2rem 0 .5rem; }
+    .unavailable h2 { margin-top: .5rem; }
+    footer { padding: 1.2rem .3rem; text-align: center; color: var(--muted); font-size: .8rem; }
+    .preview-note { color: #73510b; font-weight: 750; }
+    [hidden] { display: none !important; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    @media (max-width: 520px) {
+      .shell { padding: .75rem; }
+      .card { border-radius: 17px; }
+      .session-bar { grid-template-columns: 1fr; }
+      .badge { justify-self: start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="mark" aria-hidden="true">KCM</div>
+      <div>
+        <h1>Registro de capacitación</h1>
+        <p id="station-header">Preparando este equipo…</p>
+      </div>
+    </header>
+
+    <main class="card" id="main">
+      <section class="loading" id="loading" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Validando el vínculo seguro…</p>
+      </section>
+
+      <section class="unavailable" id="unavailable" hidden aria-live="assertive">
+        <div aria-hidden="true">●</div>
+        <h2>Registro no disponible</h2>
+        <p id="unavailable-message">Solicite apoyo a la persona responsable de la capacitación.</p>
+      </section>
+
+      <section id="registration" hidden>
+        <div class="session-bar">
+          <div>
+            <strong id="session-code">Sesión</strong>
+            <span id="station-label">Equipo de registro</span>
+          </div>
+          <span class="badge" id="session-status">ABIERTA</span>
+        </div>
+
+        <h2>Registra tu asistencia</h2>
+        <p class="lede">Escribe tu número de trabajador de cinco dígitos.</p>
+
+        <form id="registration-form" autocomplete="off" novalidate>
+          <label for="employee-id">Número de trabajador</label>
+          <input id="employee-id" name="employeeId" type="text" inputmode="numeric"
+            pattern="[0-9]{5}" minlength="5" maxlength="5" autocomplete="off"
+            autocapitalize="off" spellcheck="false" required aria-describedby="employee-help">
+          <span class="help" id="employee-help">Incluye los ceros iniciales. No uses espacios ni guiones.</span>
+          <button id="register-button" type="submit">Registrar asistencia</button>
+        </form>
+
+        <p class="availability" id="availability-message">Disponibilidad: validando…</p>
+
+        <section class="message" id="result-message" role="status" aria-live="polite" hidden>
+          <h3 id="result-title"></h3>
+          <p id="result-detail"></p>
+          <button class="secondary" id="next-person" type="button" hidden>Registrar a otra persona</button>
+        </section>
+      </section>
+    </main>
+
+    <footer>
+      <span id="expiration">El vínculo se valida en este equipo.</span>
+      <span class="preview-note" id="preview-note" hidden> · Vista local con datos sintéticos</span>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var hasGoogleRunner = Boolean(window.google && google.script && google.script.run);
+      var loopbackHosts = { localhost: true, "127.0.0.1": true, "[::1]": true, "::1": true };
+      var localPreview = !hasGoogleRunner && Boolean(loopbackHosts[String(window.location.hostname)]);
+      var token = "";
+      var expiresAt = 0;
+      var resetTimer = null;
+      var pendingRequestId = "";
+      var pendingEmployeeId = "";
+      var acceptingRegistrations = false;
+
+      function byId(id) { return document.getElementById(id); }
+
+      function requestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") return "kiosk-" + window.crypto.randomUUID();
+        return "kiosk-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+      }
+
+      function clearDirectFragment() {
+        var cleanUrl = window.location.pathname + window.location.search;
+        try { window.history.replaceState(null, document.title, cleanUrl); }
+        catch (ignored) { window.location.hash = ""; }
+      }
+
+      function parseTokenFragment(fragment) {
+        var normalized = String(fragment || "");
+        if (normalized.charAt(0) === "#") normalized = normalized.slice(1);
+        if (!normalized) return "";
+        var parameters = new URLSearchParams(normalized);
+        var keys = Array.from(parameters.keys());
+        var values = parameters.getAll("kioskToken");
+        if (keys.length !== 1 || keys[0] !== "kioskToken" || values.length !== 1) return "";
+        var value = String(values[0] || "");
+        return /^[A-Za-z0-9._-]{20,3000}$/.test(value) ? value : "";
+      }
+
+      function takeTokenFromLocation() {
+        if (hasGoogleRunner) {
+          return new Promise(function (resolve, reject) {
+            var urlApi = google.script.url;
+            var historyApi = google.script.history;
+            if (!urlApi || typeof urlApi.getLocation !== "function" ||
+                !historyApi || typeof historyApi.replace !== "function") {
+              reject(new Error("La aplicación no puede proteger el vínculo de este equipo"));
+              return;
+            }
+            urlApi.getLocation(function (location) {
+              try {
+                var fragment = String(location && location.hash || "");
+                historyApi.replace({}, null, "");
+                resolve(parseTokenFragment(fragment));
+              } catch (error) {
+                reject(error);
+              }
+            });
+          });
+        }
+        var fragment = String(window.location.hash || "");
+        clearDirectFragment();
+        return Promise.resolve(parseTokenFragment(fragment));
+      }
+
+      function call(action, payload) {
+        var input = Object.assign({}, payload || {});
+        input.requestId = input.requestId || requestId();
+        if (hasGoogleRunner) {
+          return new Promise(function (resolve, reject) {
+            google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).api(action, input);
+          }).then(assertEnvelope);
+        }
+        if (localPreview) {
+          return fetch("/api", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: action, requestId: input.requestId, payload: input })
+          }).then(function (response) {
+            return response.json().catch(function () { throw new Error("La vista local devolvió una respuesta inválida"); });
+          }).then(assertEnvelope);
+        }
+        return Promise.reject(new Error("Este vínculo sólo puede abrirse desde la aplicación autorizada"));
+      }
+
+      function assertEnvelope(envelope) {
+        if (!envelope || envelope.ok !== true) {
+          var message = envelope && envelope.error && envelope.error.message;
+          throw new Error(message || "No fue posible completar el registro");
+        }
+        return envelope.data;
+      }
+
+      function updateAvailability(availability) {
+        var maximum = Number(availability && availability.maximum);
+        var available = availability && availability.available;
+        if (!Number.isInteger(maximum) || maximum !== 40 || typeof available !== "boolean") {
+          byId("availability-message").textContent = "Disponibilidad: no determinada";
+          return;
+        }
+        byId("availability-message").textContent = available
+          ? "Este equipo está disponible para recibir solicitudes."
+          : "El registro ya no está disponible.";
+        if (!available) acceptingRegistrations = false;
+      }
+
+      function showUnavailable(message) {
+        acceptingRegistrations = false;
+        byId("loading").hidden = true;
+        byId("registration").hidden = true;
+        byId("unavailable").hidden = false;
+        byId("unavailable-message").textContent = message || "Solicite apoyo a la persona responsable de la capacitación.";
+      }
+
+      function clearResult() {
+        if (resetTimer) window.clearTimeout(resetTimer);
+        resetTimer = null;
+        byId("result-message").hidden = true;
+        byId("result-message").className = "message";
+        byId("result-title").textContent = "";
+        byId("result-detail").textContent = "";
+        byId("next-person").hidden = true;
+      }
+
+      function prepareNextPerson() {
+        clearResult();
+        pendingRequestId = "";
+        pendingEmployeeId = "";
+        var input = byId("employee-id");
+        input.value = "";
+        if (!acceptingRegistrations) {
+          showUnavailable("La sesión alcanzó el límite de 40 registros.");
+          return;
+        }
+        byId("registration-form").hidden = false;
+        input.focus();
+      }
+
+      function showRegistrationResult(result) {
+        var message = byId("result-message");
+        message.hidden = false;
+        byId("registration-form").hidden = true;
+        pendingRequestId = "";
+        pendingEmployeeId = "";
+        if (!result || result.received !== true) throw new Error("No fue posible recibir la solicitud");
+        message.className = "message success";
+        byId("result-title").textContent = "Solicitud recibida";
+        byId("result-detail").textContent = "La asistencia se confirmará durante el cotejo físico. Solicita apoyo si capturaste un dato incorrecto.";
+        byId("next-person").textContent = "Registrar a otra persona";
+        byId("next-person").hidden = false;
+        byId("next-person").focus();
+        resetTimer = window.setTimeout(prepareNextPerson, 10000);
+      }
+
+      function updateExpiration() {
+        if (!expiresAt) return;
+        var remainingMs = expiresAt - Date.now();
+        if (remainingMs <= 0) {
+          token = "";
+          showUnavailable("El vínculo de este equipo venció. Solicite uno nuevo.");
+          return;
+        }
+        var minutes = Math.max(1, Math.ceil(remainingMs / 60000));
+        byId("expiration").textContent = "Vínculo vigente por aproximadamente " + minutes + " min.";
+      }
+
+      function initialize() {
+        if (localPreview) byId("preview-note").hidden = false;
+        takeTokenFromLocation().then(function (locationToken) {
+          token = locationToken;
+          if (!token) {
+            showUnavailable("El vínculo es inválido o ya no contiene un token de sesión.");
+            return null;
+          }
+          if (!hasGoogleRunner && !localPreview) {
+            token = "";
+            showUnavailable("Este vínculo sólo puede abrirse desde la aplicación autorizada.");
+            return null;
+          }
+          return call("kioskBootstrap", { token: token });
+        }).then(function (data) {
+          if (!data) return;
+          expiresAt = Date.parse(String(data.expiresAt || ""));
+          if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error("El vínculo de este equipo venció");
+          byId("station-header").textContent = String(data.stationLabel || "Equipo de registro");
+          byId("station-label").textContent = String(data.stationLabel || "Equipo de registro");
+          byId("session-code").textContent = "Sesión " + String(data.sessionCode || "");
+          byId("session-status").textContent = String(data.status || "NO DISPONIBLE");
+          updateAvailability(data.availability);
+          acceptingRegistrations = data.acceptingRegistrations === true && Boolean(data.availability && data.availability.available);
+          byId("loading").hidden = true;
+          if (!acceptingRegistrations) {
+            showUnavailable(data.availability && data.availability.available === false
+              ? "La sesión alcanzó el límite de 40 registros."
+              : "La sesión no está abierta para recibir registros.");
+            return;
+          }
+          byId("registration").hidden = false;
+          updateExpiration();
+          byId("employee-id").focus();
+        }).catch(function () {
+          token = "";
+          showUnavailable("El vínculo es inválido, venció o la sesión ya no está disponible.");
+        });
+      }
+
+      byId("employee-id").addEventListener("input", function () {
+        this.value = this.value.replace(/\D/g, "").slice(0, 5);
+      });
+
+      byId("registration-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (!acceptingRegistrations || !token) return;
+        var employeeId = String(byId("employee-id").value || "");
+        if (!/^\d{5}$/.test(employeeId)) {
+          byId("employee-id").setCustomValidity("Escribe exactamente cinco dígitos");
+          byId("employee-id").reportValidity();
+          byId("employee-id").setCustomValidity("");
+          return;
+        }
+        if (!pendingRequestId || pendingEmployeeId !== employeeId) {
+          pendingRequestId = requestId();
+          pendingEmployeeId = employeeId;
+        }
+        var button = byId("register-button");
+        button.disabled = true;
+        button.textContent = "Registrando…";
+        call("kioskRegister", { token: token, employeeId: employeeId, requestId: pendingRequestId })
+          .then(showRegistrationResult)
+          .catch(function (error) {
+            var message = byId("result-message");
+            message.hidden = false;
+            message.className = "message error";
+            byId("result-title").textContent = "No fue posible completar el registro";
+            byId("result-detail").textContent = String(error && error.message || "Solicita apoyo y vuelve a intentar.");
+          })
+          .finally(function () {
+            button.disabled = false;
+            button.textContent = "Registrar asistencia";
+          });
+      });
+
+      byId("next-person").addEventListener("click", prepareNextPerson);
+      window.addEventListener("pagehide", function () { token = ""; });
+      window.setInterval(updateExpiration, 30000);
+      initialize();
+    }());
+  </script>
+</body>
+</html>
