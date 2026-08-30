@@ -1,0 +1,158 @@
+# Entorno de desarrollo de la plataforma KCM.
+#
+# Levanta la plataforma contra un PostgreSQL local, con el esquema aplicado y
+# datos sintéticos. Un clon recién hecho arranca con `npm run docker:up` y deja
+# una plataforma navegable en http://localhost:8787 sin instalar Node ni
+# PostgreSQL y sin tocar una credencial.
+#
+# El contexto de construcción es la raíz del repositorio, un nivel arriba de
+# este archivo.
+#
+# No es el despliegue: eso vive en `infra/docker/Dockerfile` y `render.yaml`.
+# No toca datos reales: la base es local, efímera y se siembra con identidades
+# inventadas. El padrón, el libro maestro y `referencias/privado/` no se cargan
+# aquí.
+
+name: kcm-cap
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL local
+  #
+  # La 17 es la versión de referencia. El esquema usa `EXCLUDE ... USING gist`
+  # con `btree_gist` y dominios con `CHECK`; una versión menor no es
+  # equivalente, y el objetivo de tener base local es que ese fallo aparezca
+  # aquí y no en el despliegue.
+  # ---------------------------------------------------------------------------
+  base:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: kcm
+      POSTGRES_USER: postgres
+      # Contraseña de juguete, en claro y a propósito: esta base sólo escucha en
+      # la máquina del desarrollador y no contiene un solo dato real. Un secreto
+      # de verdad aquí daría una falsa sensación de frontera.
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # 55432 y no 5432: quien ya tenga un PostgreSQL instalado no debería tener
+      # que apagarlo para trabajar en este proyecto.
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - base-datos:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` responde antes de que el servidor acepte conexiones reales
+      # durante el arranque inicial, así que se le pide la base por nombre.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kcm -q"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Migraciones y semilla
+  #
+  # Corre, aplica lo que falte y sale. `plataforma` no arranca hasta que este
+  # servicio termina con éxito, de modo que nunca se levanta el servidor contra
+  # una base a medio construir.
+  #
+  # Es incremental: consulta `supabase_migrations.schema_migrations`. Volver a
+  # levantar el compose no reaplica nada, y agregar una migración nueva sólo
+  # exige `docker compose up migraciones`.
+  # ---------------------------------------------------------------------------
+  migraciones:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.dev
+    depends_on:
+      base:
+        condition: service_healthy
+    environment:
+      # Rol `postgres`: crea esquemas y el rol de aplicación. `kcm_app` no puede
+      # ni debe poder hacerlo.
+      KCM_ADMIN_DATABASE_URL: postgresql://postgres:postgres@base:5432/kcm
+      # La contraseña con la que `0029` crea `kcm_app`. Tiene que coincidir con
+      # la del `KCM_DATABASE_URL` de `plataforma`, o el servidor no conecta.
+      KCM_APP_PASSWORD: kcm_app_local
+    volumes:
+      - ..:/repo
+      - modulos:/repo/node_modules
+    command: ["node", "tools/db/aplicar-migraciones.js", "--local", "--semilla"]
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # La plataforma
+  # ---------------------------------------------------------------------------
+  plataforma:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.dev
+    depends_on:
+      base:
+        condition: service_healthy
+      migraciones:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      KCM_ENV: development
+      # Dentro del contenedor hay que escuchar en todas las interfaces o el
+      # puerto publicado no llega. `loadConfig` sólo exige loopback en
+      # producción, así que aquí no hace falta `KCM_ALLOW_PUBLIC_BIND`.
+      KCM_HOST: 0.0.0.0
+      KCM_PORT: "8787"
+      KCM_LOG_LEVEL: debug
+      KCM_REQUEST_TIMEOUT_MS: "30000"
+
+      # Se conecta como `kcm_app`, igual que en producción. Es deliberado: así
+      # el entorno de desarrollo ejercita la seguridad por fila de verdad y un
+      # permiso que falte aparece aquí y no en el despliegue.
+      KCM_DATABASE_URL: postgresql://kcm_app:kcm_app_local@base:5432/kcm
+
+      # `main.ts` exige estos dos secretos en cuanto hay `KCM_DATABASE_URL`, y
+      # `requireSecret` falla cerrado: sin ellos el contenedor no arranca. Los
+      # valores son de juguete, igual que la contraseña de la base. En
+      # producción son secretos reales y viven en el panel del proveedor,
+      # declarados con `sync: false` en `render.yaml`.
+      KCM_KIOSK_TOKEN_SECRET: "kcm-kiosk-local-secret-32-chars-min!!"
+      KCM_RELEASE_INTEGRITY_SECRET: "kcm-release-local-secret-32-chars-min!"
+
+      # Acceso abierto: ninguna pantalla pide contraseña ni PIN, y se puede
+      # recorrer la plataforma completa. Existe para eso. `loadConfig` rechaza
+      # el arranque si esta bandera vive con `KCM_ENV=production`.
+      KCM_PILOT_OPEN_ACCESS: "1"
+
+      # `KCM_STORAGE_DIR` se deja sin definir, igual que en producción: las
+      # evidencias de preliberación van a `PostgresObjectStore` y sobreviven a
+      # que se recree el contenedor.
+    volumes:
+      - ..:/repo
+      - modulos:/repo/node_modules
+    # `node --watch` y no `npm run app:dev`, que agrega
+    # `--env-file-if-exists=.env`. El bind mount trae el `.env` del
+    # desarrollador —donde puede vivir una cadena de conexión real— y aunque
+    # Node no sobrescribe una variable ya definida, sí adopta las que este
+    # bloque no declare. No leerlo deja el contenedor gobernado sólo por aquí.
+    command: ["node", "--watch", "--watch-preserve-output", "plataforma/src/main.ts"]
+    healthcheck:
+      # La imagen es `slim` y no trae curl ni wget. Node basta.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  base-datos:
+  # `node_modules` vive en un volumen y no en el bind mount porque el
+  # repositorio del desarrollador trae los binarios de su sistema y dentro del
+  # contenedor corre Linux. Montar los del anfitrión rompería cualquier
+  # dependencia nativa.
+  #
+  # El volumen se puebla la primera vez con lo que instaló la imagen. No se
+  # actualiza solo: si cambia `package.json` hay que reconstruir y recrear el
+  # volumen, con `npm run docker:reconstruir`.
+  modulos:

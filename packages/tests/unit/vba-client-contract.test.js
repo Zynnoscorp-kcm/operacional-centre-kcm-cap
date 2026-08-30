@@ -1,0 +1,419 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+
+const files = [
+  "KcmBridgeCore.bas", "KcmBridgeHttp.bas", "KcmMatrixSync.bas",
+  "KcmReleaseSync.bas", "KcmCoordinator.bas",
+  // Los tres modulos del barrido gobernado. Entran a la lista porque son los que
+  // devolvieron `ROSTER_PATH` al cliente, y la frontera que eso reabre —el
+  // padron se entrega, no se interpreta aqui— necesita quedar fijada.
+  "KcmMatrixPanel.bas", "KcmOrdenBarrido.bas", "KcmPadronSync.bas",
+  // El puerto de plataforma y lo que se saco de en medio para que exista: las
+  // codificaciones en VBA puro, el mapa que sustituye al de Windows y la
+  // autoprueba con la que un equipo ajeno devuelve evidencia.
+  "KcmPlataforma.bas", "KcmCodec.bas", "KcmDiccionario.cls", "KcmPruebas.bas"
+];
+const modules = Object.fromEntries(await Promise.all(files.map(async (file) => [
+  file, await readFile(`clients/excel/vba/${file}`, "utf8")
+])));
+const everything = Object.values(modules).join("\n");
+
+test("el cliente es uno solo con modulos separados y sin secreto incrustado", () => {
+  for (const [file, source] of Object.entries(modules)) {
+    assert.match(source, /Option Explicit/, `${file} exige declaraciones explicitas`);
+    assert.doesNotMatch(source, /\/\*|\*\//, `${file} usa comentarios validos de VBA`);
+  }
+  assert.match(modules["KcmCoordinator.bas"], /KcmApplyPendingReleases/);
+  assert.match(modules["KcmCoordinator.bas"], /KcmTransmitMatrixSnapshot/);
+  // La credencial la entrega el puerto, que sabe donde vive en cada sistema: variables de
+  // usuario en Windows, llavero en macOS. Ningun otro modulo la busca por su cuenta.
+  assert.match(modules["KcmBridgeHttp.bas"], /token = KcmCredencialLeer\(\)/);
+  assert.match(modules["KcmPlataforma.bas"], /Environment\("USER"\)\(KCM_TOKEN_ENV\)/);
+  assert.match(modules["KcmPlataforma.bas"], /security.*find-generic-password/s);
+  assert.doesNotMatch(everything, /UqU7cJ-_HnsNA3fRtMy/);
+});
+
+/**
+ * La emision DC-3 volvio al generador Node, que compone el PDF de una pagina y lleva su propio
+ * ledger. Dos rutas de emision compartiendo la plantilla oficial podrian emitir dos constancias
+ * del mismo curso al mismo trabajador, cada una con su propio folio.
+ */
+test("el cliente VBA no emite constancias DC-3", () => {
+  for (const [file, source] of Object.entries(modules)) {
+    const code = source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n");
+    assert.doesNotMatch(code, /Dc3|DC3/, `${file} conserva codigo de DC-3`);
+    assert.doesNotMatch(code, /DC3_TEMPLATE_PATH|DC3_OUTPUT_PATH/,
+      `${file} conserva la emision de documentos`);
+    // `FileCopy` era el rastro de la emision de constancias y sigue prohibido, con una
+    // excepcion nombrada: en macOS la huella de un archivo que vive fuera del contenedor de
+    // Excel se calcula sobre una copia dentro de el, porque el proceso hijo hereda la caja de
+    // arena. Copia y original tienen el mismo digest; la copia se borra enseguida.
+    if (file !== "KcmPlataforma.bas") {
+      assert.doesNotMatch(code, /FileCopy/, `${file} copia archivos`);
+    }
+  }
+  assert.doesNotMatch(everything, /CUTOFF_DATE/,
+    "la fecha de corte solo servia a la DC-3 y la resuelve el generador Node");
+});
+
+/**
+ * `ROSTER_PATH` volvio, y no es una regresion de la DC-3.
+ *
+ * Se retiro en 2026-08-01 porque solo servia para que el cliente leyera el padron y emitiera
+ * constancias. Ahora existe otra vez por un motivo distinto: el barrido del padron entrega el
+ * archivo a la plataforma para revision. Lo que esta prueba fija es esa frontera —la clave la
+ * usan el instalador y el modulo de barrido, y nadie mas— para que su regreso no arrastre de
+ * vuelta la lectura del padron dentro de la macro.
+ */
+test("ROSTER_PATH sirve al barrido del padron y no a la emision", () => {
+  const permitidos = new Set(["KcmBridgeCore.bas", "KcmPadronSync.bas"]);
+  for (const [file, source] of Object.entries(modules)) {
+    const code = source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n");
+    if (permitidos.has(file)) continue;
+    assert.doesNotMatch(code, /ROSTER_PATH/, `${file} no deberia conocer la ruta del padron`);
+  }
+  const barrido = modules["KcmPadronSync.bas"];
+  assert.ok(barrido, "falta el modulo del barrido del padron");
+  // El archivo se entrega tal cual: lo lee el extractor del servidor, no la macro.
+  assert.match(barrido, /KcmFileBase64/, "el barrido debe entregar los bytes del archivo");
+  assert.match(barrido, /ROSTER_SCAN_V1/, "el barrido debe usar la accion de solo lectura");
+  assert.doesNotMatch(barrido, /Workbooks\.Open|KcmOpenMaster/,
+    "el barrido no debe abrir el padron en Excel: dispararia sus formulas y sus vinculos");
+});
+
+/**
+ * El analisis lexico es la unica barrera disponible sin Excel para Windows: seis literales de
+ * cadena mal escapados impidieron compilar `KcmMatrixSync` sin que ninguna prueba lo notara.
+ */
+test("el analisis estatico de las fuentes VBA no reporta hallazgos", () => {
+  const result = spawnSync(process.execPath, ["tools/check/vba.js"], { encoding: "utf8" });
+  assert.equal(result.status, 0, `tools/check/vba.js reporto:\n${result.stderr}`);
+});
+
+test("las fuentes respetan el limite de continuaciones del editor VBA", () => {
+  for (const [file, source] of Object.entries(modules)) {
+    let continuations = 0;
+    let maximum = 0;
+    for (const line of source.split(/\r?\n/)) {
+      if (/ _\s*$/.test(line)) {
+        continuations += 1;
+        maximum = Math.max(maximum, continuations);
+      } else {
+        continuations = 0;
+      }
+    }
+    assert.ok(maximum <= 24, `${file} usa ${maximum} continuaciones consecutivas`);
+  }
+});
+
+test("las fuentes son ASCII puro para sobrevivir la importacion del editor VBA", () => {
+  for (const [file, source] of Object.entries(modules)) {
+    const match = /[^\x00-\x7F]/.exec(source);
+    assert.equal(match, null,
+      `${file} contiene ${JSON.stringify(match?.[0])}; use ChrW$ en su lugar`);
+  }
+  // Los dos caracteres que se construian con `ChrW$` -la eNe de la CURP y la O acentuada de los
+  // nombres oficiales de curso- pertenecian a la DC-3. Sin ella, el codigo de produccion no
+  // necesita ninguno. La autoprueba si: su vector de codificacion es un apellido con enie, y
+  // construirlo por codigo es justamente lo que la regla ASCII prescribe.
+  for (const [file, source] of Object.entries(modules)) {
+    if (file === "KcmPruebas.bas") continue;
+    assert.doesNotMatch(source, /ChrW\$/, `${file} construye un caracter fuera de ASCII`);
+  }
+  assert.match(modules["KcmPruebas.bas"], /ChrW\$\(209\)/, "la enie del vector va por codigo");
+});
+
+test("la liberacion VBA decide por la fecha de la celda y conserva la nota que ya estaba", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  // La nota se reescribe conservando el apunte humano y agregando el marcador debajo.
+  assert.match(source, /KcmNotaConMarcador/);
+  assert.match(source, /KcmNotaSinMarcador/);
+  // Una celda vacia con nota ya no es conflicto, y el efecto se reconoce por la fecha sola.
+  assert.doesNotMatch(source, /nota ajena/);
+  assert.doesNotMatch(source, /currentComment = marker/);
+});
+
+test("la liberacion VBA hace preflight atomico y gobierna la sobrescritura", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  assert.match(source, /NO_OVERWRITE/);
+  assert.match(source, /OVERWRITE_WITH_HISTORY/);
+  assert.match(source, /target\.HasFormula/);
+  assert.match(source, /EXISTING_VALUE_CONFLICT/);
+  assert.match(source, /ATOMIC_BATCH_ABORTED/);
+  assert.match(source, /KCM_MARKER_PREFIX/);
+  assert.match(modules["KcmBridgeCore.bas"], /KCM_MARKER_PREFIX As String = "KCM_VBA_V1"/);
+  assert.match(source, /master\.Save/);
+  assert.doesNotMatch(source, /Kill\s|DeleteFile|SaveAs/);
+});
+
+test("la sobrescritura VBA registra historial antes del valor y conserva rollback", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  const history = source.indexOf("KcmRecordOverwriteHistory row, target");
+  const write = source.indexOf("target.Value = KcmDateFromIso", history);
+  assert.ok(history > 0 && write > history,
+    "el historial append-only debe persistirse antes de tocar la celda");
+  const core = modules["KcmBridgeCore.bas"];
+  assert.match(core, /KCM_SOBRESCRITURAS/);
+  assert.match(core, /"previousValue"/);
+  assert.match(core, /"actor"/);
+  assert.match(core, /"reasonReference"/);
+  assert.match(source, /writtenCell\.Value = previousValues\(rollbackIndex\)/,
+    "un fallo previo al guardado debe restituir el valor anterior");
+});
+
+test("un conflicto de hoja, columna o encabezado produce acuse en lugar de abortar el ciclo", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  assert.match(source, /KcmSheetExists/, "la hoja destino se verifica antes de indexarla");
+  assert.match(source, /InspectionError:/, "el preflight por fila atrapa lo inesperado");
+  assert.match(source, /KcmSetRowStatus row, "ERROR"/, "un fallo inesperado viaja como ERROR");
+  // `destinationAddress` es un dato de reporte; el destino real viaja como fila y columna.
+  assert.match(source, /row\.(?:Item|Fijar)[ (]"destinationRow"/);
+  assert.match(source, /row\.(?:Item|Fijar)[ (]"destinationColumnNumber"/);
+  assert.doesNotMatch(source, /Split\(CStr\(row\.Item\("destinationAddress"\)\), "!"\)/,
+    "un nombre de hoja con signo de admiracion rompia la direccion partida");
+});
+
+test("el encabezado destino se compara con conciencia de celdas combinadas", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  assert.match(source, /KcmMergeAwareText/);
+  assert.match(source, /MergeArea\.Cells\(1, 1\)/);
+  assert.match(source, /For rowNumber = headerRow To 1 Step -1/,
+    "el encabezado aprobado puede vivir en una fila superior del mismo camino");
+});
+
+test("el modo de calculo se restituye antes de guardar la matriz maestra", () => {
+  const release = modules["KcmReleaseSync.bas"];
+  const restore = release.indexOf("Application.Calculation = previousCalculation");
+  const save = release.indexOf("master.Save", restore);
+  assert.ok(restore > 0 && save > restore,
+    "guardar en calculo manual archivaria la matriz en ese modo");
+  assert.match(release, /If previousCalculation = xlCalculationAutomatic Then Application\.Calculate/);
+  assert.doesNotMatch(modules["KcmCoordinator.bas"], /xlCalculationManual/,
+    "el coordinador ya no fija el modo de calculo del ciclo completo");
+});
+
+/**
+ * Con `KcmFileSha256` dentro de la ventana de rollback, un fallo al calcular la huella borraba las
+ * celdas y volvia a guardar un lote que ya estaba escrito y guardado en disco. El efecto es durable
+ * y recuperable por fecha mas marcador desde que `master.Save` retorna: ahi termina la ventana.
+ */
+test("ni la huella ni el acuse pueden revertir un lote ya guardado", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  const save = source.indexOf("If written.Count > 0 Then master.Save");
+  const disable = source.indexOf("On Error GoTo 0", save);
+  const hash = source.indexOf("workbookHash = KcmFileSha256(master.FullName)", disable);
+  const send = source.indexOf("KcmSendReleaseAcknowledgements rows, workbookHash", hash);
+  assert.ok(save > 0 && disable > save && hash > disable && send > hash,
+    "el rollback debe quedar desactivado antes de calcular la huella y de enviar el acuse");
+});
+
+test("revertir un lote restituye el formato previo de cada celda", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  const remember = source.indexOf("previousFormats.Add CStr(target.NumberFormat)");
+  const write = source.indexOf("target.Value = KcmDateFromIso", remember);
+  assert.ok(remember > 0 && write > remember,
+    "el formato debe recordarse antes de que el lote toque la celda");
+  assert.match(source, /writtenCell\.NumberFormat = CStr\(previousFormats\(rollbackIndex\)\)/,
+    "limpiar solo el contenido dejaba impuesto el formato de fecha");
+});
+
+/**
+ * Las entradas de una sola etapa no cierran la matriz, asi que la referencia sobrevive a la
+ * corrida. Reutilizar un libro que el operador cerro a mano fallaba con un error de automatizacion
+ * sin explicacion en lugar de volver a abrirlo.
+ */
+test("la matriz en cache se sondea antes de reutilizarla", () => {
+  const core = modules["KcmBridgeCore.bas"];
+  assert.match(core, /Private Function KcmMasterStillOpen/);
+  const probe = core.indexOf("If Not KcmMasterStillOpen() Then");
+  const reuse = core.indexOf("If Not mMaster Is Nothing Then", probe);
+  assert.ok(probe > 0 && reuse > probe, "el sondeo precede a la reutilizacion");
+});
+
+test("la sincronizacion emite HC_SNAPSHOT_V1 sin literales de comillas triples", () => {
+  const matrix = modules["KcmMatrixSync.bas"];
+  assert.match(matrix, /HC_SNAPSHOT_V1/);
+  assert.match(matrix, /MATRIX_IMPORT_V1/);
+  assert.match(matrix, /Dos columnas comparten la misma identidad/);
+  // Una constante de error escrita a mano no tiene formula: contar solo errores de formula la
+  // habria dejado pasar como celda vacia y la fecha se perderia sin aviso.
+  assert.match(matrix, /If IsError\(values\(rowIndex, columnIndex\)\) Then/);
+  assert.match(matrix, /celdas de error en el rango importado/);
+  // La direccion de la primera celda rota sigue nombrandose, pero ya no es lo unico que se dice:
+  // se listan hasta veinte y se decide si transmitir omitiendo esos renglones o detenerse. Sin la
+  // lista, quien opera solo puede corregir de una en una y volver a transmitir cada vez.
+  assert.match(matrix, /direcciones/);
+  assert.match(matrix, /KcmDecidirCeldasConError/);
+  assert.match(matrix, /MATRIX_CELDAS_ERROR/);
+  // La fila con una celda rota se omite completa y se declara: un trabajador con un atributo en
+  // blanco que nadie escribio es un dato falso, y el servidor rechaza el lote que declare errores.
+  assert.match(matrix, /skippedEmployeeCount", skippedEmployeeCount/);
+  assert.match(matrix, /EMPLOYEE_CELL_ERROR/);
+  assert.doesNotMatch(matrix, /"""/,
+    "el JSON se arma con KcmJsonPair/KcmJsonRaw, no con comillas escapadas a mano");
+  assert.match(matrix, /KcmJsonPair\("schemaVersion", "HC_SNAPSHOT_V1"\)/);
+  assert.match(matrix, /KcmJsonPair\("sheetName", sheetName\)/,
+    "el nombre de hoja proviene de la configuracion, no de un literal");
+});
+
+test("el snapshot lee en bloque y bloquea el truncamiento del rango de cursos", () => {
+  const matrix = modules["KcmMatrixSync.bas"];
+  assert.match(matrix, /KcmRangeValues\(sheet, firstEmployeeRow, employeeColumn/);
+  assert.match(matrix, /KcmRangeFormulas\(sheet, firstEmployeeRow, employeeColumn/);
+  assert.doesNotMatch(matrix, /sheet\.Cells\(rowNumber, columnNumber\)\.Value/,
+    "no debe quedar lectura celda por celda del bloque de datos");
+  assert.match(matrix, /KcmAssertNoCoursesBeyondLimit/);
+  assert.match(matrix, /LAST_COURSE_COLUMN antes de sincronizar/);
+  assert.match(matrix, /KcmAssertUnmergedBlock/);
+  assert.match(matrix, /KcmCountHeaderMerges/);
+  assert.doesNotMatch(matrix, /mergedCellCount", 0/,
+    "el conteo de combinaciones se calcula, no se declara cero");
+});
+
+test("los atributos laborales se leen por desplazamiento desde EMPLOYEE_COLUMN", () => {
+  const matrix = modules["KcmMatrixSync.bas"];
+  assert.match(matrix, /If employeeColumn \+ 7 >= firstCourseColumn Then/);
+  assert.match(matrix, /KcmEmployeeText\(values, rowIndex, 8, sheetRow, "planta"\)/);
+  assert.match(matrix, /es un error de formula/,
+    "un valor de error debe senalar su campo en lugar de fallar con desajuste de tipo");
+});
+
+test("el sorteo de identidad y la codificacion lineal sobreviven al puerto", () => {
+  const puerto = modules["KcmPlataforma.bas"];
+  const codec = modules["KcmCodec.bas"];
+  const http = modules["KcmBridgeHttp.bas"];
+  assert.match(puerto, /CoCreateGuid Lib "ole32"/, "Windows conserva CoCreateGuid");
+  assert.match(puerto, /\/dev\/urandom/, "macOS sortea con entropia del sistema");
+  assert.doesNotMatch(everything, /CreateObject\("Scriptlet\.TypeLib"\)/,
+    "scrobj.dll suele estar bloqueado y su GUID trae un terminador nulo");
+  // La codificacion trabaja sobre arreglos de bytes preasignados. Concatenar por byte volvia
+  // cuadratico el costo y hacia inviable un cuerpo de megabytes.
+  assert.match(codec, /ReDim destino\(0 To \(usados \* 6\) - 1\)/);
+  assert.doesNotMatch(codec, /salida = salida & Chr\$/);
+  assert.match(http, /encodedPayload = KcmBase64WebEncode\(payload\)/);
+  assert.match(http, /"&payload=" & encodedPayload/,
+    "base64 web-safe ya es no reservado: recodificarlo solo duplicaba el costo");
+});
+
+/**
+ * La frontera de plataforma es la garantia que sostiene "Mac primero, Windows en paralelo": el
+ * compilador de cada sistema compila SOLO su rama, asi que un error dentro de `#If Mac` no se
+ * manifiesta al compilar en el otro. La unica defensa es que esa superficie sea chica y este en
+ * un lugar conocido. El linter lo exige y esta prueba lo fija tambien desde aqui.
+ */
+test("todo lo que depende del sistema operativo vive en el puerto", () => {
+  for (const [file, source] of Object.entries(modules)) {
+    if (file === "KcmPlataforma.bas") continue;
+    // Se comparan solo las lineas de codigo: los comentarios nombran la directiva a proposito,
+    // para explicar donde vive y por que.
+    const codigo = source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n");
+    assert.doesNotMatch(codigo, /#If\s+.*\bMac\b/i, `${file} abre una rama por sistema`);
+    assert.doesNotMatch(codigo, /CreateObject\(/, `${file} instancia COM de Windows`);
+    assert.doesNotMatch(codigo, /\bDeclare\b/, `${file} declara una API nativa`);
+  }
+});
+
+/**
+ * `Scripting.Dictionary`, `ADODB.Stream` y `Msxml2.DOMDocument` son parte de Windows y no existen
+ * en Excel para Mac. Se sustituyeron por codigo propio que corre igual en los dos sistemas, en vez
+ * de por una rama mas: cuanto menos codigo dependa del sistema, mas dice la prueba hecha en uno
+ * sobre el otro.
+ */
+test("el cliente no depende de ningun objeto COM que falte en macOS", () => {
+  const codigo = Object.entries(modules)
+    .map(([, source]) => source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n"))
+    .join("\n");
+  for (const ausente of ["Scripting.Dictionary", "ADODB.Stream", "Msxml2.DOMDocument", "Scripting.FileSystemObject"]) {
+    assert.ok(!codigo.includes(ausente), `${ausente} no existe en Excel para Mac`);
+  }
+  assert.match(modules["KcmDiccionario.cls"], /^VERSION [\d.]+ CLASS/m, "el .cls conserva su encabezado");
+  assert.match(modules["KcmBridgeCore.bas"], /Set KcmNuevoDiccionario = New KcmDiccionario/);
+});
+
+/**
+ * Las dos vias de macOS ejecutan un vector de argumentos, nunca una linea de shell concatenada.
+ * Con concatenacion, una ruta con espacios o un endpoint pegado en KCM_CONFIG podrian inyectar
+ * un comando; con argumentos sueltos, cualquier cosa que llegue es un dato.
+ */
+test("macOS ejecuta vectores de argumentos y no lineas de shell", () => {
+  const puerto = modules["KcmPlataforma.bas"];
+  assert.match(puerto, /AppleScriptTask\(KCM_MAC_GUION, "kcmComando", argv\)/);
+  assert.match(puerto, /KcmCitarShell\(CStr\(piezas\(indice\)\)\)/);
+  assert.match(puerto, /Split\(argv, vbTab\)/);
+  // El cuerpo viaja por archivo: el snapshot pesa megabytes y no cabe en una linea de comandos.
+  assert.match(puerto, /--data-binary" & vbTab & "@" & rutaCuerpo/);
+  assert.match(puerto, /KcmBorrarArchivo rutaCuerpo/);
+});
+
+test("el reintento renueva nonce y sentAt pero conserva el requestId", () => {
+  const http = modules["KcmBridgeHttp.bas"];
+  const attempt = http.slice(http.indexOf("Private Function KcmHttpAttempt"));
+  assert.match(attempt, /"&nonce=" & KcmUrlEncode\(KcmNewRequestId\("nonce"\)\)/);
+  assert.match(attempt, /"&sentAt=" & KcmUrlEncode\(KcmUtcIsoNow\(\)\)/);
+  assert.match(http, /For attempt = 1 To KCM_HTTP_ATTEMPTS/);
+  assert.match(http, /retryable = \(status = 408 Or status = 429 Or status >= 500\)/);
+  // El transporte exige TLS con una sola excepcion: loopback, donde el trafico no
+  // sale de la maquina. Un nombre de equipo o una IP de la red local en claro
+  // siguen rechazandose, porque el token viaja en el cuerpo del POST.
+  assert.match(http, /If Not KcmEndpointPermitido\(endpoint\) Then/);
+  assert.match(http, /If Left\$\(lower, 8\) = "https:\/\/" Then/);
+  assert.match(http, /If Left\$\(lower, 7\) <> "http:\/\/" Then Exit Function/);
+  assert.match(http, /KcmEndpointPermitido = \(host = "127\.0\.0\.1" Or host = "localhost"\)/);
+});
+
+test("el ledger local se escribe en bloque en lugar de guardar el libro por fila", () => {
+  const core = modules["KcmBridgeCore.bas"];
+  assert.match(core, /Public Sub KcmLedgerAppendRows/);
+  assert.match(modules["KcmReleaseSync.bas"], /KcmLedgerAppendRows KCM_RELEASE_LEDGER_SHEET, ledgerRows/);
+  assert.doesNotMatch(modules["KcmReleaseSync.bas"], /KcmAppendLedger\b/);
+  // El indice por clave logica y la escritura fila a fila solo servian al ledger de DC-3.
+  assert.doesNotMatch(core, /KcmLedgerIndex|KcmFindLedgerRow|KcmLedgerSetCell|KcmSaveControlWorkbook/);
+});
+
+test("la configuracion se lee una vez por ejecucion y detecta claves repetidas", () => {
+  const core = modules["KcmBridgeCore.bas"];
+  assert.match(core, /Public Sub KcmResetCaches/);
+  assert.match(core, /esta repetida en/);
+  for (const entry of ["KcmApplyPendingReleases", "KcmTransmitMatrixSnapshot"]) {
+    const source = Object.values(modules).find((text) => text.includes(`Public Sub ${entry}`));
+    const body = source.slice(source.indexOf(`Public Sub ${entry}`));
+    assert.match(body.slice(0, body.indexOf("End Sub")), /KcmResetCaches/,
+      `${entry} debe partir de configuracion fresca`);
+  }
+  assert.match(modules["KcmCoordinator.bas"], /KcmReleaseMaster/,
+    "el ciclo cierra la matriz que abrio en lugar de dejarla abierta");
+});
+
+/**
+ * `KcmOperationalHcService.normalizedCourseName` recalcula el nombre normalizado y responde
+ * CONFLICT si no coincide con el del snapshot. La tabla de plegado del cliente debe cubrir cada
+ * caracter que esa regla convierte en una letra A-Z, o una vocal acentuada llegaria como separador.
+ */
+test("la tabla de plegado del cliente cubre la regla de normalizacion del servidor", () => {
+  const core = modules["KcmBridgeCore.bas"];
+  const table = new Map();
+  for (const match of core.matchAll(/KcmAddFold "([A-Z]+)", "([0-9A-F,]+)"/g)) {
+    for (const code of match[2].split(",")) table.set(Number.parseInt(code, 16), match[1]);
+  }
+  assert.ok(table.size >= 160, `la tabla solo declara ${table.size} caracteres`);
+
+  const serverFold = (character) => character
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Z0-9]+/g, "");
+
+  const missing = [];
+  for (let code = 0xC0; code <= 0x17F; code += 1) {
+    const expected = serverFold(String.fromCharCode(code));
+    if (!/^[A-Z0-9]+$/.test(expected)) continue;
+    if (table.get(code) !== expected) {
+      missing.push(`U+${code.toString(16).toUpperCase().padStart(4, "0")} espera ${expected}`);
+    }
+  }
+  assert.deepEqual(missing, [], `plegado incompleto: ${missing.join("; ")}`);
+  assert.doesNotMatch(core, /Replace\$\(text, source\(index\), target\(index\)\)/,
+    "la cadena de Replace$ anterior dependia de UCase$ y de la configuracion regional");
+});

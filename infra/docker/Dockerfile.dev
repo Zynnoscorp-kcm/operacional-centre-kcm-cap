@@ -1,0 +1,47 @@
+# Imagen de desarrollo de la plataforma KCM.
+#
+# No es la de producción. Aquélla vive en `Dockerfile`, enumera
+# archivo por archivo lo que entra y sólo instala `fastify` y `pg`. Ésta hace lo
+# contrario a propósito: instala **todas** las dependencias —incluidas las de
+# desarrollo— para que dentro del contenedor se pueda correr la suite completa,
+# el verificador de tipos, los linters y el generador DC-3, no sólo el servidor.
+#
+# El código NO se copia. Entra por bind mount desde el repositorio del
+# desarrollador, que es lo que permite editar en el editor de siempre y que el
+# proceso de dentro lo vea al instante. Por eso el contexto de construcción es
+# de dos archivos y la imagen sólo se reconstruye cuando cambian las
+# dependencias.
+
+FROM node:24.14.0-bookworm-slim
+
+# La misma versión que produce la imagen de producción. Una diferencia de menor
+# aquí y allá es exactamente la clase de deriva que hace que algo funcione en la
+# laptop de alguien y no en el despliegue.
+
+WORKDIR /repo
+
+# `--no-audit --no-fund` recortan ruido, no comprobaciones. A diferencia de la
+# imagen de producción **no** se pasa `--ignore-scripts`: aquí sí se quiere que
+# cualquier dependencia que necesite un paso de instalación lo haga, porque el
+# banco de pruebas legado usa binarios prearmados que la plataforma nunca
+# importa.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+# El bind mount del repositorio va a montarse encima de `/repo`, y un volumen
+# nombrado encima de `/repo/node_modules`. Ese volumen se puebla la primera vez
+# desde lo que quedó aquí, así que la instalación de arriba es la que acaba
+# usándose. Se deja en manos de `node` para que el volumen no nazca de root.
+RUN chown -R node:node /repo
+
+USER node
+
+ENV NODE_ENV=development \
+    PATH=/repo/node_modules/.bin:$PATH
+
+EXPOSE 8787
+
+# Sin `CMD` propio: cada servicio del compose declara el suyo. La plataforma
+# arranca con `--watch`, las migraciones corren un guion y salen, y un
+# desarrollador entra con `docker compose exec`.
+CMD ["node", "--version"]

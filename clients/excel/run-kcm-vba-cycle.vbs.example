@@ -1,0 +1,24 @@
+Option Explicit
+
+If WScript.Arguments.Count <> 1 Then WScript.Quit 64
+
+Dim excel, workbook
+On Error Resume Next
+Set excel = CreateObject("Excel.Application")
+If Err.Number <> 0 Then WScript.Quit 70
+excel.Visible = False
+excel.DisplayAlerts = False
+Set workbook = excel.Workbooks.Open(WScript.Arguments(0), 0, False)
+If Err.Number <> 0 Then
+  excel.Quit
+  WScript.Quit 71
+End If
+excel.Run "'" & workbook.Name & "'!KcmRunFullCycle", True
+If Err.Number <> 0 Then
+  workbook.Close False
+  excel.Quit
+  WScript.Quit 72
+End If
+workbook.Close True
+excel.Quit
+WScript.Quit 0

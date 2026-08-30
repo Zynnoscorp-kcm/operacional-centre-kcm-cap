@@ -4,16 +4,19 @@ coverage/
 .DS_Store
 *.log
 
-# Configuracion/credenciales locales
-.clasp.json
+# Credenciales y configuración local
 .env
 .env.*
 !.env.example
 
-# Material privado: matrices, listas llenadas, fotos y OCR real
-referencias/privado/
+# Material de referencia local: libro maestro, padrón con CURP, plantilla
+# oficial firmada, logotipos y bocetos. Se consulta en sitio y no se versiona:
+# contiene datos personales y no es código fuente.
+referencias/
 
-# Temporales y salidas OCR locales
+config/dc3-generator.local.json
+
+# Temporales y salidas locales
 tmp/
-artifacts/ocr-private/
-
+build/
+artifacts/

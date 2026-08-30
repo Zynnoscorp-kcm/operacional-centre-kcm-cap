@@ -1,0 +1,250 @@
+/*
+ * Tokens visuales de la plataforma KCM.
+ *
+ * Una sola fuente de color, geometría y ritmo. Una vista que necesita un color
+ * escribe una variable, nunca un literal.
+ *
+ * ── El azul ───────────────────────────────────────────────────────────────
+ *
+ * `#224C9F` es el azul de la plataforma. Vive en cuatro sitios y en ninguno
+ * más: la entrada activa del menú, los botones de acción, los acentos de estado
+ * y la portada del acceso. Todo lo demás es blanco, tinta y una línea tenue.
+ *
+ * ── Los dos temas ─────────────────────────────────────────────────────────
+ *
+ * `.tema-plataforma` es la consola de escritorio: papel, no pantalla. Fondo
+ * gris azulado muy claro, tarjetas blancas de esquina redonda, sombra baja y
+ * difusa. Es plano a propósito: el rediseño retiró el vidrio esmerilado y los
+ * haces diagonales del fondo, que competían con las tablas y obligaban a subir
+ * la opacidad de cada tarjeta para poder leerla.
+ *
+ * `.tema-quiosco` es la pantalla colgada en la sala de capacitación y la agenda
+ * pública que se proyecta en el pasillo. Sigue en el negro de origen, y no
+ * cambió: es lo que distingue a un metro de distancia una pantalla de sala de
+ * una de escritorio.
+ */
+
+:root {
+  /* Tinta y texto */
+  --kcm-ink: #0f1e3d;
+  --kcm-muted: #5a6b85;
+  --kcm-line: rgba(34, 76, 159, 0.12);
+
+  /* Marca */
+  --kcm-brand: #224c9f;
+  --kcm-brand-dark: #17356f;
+  /* El tono claro del degradado: es el mismo azul, subido de luz. */
+  --kcm-brand-bright: #3a6ccb;
+  --kcm-brand-light: rgba(34, 76, 159, 0.09);
+  --kcm-focus-ring: rgba(34, 76, 159, 0.45);
+  /* Azul claro de la empresa: el de los haces del quiosco. */
+  --kcm-brand-sky: #5b8dc4;
+  --kcm-brand-sky-soft: #8fb6dd;
+
+  /* Estados */
+  --kcm-warn: #9a5600;
+  --kcm-warn-bg: rgba(255, 246, 230, 0.92);
+  --kcm-danger: #b3261e;
+  --kcm-danger-bg: rgba(255, 240, 238, 0.92);
+  --kcm-ok: #12704a;
+  --kcm-ok-bg: rgba(226, 246, 237, 0.92);
+
+  /* Superficies */
+  --kcm-canvas: #eef1f7;
+  --kcm-surface: #ffffff;
+  --kcm-glass-bg: #ffffff;
+  --kcm-glass-border: rgba(34, 76, 159, 0.1);
+
+  /* Geometría */
+  --kcm-radius: 20px;
+  --kcm-radius-lg: 24px;
+  --kcm-radius-sm: 12px;
+  --kcm-radius-pill: 999px;
+
+  /*
+   * Sombras. Van en el azul de marca y no en negro: sobre blanco un gris neutro
+   * ensucia. Dos capas —un filo de 1 px y una caída ancha y muy diluida— que es
+   * lo que hace que una tarjeta blanca se despegue de un fondo casi blanco sin
+   * necesidad de borde grueso.
+   */
+  --kcm-shadow: 0 1px 2px rgba(15, 30, 61, 0.04), 0 10px 30px -18px rgba(15, 30, 61, 0.2);
+  --kcm-shadow-lg: 0 2px 4px rgba(15, 30, 61, 0.04), 0 28px 60px -30px rgba(15, 30, 61, 0.3);
+
+  /* Degradados de interacción */
+  --kcm-gradient-brand: linear-gradient(135deg, var(--kcm-brand-bright) 0%, var(--kcm-brand) 100%);
+  --kcm-gradient-brand-hover: linear-gradient(135deg, #4a7ad8 0%, #2a58b0 100%);
+  --kcm-gradient-success: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+  --kcm-gradient-success-hover: linear-gradient(135deg, #34d76f 0%, #16a34a 100%);
+  --kcm-gradient-warn: linear-gradient(135deg, #f59e0b 0%, var(--kcm-warn) 100%);
+  --kcm-gradient-warn-hover: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+
+  /* Tipografía */
+  --kcm-font: "IBM Plex Sans", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --kcm-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /*
+   * Tipografía de despliegue del quiosco. `Kiosk.html` pide Montserrat a Google
+   * Fonts; aquí no se descarga nada, porque la política declara `font-src
+   * 'self'` y ningún origen externo. Se nombra primero por si el equipo ya la
+   * tiene instalada, y si no cae a la pila de la plataforma con el mismo peso y
+   * la misma interletra, que es de donde viene el aire del rótulo.
+   */
+  --kcm-font-display: "Montserrat", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+
+  /* Ritmo */
+  --kcm-space-1: 0.35rem;
+  --kcm-space-2: 0.7rem;
+  --kcm-space-3: 1.1rem;
+  --kcm-space-4: 1.75rem;
+  --kcm-space-5: 2.75rem;
+
+  /*
+   * Respaldos de las superficies y del armazón.
+   *
+   * Están en `:root` y no sólo dentro de cada tema por lo que costó una vez: los
+   * `--bento-*` vivían únicamente en `.tema-plataforma`, y en la agenda pública
+   * —que corre en `.tema-quiosco`— cada `var()` quedaba sin resolver. Un `var()`
+   * sin valor invalida la declaración entera, así que ahí se caía el
+   * `background` completo de las tarjetas de sala y el degradado de marca no se
+   * dibujaba: se veía sólo el borde. Declarados aquí, ningún tema puede volver a
+   * quedarse sin ellos.
+   */
+  --bento-tarjeta: #ffffff;
+  --bento-tarjeta-viva: #ffffff;
+  --bento-mosaico: #f6f8fc;
+  --bento-mosaico-activo: rgba(34, 76, 159, 0.08);
+  --bento-borde: rgba(34, 76, 159, 0.11);
+  --bento-borde-vivo: rgba(34, 76, 159, 0.3);
+  --capa-sutil: rgba(34, 76, 159, 0.035);
+  --chip-fondo: rgba(34, 76, 159, 0.06);
+  --fila-hover: rgba(34, 76, 159, 0.04);
+  --campo-fondo: #ffffff;
+  --rail-fondo: #ffffff;
+  --marca-halo: 0 8px 20px -12px rgba(34, 76, 159, 0.5);
+  --tarjeta-filo: var(--kcm-shadow);
+
+  /*
+   * Vidrio líquido. La consola es plana a propósito —el rediseño retiró el
+   * vidrio esmerilado justamente porque competía con las tablas—, así que estos
+   * valores existen para una sola pieza: la telaraña del avance DNC de la
+   * ficha, que no es una tabla ni un formulario sino una figura, y donde el
+   * relieve ayuda a leerla en vez de estorbar.
+   */
+  /*
+   * El tinte va dentro del degradado y no en manchas difuminadas aparte.
+   * Antes eran tres círculos con `filter: blur()`: cada uno tenía un centro
+   * saturado y un borde que se apagaba deprisa, así que en pantalla se leían
+   * como tres grumos de color en lugar de una lámina teñida. Cuatro capas de
+   * `radial-gradient` muy abiertas, ancladas fuera del panel y terminadas en
+   * alfa cero del mismo tono —no en `transparent`, que es negro y ensucia—
+   * dan una malla continua sin un solo píxel de transición dura.
+   */
+  --vidrio-fondo:
+    radial-gradient(
+      95% 115% at 0% 0%,
+      rgba(34, 76, 159, 0.32) 0%,
+      rgba(34, 76, 159, 0.11) 38%,
+      rgba(34, 76, 159, 0) 72%
+    ),
+    radial-gradient(
+      92% 122% at 100% 104%,
+      rgba(58, 108, 203, 0.34) 0%,
+      rgba(58, 108, 203, 0.12) 40%,
+      rgba(58, 108, 203, 0) 74%
+    ),
+    radial-gradient(
+      82% 112% at 46% 114%,
+      rgba(143, 182, 221, 0.32) 0%,
+      rgba(143, 182, 221, 0.09) 42%,
+      rgba(143, 182, 221, 0) 76%
+    ),
+    radial-gradient(72% 104% at 94% -10%, rgba(91, 141, 196, 0.26) 0%, rgba(91, 141, 196, 0) 64%),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.82) 0%,
+      rgba(255, 255, 255, 0.3) 46%,
+      rgba(255, 255, 255, 0.78) 100%
+    );
+  --vidrio-borde: rgba(255, 255, 255, 0.95);
+  /*
+   * Cuatro capas, y cada una hace una cosa. El filo claro arriba a la izquierda
+   * y el oscuro abajo a la derecha son los que dan grosor: sin ese par, un
+   * panel translúcido se lee como una capa de pintura y no como una lámina. La
+   * tercera es la sombra que el propio cristal proyecta hacia dentro por el
+   * canto inferior, y la cuarta la que proyecta sobre lo que tiene debajo.
+   */
+  --vidrio-sombra:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.98), inset -1px -1px 0 rgba(34, 76, 159, 0.12),
+    inset 0 -20px 42px -32px rgba(23, 53, 111, 0.4), 0 26px 54px -34px rgba(34, 76, 159, 0.62);
+  --vidrio-desenfoque: blur(18px) saturate(172%);
+  --vidrio-brillo: rgba(255, 255, 255, 0.72);
+  /* El destello diagonal que recorre la lámina, como luz de ventana. */
+  --vidrio-reflejo: linear-gradient(
+    108deg,
+    transparent 26%,
+    rgba(255, 255, 255, 0.72) 40%,
+    rgba(255, 255, 255, 0.24) 47%,
+    transparent 58%
+  );
+
+  /* Densidad CAPTA: rótulos diminutos, cifras grandes y filas apretadas. */
+  --capta-rotulo: 0.58rem;
+  --capta-texto: 0.8rem;
+  --capta-cifra: 1.75rem;
+  --capta-linea: rgba(34, 76, 159, 0.1);
+  --capta-tenue: #8493aa;
+}
+
+/*
+ * La consola central.
+ *
+ * Hereda casi todo de `:root`, porque `:root` es la plataforma: es el tema
+ * de escritorio el que manda hoy y el quiosco el que se desvía. La clase se
+ * conserva porque el marcado la declara y porque deja un sitio donde afinar la
+ * consola sin tocar la agenda pública.
+ */
+.tema-plataforma {
+  color-scheme: light;
+}
+
+/*
+ * El quiosco de la sala de capacitación y la agenda pública del pasillo.
+ * Es el negro de `Kiosk.html` con sus haces azules, y no cambia con el
+ * rediseño de la consola.
+ */
+.tema-quiosco {
+  color-scheme: dark;
+
+  /*
+   * Bento en oscuro. La agenda pública corre en este tema y sus reglas piden
+   * `--bento-*`. Un `var()` sin resolver invalida la declaración entera, así
+   * que sin estos valores se caía el `background` completo de `.agenda-sala`
+   * —el degradado de marca incluido— y sobrevivían sólo el borde y la cinta de
+   * 3 px, que se declaran aparte.
+   */
+  --bento-tarjeta: rgba(9, 12, 18, 0.72);
+  --bento-tarjeta-viva: rgba(13, 17, 25, 0.82);
+  --bento-mosaico: rgba(255, 255, 255, 0.045);
+  --bento-mosaico-activo: rgba(79, 159, 239, 0.18);
+  --bento-borde: rgba(255, 255, 255, 0.12);
+  --bento-borde-vivo: rgba(255, 255, 255, 0.28);
+
+  --capa-sutil: rgba(255, 255, 255, 0.045);
+  --chip-fondo: rgba(255, 255, 255, 0.05);
+  --fila-hover: rgba(255, 255, 255, 0.025);
+  --campo-fondo: rgba(0, 0, 0, 0.32);
+  --rail-fondo: rgba(0, 0, 0, 0.22);
+  --marca-halo: 0 0 30px rgba(79, 159, 239, 0.24);
+  --tarjeta-filo: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  --kcm-ink: #f5f6f8;
+  --kcm-muted: rgba(226, 230, 236, 0.62);
+  --kcm-line: rgba(255, 255, 255, 0.14);
+  --kcm-canvas: #0a0a0c;
+  --kcm-surface: rgba(0, 0, 0, 0.36);
+  --kcm-brand: var(--kcm-brand-sky-soft);
+  --kcm-focus-ring: rgba(143, 182, 221, 0.55);
+  --kcm-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.6);
+  --kcm-shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+  --capta-linea: rgba(255, 255, 255, 0.12);
+  --capta-tenue: rgba(226, 230, 236, 0.5);
+}

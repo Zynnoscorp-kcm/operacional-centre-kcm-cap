@@ -1,0 +1,103 @@
+name: CI
+
+# Node 24 es el runtime destino. Las máquinas de desarrollo pueden correr una
+# versión mayor; ésta es la única corrida que acredita la 24.
+on:
+  push:
+    branches: ["main", "trabajo/**"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificacion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # No se prepara `referencias/`: las fuentes con datos personales están
+      # ignoradas por Git y no existen en un clon, así que la suite tiene que
+      # correr sin ellas. Crear la carpeta aquí taparía una prueba que
+      # dependiera de que otra la creó antes.
+      - name: Ninguna fuente con datos personales quedó rastreada
+        run: |
+          set -e
+          fugas=$(git ls-files \
+            'referencias/*' \
+            '*.xlsb' '*.xlsm' \
+            'config/dc3-generator.local.json')
+          if [ -n "$fugas" ]; then
+            echo "Hay fuentes privadas rastreadas en Git:"
+            echo "$fugas"
+            exit 1
+          fi
+          echo "OK: ninguna fuente privada rastreada."
+
+      - name: Pruebas de los módulos compartidos
+        run: npm test
+
+      - name: Pruebas de la plataforma
+        run: npm run test:plataforma
+
+      - name: Tipos de la plataforma
+        run: npm run typecheck
+
+      - name: Verificaciones de proyecto
+        run: npm run check:proyecto
+
+      - name: Analizador del cliente VBA
+        run: npm run check:vba
+
+      # Comprueba que la imagen de producción contendría todo lo que el proceso
+      # importa. Sin esto, un import nuevo hacia un módulo fuera de `app/` sólo
+      # se detectaría al arrancar el contenedor.
+      - name: Cierre de imports de la imagen
+        run: npm run check:imagen
+
+      - name: Linter de la plataforma
+        run: npm run lint
+
+      - name: Formato de la plataforma
+        run: npm run format:check
+
+  imagen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Construir la imagen es la única forma de acreditar el Dockerfile. No se
+      # publica: sólo se comprueba que arma.
+      - name: Construir la imagen de producción
+        run: docker build -f infra/docker/Dockerfile -t kcm-cap:ci .
+
+      - name: La imagen arranca y responde /healthz
+        run: |
+          set -e
+          docker run -d --name kcm-ci -p 8787:8787 \
+            -e KCM_ENV=development \
+            -e KCM_HOST=0.0.0.0 \
+            -e KCM_ALLOW_MEMORY=1 \
+            kcm-cap:ci
+          for intento in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/healthz > /dev/null; then
+              echo "OK: /healthz respondió."
+              docker rm -f kcm-ci
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "La imagen no respondió /healthz."
+          docker logs kcm-ci
+          docker rm -f kcm-ci
+          exit 1

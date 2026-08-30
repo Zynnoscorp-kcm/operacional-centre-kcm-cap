@@ -1,0 +1,15 @@
+# Contexto de construcción de la imagen de desarrollo.
+#
+# BuildKit usa este archivo —y no el `.dockerignore` de la raíz— porque lleva el
+# nombre del Dockerfile más el sufijo.
+#
+# La imagen sólo instala dependencias: el código entra por bind mount. Así que
+# el contexto se niega entero y se readmiten dos archivos. Eso tiene dos efectos
+# que importan: la construcción tarda segundos en vez de minutos, y el padrón,
+# el libro maestro y `referencias/privado/` no cruzan jamás hacia el
+# constructor, ni siquiera hacia uno que corre en la misma máquina.
+
+*
+
+!package.json
+!package-lock.json

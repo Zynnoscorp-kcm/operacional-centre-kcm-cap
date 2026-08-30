@@ -1,0 +1,2988 @@
+/*
+ * Hoja de la consola central.
+ *
+ * Un tablero claro: fondo gris azulado, tarjetas blancas de esquina muy
+ * redonda, sombra baja y difusa, y el azul de la empresa reservado para lo que
+ * significa algo —la sección en la que se está, la acción que ejecuta y el
+ * estado de un dato—. La referencia de diseño es un tablero de salud: píldoras
+ * de navegación, una tarjeta destacada en azul lleno, cifras grandes y mucho
+ * aire entre bloques.
+ *
+ * Del Sistema CAPTA se conserva la densidad, que es lo que esta consola
+ * necesita y aquella referencia no tiene: rótulos diminutos en versalitas,
+ * cifras en monoespaciada y filas apretadas en tablas de ocho y nueve columnas.
+ *
+ * Restricciones que dan forma a todo lo demás: no hay build de front, no hay
+ * JSX y la política de contenido declara `style-src 'self'`, así que nada puede
+ * ir en un atributo `style` ni depender de un script. Todo el trazo vive en
+ * clases, y los iconos son `<svg>` en línea escritos a mano, no un paquete.
+ *
+ * El color no se decide aquí: sale de `tokens.css`. Esta hoja sólo declara
+ * forma, ritmo y estado.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--kcm-canvas);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--kcm-brand);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--kcm-brand-dark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--kcm-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--kcm-radius-sm);
+}
+
+.salto-contenido {
+  position: absolute;
+  left: -999px;
+}
+
+.salto-contenido:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  padding: 0.75rem 1.25rem;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde-vivo);
+  border-radius: var(--kcm-radius-sm);
+}
+
+/* ==========================================================================
+   El armazón: menú lateral y lienzo
+   --------------------------------------------------------------------------
+   Dos columnas sobre un fondo gris azulado: el **lateral**, angosto y fijo, y
+   el **lienzo**, que se queda con todo lo que sobra. Dentro del lienzo van tres
+   piezas apiladas —barra de título, tira de sub-pestañas y contenido—, cada una
+   como tarjeta blanca de esquina redonda.
+
+   El lateral se queda en 244 px porque las tablas de esta consola tienen ocho y
+   nueve columnas y son ellas las que se quedaban sin sitio. Por debajo de
+   1080 px deja de ser columna y pasa a ser una tira horizontal desplazable, así
+   que ese ancho no estorba en pantallas chicas.
+   ========================================================================== */
+
+.consola {
+  display: grid;
+  min-height: 100vh;
+  padding: 14px;
+  gap: 14px;
+  grid-template-columns: 244px minmax(0, 1fr);
+  background: var(--kcm-canvas);
+}
+
+/*
+ * `align-self: start` es lo que hace que `sticky` funcione: sin él la rejilla
+ * estira el elemento hasta la altura de la fila y ya no le queda recorrido
+ * dentro del cual pegarse.
+ */
+.lateral {
+  position: sticky;
+  top: 14px;
+  display: flex;
+  height: calc(100vh - 28px);
+  padding: 1.15rem 0.8rem;
+  align-self: start;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--rail-fondo);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow);
+}
+
+.lateral-marca {
+  display: flex;
+  padding: 0.1rem 0.35rem 0.95rem;
+  align-items: center;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--bento-borde);
+  color: inherit;
+  text-decoration: none;
+}
+
+.lateral-simbolo {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  object-fit: contain;
+}
+
+.lateral-marca-texto {
+  display: grid;
+  min-width: 0;
+  line-height: 1.22;
+}
+
+.lateral-marca-texto strong {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lateral-marca-texto span {
+  color: var(--capta-tenue);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.lateral-nav {
+  display: flex;
+  padding-bottom: 0.4rem;
+  flex-direction: column;
+  gap: 0.1rem;
+  overflow-y: auto;
+}
+
+.lateral-grupo {
+  margin: 0.9rem 0 0.3rem;
+  padding: 0 0.6rem;
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.lateral-grupo:first-child {
+  margin-top: 0;
+}
+
+.lateral-enlace {
+  display: flex;
+  padding: 0.56rem 0.7rem;
+  align-items: center;
+  gap: 0.62rem;
+  border-radius: 14px;
+  color: var(--kcm-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.lateral-enlace:hover {
+  background: var(--bento-mosaico);
+  color: var(--kcm-ink);
+}
+
+/*
+ * La entrada activa es una píldora azul llena. No lleva marcador aparte: el
+ * relleno completo, el peso del texto y el contraste invertido son tres señales
+ * y ninguna depende sólo del tono.
+ */
+.lateral-enlace[aria-current="page"] {
+  background: var(--kcm-gradient-brand);
+  color: #ffffff;
+  box-shadow: var(--marca-halo);
+}
+
+.lateral-icono {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  flex: none;
+  place-items: center;
+  color: inherit;
+}
+
+.lateral-nombre {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Las pantallas de sala, ancladas al fondo del lateral y separadas por una línea. */
+.lateral-pie {
+  display: flex;
+  margin-top: auto;
+  padding-top: 0.85rem;
+  flex-direction: column;
+  gap: 0.1rem;
+  border-top: 1px solid var(--bento-borde);
+}
+
+.lateral-pie .lateral-grupo {
+  margin-top: 0;
+}
+
+/* ==========================================================================
+   El lienzo: barra de título, sub-pestañas y contenido
+   ========================================================================== */
+
+.lienzo {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.barra {
+  display: flex;
+  padding: 0.95rem clamp(1rem, 2vw, 1.5rem);
+  align-items: center;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow);
+}
+
+.barra-identidad {
+  min-width: 0;
+}
+
+.barra-titulo {
+  margin: 0;
+  color: var(--kcm-brand);
+  font-size: clamp(1.15rem, 2vw, 1.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.barra-lede {
+  margin: 0.15rem 0 0;
+  color: var(--kcm-muted);
+  font-size: 0.83rem;
+}
+
+.barra-acciones {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.barra-icono {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: 50%;
+  color: var(--kcm-muted);
+  text-decoration: none;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.barra-icono:hover {
+  background: var(--kcm-brand-light);
+  border-color: var(--bento-borde-vivo);
+  color: var(--kcm-brand);
+}
+
+/*
+ * La tira de sub-pestañas. Es el mismo gesto que la píldora del lateral, en
+ * horizontal: las vistas hermanas de una sección viven aquí y no en el menú,
+ * que es lo que dejó el lateral en once entradas en vez de veinte.
+ */
+.subpestanas {
+  display: flex;
+  padding: 0.35rem;
+  gap: 0.2rem;
+  overflow-x: auto;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  box-shadow: var(--kcm-shadow);
+}
+
+.subpestana {
+  padding: 0.48rem 1.05rem;
+  border-radius: var(--kcm-radius-pill);
+  color: var(--kcm-muted);
+  font-size: 0.83rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.subpestana:hover {
+  background: var(--bento-mosaico);
+  color: var(--kcm-ink);
+}
+
+.subpestana[aria-current="page"] {
+  background: var(--kcm-gradient-brand);
+  color: #ffffff;
+  box-shadow: var(--marca-halo);
+}
+
+.contenido {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--kcm-space-3);
+}
+
+/* ==========================================================================
+   Rótulos de sección, al modo CAPTA
+   ========================================================================== */
+
+.capta-rotulo {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--kcm-brand);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.capta-titulo {
+  margin: 0 0 var(--kcm-space-3);
+  color: var(--kcm-ink);
+  font-size: clamp(1.4rem, 2.6vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.seccion-cabecera {
+  margin-bottom: var(--kcm-space-3);
+}
+
+.seccion-cabecera h2 {
+  margin: 0 0 0.35rem;
+  color: var(--kcm-ink);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.seccion-cabecera p {
+  margin: 0;
+  max-width: 74ch;
+  color: var(--kcm-muted);
+  font-size: 0.88rem;
+}
+
+.seccion-subtitulo {
+  margin: var(--kcm-space-4) 0 var(--kcm-space-2);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.miga-de-pan {
+  margin: 0 0 var(--kcm-space-2);
+  color: var(--capta-tenue);
+  font-size: 0.8rem;
+}
+
+/* ==========================================================================
+   La tarjeta
+   --------------------------------------------------------------------------
+   La pieza base: blanca, esquina de 24, borde de una línea azul muy diluida y
+   una sombra baja que la despega del fondo. No cambia de fondo al pasar por
+   encima —una tarjeta no es un botón—: sólo se aviva el borde.
+   ========================================================================== */
+
+.tarjeta {
+  position: relative;
+  padding: clamp(1.1rem, 2.2vw, 1.6rem);
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--tarjeta-filo);
+  transition: border-color 0.25s ease;
+}
+
+.tarjeta:hover {
+  border-color: var(--bento-borde-vivo);
+}
+
+.tarjeta h2 {
+  margin: 0 0 var(--kcm-space-2);
+  color: var(--kcm-ink);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.tarjeta h3 {
+  margin: 0 0 var(--kcm-space-1);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.tarjeta p {
+  margin: 0 0 var(--kcm-space-2);
+  max-width: 74ch;
+  color: var(--kcm-muted);
+}
+
+.tarjeta p:last-child {
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
+   La tira de indicadores
+   --------------------------------------------------------------------------
+   Es el «Bottom Stats» del prompt: mosaicos de igual peso, cifra grande en
+   mono y un renglón de contexto debajo. El color del borde superior dice el
+   estado sin escribirlo.
+   ========================================================================== */
+
+/*
+ * El mínimo es de 185 y no de 210 px por una razón concreta: con 210 una tira
+ * de cinco mosaicos —la del lote de DC-3— parte cuatro arriba y uno suelto
+ * abajo, que se lee como un error de maquetación. Con 185 los cinco caben en un
+ * renglón, y las tiras de cuatro o menos siguen estirándose igual porque
+ * `auto-fit` reparte el sobrante entre las columnas que haya.
+ */
+.kpi-tira,
+.contadores,
+.metricas-resumen-grilla {
+  display: grid;
+  margin: 0;
+  gap: var(--kcm-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+}
+
+.kpi,
+.metrica-tarjeta {
+  position: relative;
+  padding: 1rem 1.1rem;
+  overflow: hidden;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius);
+  box-shadow: var(--kcm-shadow);
+  transition: border-color 0.25s ease;
+}
+
+.kpi:hover,
+.metrica-tarjeta:hover {
+  border-color: var(--bento-borde-vivo);
+}
+
+/*
+ * La cinta de estado. Va a la izquierda y no arriba: sobre una tarjeta blanca
+ * de esquina de 20 px, una línea horizontal de 2 px queda cortada por el radio
+ * en los dos extremos y se lee como un defecto de dibujo.
+ */
+.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--kcm-brand);
+}
+
+.kpi-ok::before {
+  background: var(--kcm-ok);
+}
+
+.kpi-aviso::before {
+  background: var(--kcm-warn);
+}
+
+.kpi-alerta::before {
+  background: var(--kcm-danger);
+}
+
+.kpi-texto::before {
+  background: var(--bento-borde-vivo);
+}
+
+.kpi-etiqueta,
+.metrica-etiqueta {
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kpi-dato {
+  display: flex;
+  margin: 0.3rem 0 0;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.kpi-cifra,
+.metrica-numero {
+  display: block;
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font-mono);
+  font-size: var(--capta-cifra);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  /* Una cifra nunca debe empujar el ancho de su mosaico. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kpi-unidad {
+  color: var(--kcm-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.kpi-pista {
+  margin: 0.45rem 0 0;
+  color: var(--kcm-muted);
+  font-size: 0.78rem;
+}
+
+.metrica-completado {
+  color: var(--kcm-ok);
+}
+
+.metrica-programado {
+  color: var(--kcm-brand);
+}
+
+.metrica-pendiente {
+  color: var(--kcm-muted);
+}
+
+.metrica-reforzar {
+  color: var(--kcm-warn);
+}
+
+/* ==========================================================================
+   Retículas de mosaicos
+   --------------------------------------------------------------------------
+   Tarjetas de igual peso que se encienden al pasar por encima. Aquí vivía
+   además la retícula de funciones de la portada; se fue con ella.
+   ========================================================================== */
+
+.grilla-comparativa,
+.tarjeta-dep-metricas {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: var(--kcm-space-3);
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  list-style: none;
+}
+
+.tarjeta-departamento-item {
+  display: flex;
+  padding: 1rem 1.1rem;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    transform 0.22s ease;
+}
+
+.tarjeta-departamento-item:hover {
+  background: var(--bento-mosaico-activo);
+  border-color: var(--bento-borde-vivo);
+  transform: translateY(-2px);
+}
+
+.enlace-trabajador,
+.enlace-detalle,
+.enlace-nomina {
+  color: inherit;
+  text-decoration: none;
+}
+
+.enlace-trabajador:hover,
+.enlace-detalle:hover {
+  color: var(--kcm-brand-dark);
+  text-decoration: underline;
+}
+
+.enlace-nomina {
+  font-family: var(--kcm-font-mono);
+}
+
+/* ==========================================================================
+   Insignias
+   --------------------------------------------------------------------------
+   Los chips del prompt: píldora de borde tenue y versalita corta. El fondo
+   nunca es opaco, para que la tarjeta siga leyéndose por detrás.
+   ========================================================================== */
+
+.insignia,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.35rem;
+  padding: 0.18rem 0.62rem;
+  background: var(--chip-fondo);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  color: var(--kcm-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.insignia-completado,
+.insignia-activo,
+.insignia-declarada {
+  background: var(--kcm-ok-bg);
+  border-color: rgba(18, 112, 74, 0.24);
+  color: var(--kcm-ok);
+}
+
+.insignia-pendiente,
+.insignia-programado,
+.insignia-curso,
+.insignia-departamento,
+.insignia-planta,
+.insignia-categoria,
+.insignia-regla {
+  background: var(--kcm-brand-light);
+  border-color: rgba(34, 76, 159, 0.24);
+  color: var(--kcm-brand);
+}
+
+.insignia-aviso,
+.insignia-reforzar,
+.insignia-datos-insuficientes {
+  background: var(--kcm-warn-bg);
+  border-color: rgba(154, 86, 0, 0.24);
+  color: var(--kcm-warn);
+}
+
+.insignia-inactivo,
+.insignia-no-aplica {
+  background: var(--chip-fondo);
+  border-color: var(--bento-borde);
+  color: var(--capta-tenue);
+}
+
+.insignia-nomina {
+  font-family: var(--kcm-font-mono);
+}
+
+.insignia-entorno {
+  background: var(--chip-fondo);
+  border-color: var(--bento-borde-vivo);
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font-mono);
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+   Tablas, con la densidad del Sistema CAPTA
+   ========================================================================== */
+
+.tabla-contenedor {
+  overflow-x: auto;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius);
+}
+
+.tabla-contenedor table,
+.tabla-kcm,
+.tabla-sesiones,
+.tabla-datos {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.tabla-contenedor th,
+.tabla-kcm th,
+.tabla-sesiones th,
+.tabla-datos th {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--capta-linea);
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tabla-contenedor td,
+.tabla-kcm td,
+.tabla-sesiones td,
+.tabla-datos td {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--capta-linea);
+  line-height: 1.35;
+  vertical-align: middle;
+}
+
+.tabla-contenedor tr:last-child td,
+.tabla-kcm tr:last-child td,
+.tabla-sesiones tr:last-child td,
+.tabla-datos tr:last-child td {
+  border-bottom: none;
+}
+
+.tabla-contenedor tbody tr:hover td,
+.tabla-kcm tbody tr:hover td,
+.tabla-sesiones tbody tr:hover td,
+.tabla-datos tbody tr:hover td {
+  background: var(--fila-hover);
+}
+
+.celda-numero,
+.celda-mono,
+.celda-codigo {
+  font-family: var(--kcm-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.celda-numero {
+  text-align: right;
+}
+
+.celda-destacada {
+  font-weight: 700;
+}
+
+.celda-motivo {
+  max-width: 42ch;
+  color: var(--kcm-muted);
+}
+
+.celda-completado {
+  color: var(--kcm-ok);
+}
+
+.celda-programado {
+  color: var(--kcm-brand);
+}
+
+.celda-reforzar {
+  color: var(--kcm-warn);
+}
+
+.celda-pendiente {
+  color: var(--kcm-muted);
+}
+
+.celda-alerta {
+  color: var(--kcm-danger);
+}
+
+/* ==========================================================================
+   Formularios
+   ========================================================================== */
+
+.formulario,
+.formulario-sesion,
+.formulario-busqueda,
+.formulario-filtros {
+  display: flex;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.formulario label,
+.grupo-campo,
+.campo-busqueda {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 210px;
+  flex-direction: column;
+  gap: 0.32rem;
+  color: var(--kcm-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.etiqueta-formulario,
+.agenda-campo label {
+  color: var(--kcm-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * Una fila de campos dentro de un formulario. El `flex: 1 1 100%` no es adorno:
+ * el formulario que la contiene es una fila flexible, y sin base declarada esta
+ * retícula se encogía a su contenido y se metía en el renglón del campo
+ * anterior. En `/sesiones` eso dejaba «Capacitación» debajo de «Fecha».
+ */
+.fila-campos {
+  display: grid;
+  flex: 1 1 100%;
+  gap: var(--kcm-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+/*
+ * La celda que sólo lleva una casilla no tiene etiqueta encima, así que en una
+ * retícula de campos quedaría pegada al borde superior mientras sus vecinos
+ * alinean el control abajo. Se empuja al pie de su celda para que la casilla
+ * quede al mismo nivel que los recuadros del renglón.
+ */
+.grupo-campo-casilla {
+  justify-content: flex-end;
+  padding-bottom: 0.6rem;
+}
+
+/* La fila de acciones cierra el formulario: nunca comparte renglón con un campo. */
+.formulario > .acciones-formulario,
+.formulario-sesion > .acciones-formulario,
+.formulario-filtros > .acciones-formulario {
+  flex: 1 1 100%;
+}
+
+input,
+select,
+textarea,
+.control-formulario,
+.input-kcm,
+.select-kcm {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  background: var(--campo-fondo);
+  border: 1px solid var(--bento-borde);
+  border-radius: 12px;
+  color: var(--kcm-ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--kcm-brand);
+  box-shadow: 0 0 0 3px var(--kcm-brand-light);
+  outline: none;
+}
+
+option {
+  background: var(--campo-fondo);
+  color: var(--kcm-ink);
+}
+
+.acciones-formulario,
+.acciones-busqueda,
+.acciones-fila,
+.barra-accesos-rapidos {
+  display: flex;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ==========================================================================
+   Botones
+   ========================================================================== */
+
+button,
+.boton,
+.boton-kcm,
+.boton-primario,
+.boton-secundario,
+.boton-pequeno,
+.boton-exito,
+.boton-advertencia,
+.boton-acceso-rapido,
+.boton-ver-ficha {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.6rem 1.05rem;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: 12px;
+  color: var(--kcm-ink);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+button:hover,
+.boton:hover,
+.boton-kcm:hover,
+.boton-primario:hover,
+.boton-secundario:hover,
+.boton-pequeno:hover,
+.boton-acceso-rapido:hover,
+.boton-ver-ficha:hover {
+  background: var(--bento-mosaico-activo);
+  border-color: var(--bento-borde-vivo);
+  transform: translateY(-1px);
+}
+
+button:active,
+.boton:active {
+  transform: translateY(0);
+}
+
+button[disabled],
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.boton-primario,
+.boton-kcm,
+button[type="submit"] {
+  background: var(--kcm-gradient-brand);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: var(--marca-halo);
+}
+
+.boton-primario:hover,
+.boton-kcm:hover,
+button[type="submit"]:hover {
+  background: var(--kcm-gradient-brand-hover);
+  border-color: transparent;
+}
+
+.boton-exito {
+  background: var(--kcm-ok-bg);
+  border-color: rgba(18, 112, 74, 0.28);
+  color: var(--kcm-ok);
+}
+
+.boton-advertencia {
+  background: var(--kcm-warn-bg);
+  border-color: rgba(154, 86, 0, 0.28);
+  color: var(--kcm-warn);
+}
+
+/*
+ * El botón que emite una constancia incompleta. Es rojo a propósito: entrega un
+ * documento con recuadros vacíos —a veces la fecha misma— y quien lo pulsa tiene
+ * que ver que no está emitiendo una constancia terminada.
+ */
+/*
+ * El estado de autorización como punto de color. Era una insignia con la palabra
+ * «Sí» o «No» que se llevaba el ancho de una columna entera para decir un bit,
+ * y el campo del PIN de al lado quedaba tan angosto que no cabía lo que hay que
+ * escribir en él. El texto sigue ahí para quien usa lector de pantalla y como
+ * título al pasar el puntero: el color no es la única señal.
+ */
+.punto-estado {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.punto-si {
+  background: var(--kcm-ok);
+}
+
+.punto-no {
+  background: var(--kcm-danger);
+}
+
+/* La columna que sólo lleva ese punto no necesita más ancho que su encabezado. */
+.columna-angosta {
+  width: 3.2rem;
+  text-align: center;
+}
+
+/* Y lo que se libera de ancho se lo queda el campo del PIN. */
+.campo-pin {
+  min-width: 11rem;
+}
+
+.boton-peligro {
+  background: var(--kcm-danger-bg);
+  border-color: rgba(176, 33, 46, 0.28);
+  color: var(--kcm-danger);
+}
+
+.boton-pequeno {
+  padding: 0.34rem 0.7rem;
+  font-size: 0.76rem;
+}
+
+/* El ojo de vista previa. Es un boton de icono: sin texto, cuadrado, para que
+   quepa junto a los de emitir sin ensanchar la columna de acciones. Lleva
+   `title` y `aria-label` en el marcado, que es de donde sale su nombre. */
+.boton-icono {
+  padding: 0.34rem;
+  min-width: 1.9rem;
+  color: var(--kcm-muted);
+}
+
+.boton-icono svg {
+  display: block;
+}
+
+.boton-enlace {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--kcm-brand);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.boton-enlace:hover {
+  background: none;
+  border: none;
+  transform: none;
+}
+
+/* ==========================================================================
+   Avisos
+   ========================================================================== */
+
+.aviso,
+.aviso-error,
+.aviso-publicacion,
+.agenda-mensaje,
+.error {
+  margin: 0 0 var(--kcm-space-3);
+  padding: 0.75rem 1rem;
+  background: var(--kcm-brand-light);
+  border: 1px solid rgba(79, 159, 239, 0.3);
+  border-radius: 14px;
+  color: var(--kcm-ink);
+  font-size: 0.86rem;
+}
+
+.aviso-error,
+.error,
+.agenda-mensaje.error {
+  background: var(--kcm-danger-bg);
+  border-color: rgba(242, 139, 130, 0.35);
+  color: var(--kcm-danger);
+}
+
+.agenda-mensaje.exito,
+.exito {
+  background: var(--kcm-ok-bg);
+  border-color: rgba(110, 207, 151, 0.35);
+  color: var(--kcm-ok);
+}
+
+.error-codigo {
+  margin: 0 0 var(--kcm-space-1);
+  color: var(--kcm-danger);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nota-auditoria,
+.help,
+.ayuda,
+.agenda-privacidad {
+  color: var(--capta-tenue);
+  font-size: 0.78rem;
+}
+
+/* ==========================================================================
+   Listas de definición y fichas
+   ========================================================================== */
+
+.definiciones,
+.perfil-grilla-detalles,
+.detalle-item {
+  display: grid;
+  margin: 0;
+  gap: var(--kcm-space-2) var(--kcm-space-3);
+}
+
+.definiciones {
+  grid-template-columns: max-content 1fr;
+}
+
+.definiciones dt,
+.detalle-etiqueta {
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.definiciones dd,
+.detalle-valor {
+  margin: 0;
+  font-family: var(--kcm-font-mono);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.perfil-grilla-detalles {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  gap: 0.55rem 1.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  border-top: 1px solid var(--bento-borde);
+}
+
+/*
+ * Departamento, área, planta y antigüedad son los datos por los que se decide
+ * qué le toca a alguien, y se leían al mismo tamaño que el resto del texto.
+ * Suben; la escolaridad —declarada por omisión en casi toda la plantilla— baja.
+ */
+/*
+ * Un solo tamaño y una sola familia para los datos de la ficha. Antes el valor
+ * iba en monoespaciada a 1.02 rem y el puesto en versalitas a 0.58: dos datos
+ * del mismo encabezado con casi el doble de diferencia entre ellos.
+ */
+.perfil-grilla-detalles .detalle-valor {
+  font-family: var(--kcm-font);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.perfil-grilla-detalles .detalle-etiqueta {
+  font-size: var(--capta-rotulo);
+}
+
+/* El encabezado se comprime: la separación entre rótulo y dato era de 0.7 rem. */
+.perfil-grilla-detalles .detalle-item {
+  gap: 0.1rem;
+}
+
+.detalle-item-menor .detalle-valor {
+  color: var(--capta-tenue);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.tarjeta-perfil,
+.tarjeta-busqueda {
+  padding: clamp(0.95rem, 1.9vw, 1.25rem);
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+}
+
+.perfil-cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+}
+
+.avatar-placeholder {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  place-items: center;
+  background: var(--kcm-brand-light);
+  border: 1px solid var(--bento-borde-vivo);
+  border-radius: 15px;
+  color: var(--kcm-brand);
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.perfil-nombre {
+  margin: 0.1rem 0 0;
+  font-size: 1.16rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * Puesto, área y planta. Es un dato, no un rótulo: estaba en el grupo de las
+ * versalitas diminutas y se leía la mitad de pequeño que la etiqueta que lo
+ * encabeza.
+ */
+.perfil-puesto {
+  display: flex;
+  margin: 0.12rem 0 0;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  color: var(--kcm-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.perfil-tag-line {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  color: var(--kcm-muted);
+  font-size: 0.85rem;
+}
+
+.tarjeta-dep-cabecera {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kcm-space-2);
+}
+
+.tarjeta-dep-nombre {
+  font-weight: 700;
+}
+
+.tarjeta-dep-pie,
+.dep-metrica-fila {
+  color: var(--kcm-muted);
+  font-size: 0.78rem;
+}
+
+/* ==========================================================================
+   Textos auxiliares
+   ========================================================================== */
+
+.texto-atenuado,
+.texto-secundario,
+.texto-vacio {
+  color: var(--kcm-muted);
+  font-size: 0.85rem;
+}
+
+.texto-vacio {
+  padding: var(--kcm-space-3);
+  text-align: center;
+}
+
+.texto-centro {
+  text-align: center;
+}
+
+/* ==========================================================================
+   Adaptación a pantallas angostas
+   --------------------------------------------------------------------------
+   Bajo 1080 px el lateral deja de ser columna y se vuelve una tira horizontal
+   desplazable arriba del lienzo: el mismo marcado y las mismas entradas, en una
+   sola línea. Los rótulos de grupo desaparecen ahí, porque en horizontal no
+   agrupan nada y sólo alargan el recorrido.
+   ========================================================================== */
+
+@media (max-width: 1080px) {
+  .consola {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lateral {
+    position: static;
+    display: grid;
+    height: auto;
+    padding: 0.75rem 0.85rem;
+    gap: 0.7rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .lateral-marca {
+    padding: 0 0.85rem 0 0.35rem;
+    border-right: 1px solid var(--bento-borde);
+    border-bottom: none;
+  }
+
+  .lateral-nav {
+    padding-bottom: 0;
+    flex-direction: row;
+    gap: 0.25rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .lateral-grupo {
+    display: none;
+  }
+
+  .lateral-nombre {
+    white-space: nowrap;
+  }
+
+  /* En horizontal no hay «fondo» al que anclar: las pantallas de sala siguen
+     a las demás entradas dentro de la misma tira. */
+  .lateral-pie {
+    margin-top: 0;
+    padding-top: 0;
+    flex-direction: row;
+    grid-column: 1 / -1;
+    border-top: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .consola {
+    padding: 0;
+    gap: 0;
+  }
+
+  .lateral {
+    border: none;
+    border-bottom: 1px solid var(--bento-borde);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .lateral-marca-texto {
+    display: none;
+  }
+
+  .lienzo {
+    padding: 0.7rem;
+    gap: 0.7rem;
+  }
+
+  .definiciones {
+    grid-template-columns: 1fr;
+    gap: var(--kcm-space-1);
+  }
+
+  .barra {
+    padding: 0.85rem 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Agenda pública de salas
+   --------------------------------------------------------------------------
+   Es la pantalla de `src/apps-script/web/Agenda.html` traída al lenguaje de la
+   consola: mismas tarjetas de bento, mismos chips, misma densidad de tabla y la
+   misma tipografía corporativa.
+
+   Lo que **no** trae es fondo. El original es negro liso, y las barras de haces
+   que tenía aquí competían con la retícula de bloques horarios —que ya es una
+   trama de líneas de por sí— y ensuciaban la lectura. El fondo se quedó en el
+   negro de la casa y ya.
+
+   Vive fuera de la consola: no lleva rail ni encabezado de plataforma, porque
+   quien entra aquí no administra nada, sólo reserva.
+   ========================================================================== */
+
+.agenda-cuerpo {
+  min-height: 100vh;
+  /* El mismo negro del quiosco de sala, no uno parecido. */
+  background: #0a0a0c;
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font);
+}
+
+/*
+ * El fondo de haces, pieza por pieza como en el quiosco: el negro de base, el
+ * lienzo donde `haces.js` dibuja los quince haces y la viñeta que cierra las
+ * esquinas. Va fijo: la agenda se desplaza y el fondo no debe irse con
+ * ella, y `haces.js` mide el canvas contra su padre —con un padre fijo eso es
+ * el viewport y no la altura completa de una página larga.
+ */
+.agenda-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #0a0a0c;
+  pointer-events: none;
+}
+
+.agenda-fondo-negro {
+  position: absolute;
+  inset: 0;
+  background: #000000;
+}
+
+.agenda-lienzo {
+  position: absolute;
+  display: block;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+}
+
+.agenda-vineta {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 1200px 820px at 50% 40%,
+    transparent 42%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+}
+
+.agenda-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1480px, 100%);
+  margin: 0 auto;
+  padding: clamp(16px, 2.4vw, 30px) clamp(16px, 3vw, 44px) 46px;
+}
+
+/*
+ * El encabezado se sale del relleno de la envoltura para pegar la marca a la
+ * esquina, como en el quiosco: allá el bloque cuelga de un contenedor a
+ * `inset: 0` y arranca en el borde. Los márgenes negativos cancelan el relleno
+ * del `shell` y el relleno propio devuelve los ocho píxeles de aire.
+ */
+.agenda-encabezado {
+  display: flex;
+  margin: calc(-1 * clamp(16px, 2.4vw, 30px)) 0 0 calc(-1 * clamp(16px, 3vw, 44px));
+  padding: 10px clamp(16px, 3vw, 44px) 10px clamp(12px, 2vw, 28px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.agenda-marca {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* El símbolo, a la medida del quiosco: 175 × 162 y sin caja alrededor. */
+.agenda-marca-simbolo {
+  position: relative;
+  width: clamp(104px, 12vw, 175px);
+  height: auto;
+  flex: none;
+  object-fit: contain;
+}
+
+/* El halo azul que el quiosco pone detrás del bloque de marca. */
+.agenda-marca-halo {
+  position: absolute;
+  width: 297px;
+  height: 185px;
+  inset: -4px auto auto 26px;
+  max-width: 100%;
+  background: radial-gradient(circle, rgba(63, 109, 163, 0.45), transparent 70%);
+  border-radius: 50%;
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.agenda-marca-texto {
+  position: relative;
+  line-height: 1.15;
+}
+
+.agenda-marca strong {
+  display: block;
+  color: #f5f6f8;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.agenda-marca-texto span {
+  display: block;
+  color: rgba(235, 238, 242, 0.55);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.agenda-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin: 0;
+  padding: 0 14px;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  color: var(--kcm-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.agenda-sync-punto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kcm-ok);
+  box-shadow: 0 0 10px var(--kcm-ok);
+}
+
+.agenda-hero {
+  max-width: 880px;
+  padding: clamp(10px, 2vw, 22px) 0 26px;
+}
+
+.agenda-eyebrow {
+  margin: 0 0 8px;
+  color: var(--kcm-brand);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.agenda-hero h1 {
+  max-width: 780px;
+  margin: 0;
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font-display);
+  font-size: clamp(1.7rem, 3vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.agenda-workspace {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(330px, 0.75fr);
+  align-items: start;
+}
+
+.agenda-panel {
+  padding: clamp(1.1rem, 2.2vw, 1.6rem);
+  overflow: hidden;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.agenda-panel-cabeza {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--kcm-space-3);
+}
+
+.agenda-panel-cabeza h2,
+.agenda-reserva h2 {
+  margin: 0 0 0.3rem;
+  color: var(--kcm-ink);
+  font-size: 1.14rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.agenda-panel-cabeza p,
+.agenda-reserva > p {
+  margin: 0;
+  color: var(--kcm-muted);
+  font-size: 0.85rem;
+}
+
+.agenda-fecha-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.agenda-fecha-tools input[type="date"] {
+  width: auto;
+  padding: 0.44rem 0.7rem;
+  font-size: 0.84rem;
+}
+
+.agenda-icono,
+.agenda-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 0.75rem;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: 11px;
+  color: var(--kcm-ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.agenda-icono:hover,
+.agenda-ghost:hover {
+  background: var(--bento-mosaico-activo);
+  border-color: var(--bento-borde-vivo);
+  color: var(--kcm-ink);
+}
+
+/* Las salas, una tarjeta por sala con su tira de bloques. */
+.agenda-salas {
+  display: grid;
+  gap: var(--kcm-space-3);
+}
+
+/* --------------------------------------------------------------------------
+   Cada sala lleva el color de su marca
+   --------------------------------------------------------------------------
+   La tarjeta sigue siendo de vidrio: el color no la rellena, la tiñe. Entra
+   por tres lugares y ninguno tapa el contenido —una cinta de 3px en el canto
+   superior con la paleta completa, el tinte de marca sobre todo el fondo, y el
+   punto que precede al nombre—. Así la sala se reconoce por el color antes de
+   leerla, sin perder el contraste del texto en blanco.
+
+   El tinte cubre la tarjeta entera en diagonal y baja de intensidad hacia la
+   esquina opuesta, en vez de desvanecerse a media altura como antes. La caída
+   va del tono fuerte al mismo tono casi apagado —nunca a `transparent`—: un
+   degradado hacia transparente interpola contra negro y deja una banda sucia a
+   medio camino.
+
+   Cada tarjeta declara cuatro variables y las reglas de abajo sólo las
+   sustituyen. Una sala sin paleta se queda con el azul corporativo en vez de
+   romperse. Ver `app/src/web/room-brand.ts` para el vínculo sala → clase.
+   -------------------------------------------------------------------------- */
+.agenda-sala {
+  --sala-cinta: linear-gradient(90deg, var(--kcm-brand-dark) 0%, var(--kcm-brand) 100%);
+  --sala-halo: rgba(62, 104, 153, 0.42);
+  --sala-halo-fin: rgba(62, 104, 153, 0.22);
+  --sala-borde: rgba(62, 104, 153, 0.45);
+
+  position: relative;
+  overflow: hidden;
+  padding: 0.9rem 1rem;
+  /* El tinte de opacidad media cubre la tarjeta entera en diagonal. */
+  background:
+    linear-gradient(148deg, var(--sala-halo) 0%, var(--sala-halo-fin) 100%), var(--bento-mosaico);
+  border: 1px solid var(--sala-borde);
+  border-radius: var(--kcm-radius);
+}
+
+.agenda-sala::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--sala-cinta);
+}
+
+.agenda-sala.sala-kleenex {
+  --sala-cinta: linear-gradient(90deg, #354e99 0%, #354e99 58%, #ffffff 100%);
+  --sala-halo: rgba(53, 78, 153, 0.45);
+  --sala-halo-fin: rgba(53, 78, 153, 0.22);
+  --sala-borde: rgba(53, 78, 153, 0.5);
+}
+
+.agenda-sala.sala-petalo {
+  --sala-cinta: linear-gradient(90deg, #1b2969 0%, #1e4a97 62%, #ffffff 100%);
+  --sala-halo: rgba(30, 74, 151, 0.45);
+  --sala-halo-fin: rgba(30, 74, 151, 0.22);
+  --sala-borde: rgba(30, 74, 151, 0.5);
+}
+
+.agenda-sala.sala-vogue {
+  --sala-cinta: linear-gradient(90deg, #2d144d 0%, #a8307d 42%, #f0cd46 76%, #ffffff 100%);
+  --sala-halo: rgba(168, 48, 125, 0.42);
+  --sala-halo-fin: rgba(168, 48, 125, 0.2);
+  --sala-borde: rgba(168, 48, 125, 0.5);
+}
+
+.agenda-sala.sala-marli {
+  --sala-cinta: linear-gradient(90deg, #da794a 0%, #da794a 60%, #ffffff 100%);
+  --sala-halo: rgba(218, 121, 74, 0.42);
+  --sala-halo-fin: rgba(218, 121, 74, 0.2);
+  --sala-borde: rgba(218, 121, 74, 0.5);
+}
+
+/* Delsey y Gerencia entran con degradado de opacidad media en toda la tarjeta. */
+.agenda-sala.sala-delsey {
+  --sala-cinta: linear-gradient(
+    90deg,
+    #142e7f 0%,
+    #263d75 26%,
+    #bfaf39 58%,
+    #f4ee4f 80%,
+    #ffffff 100%
+  );
+  --sala-halo: rgba(191, 175, 57, 0.38);
+  --sala-halo-fin: rgba(38, 61, 117, 0.22);
+  --sala-borde: rgba(191, 175, 57, 0.48);
+}
+
+.agenda-sala.sala-dragones {
+  --sala-cinta: linear-gradient(90deg, #912925 0%, #912925 60%, #ffffff 100%);
+  --sala-halo: rgba(145, 41, 37, 0.44);
+  --sala-halo-fin: rgba(145, 41, 37, 0.22);
+  --sala-borde: rgba(145, 41, 37, 0.52);
+}
+
+.agenda-sala.sala-gerencia {
+  --sala-cinta: linear-gradient(90deg, #364556 0%, #8a929b 52%, #0a0a0c 100%);
+  --sala-halo: rgba(54, 69, 86, 0.45);
+  --sala-halo-fin: rgba(54, 69, 86, 0.24);
+  --sala-borde: rgba(138, 146, 155, 0.45);
+}
+
+.agenda-sala-cabeza {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kcm-space-2);
+  margin-bottom: 0.6rem;
+}
+
+.agenda-sala-cabeza h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+/* El punto repite la paleta al lado del nombre. Va como pseudoelemento y no
+   como marca en el HTML porque no dice nada que el nombre no diga ya: es
+   decoración, y la accesibilidad no debe encontrárselo. */
+.agenda-sala-cabeza h3::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--sala-cinta);
+}
+
+.agenda-sala-estado {
+  color: var(--kcm-ok);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agenda-sala-estado.ocupada {
+  color: var(--kcm-warn);
+}
+
+.agenda-bloques {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+}
+
+.agenda-bloque {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.34rem 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bento-borde);
+  border-radius: 8px;
+  color: var(--kcm-muted);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+
+a.agenda-bloque:hover {
+  background: var(--kcm-brand-dark);
+  border-color: transparent;
+  color: #04101d;
+  font-weight: 700;
+}
+
+.agenda-bloque.ocupado {
+  background: var(--kcm-warn-bg);
+  border-color: rgba(255, 200, 87, 0.3);
+  color: var(--kcm-warn);
+}
+
+.agenda-bloque.pasado {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.22);
+}
+
+/* Selección por dos toques. El rango entero se tiñe para que se vea qué se
+   está por reservar antes de confirmar, y el ancla lleva además un filo, que es
+   lo único que distingue «desde aquí» de «hasta aquí» en una rejilla. */
+.agenda-bloque.elegido {
+  background: var(--bento-mosaico-activo);
+  border-color: var(--bento-borde-vivo);
+  color: var(--kcm-ink);
+  font-weight: 700;
+}
+
+.agenda-bloque.ancla {
+  background: var(--kcm-brand-dark);
+  border-color: transparent;
+  color: #04101d;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--kcm-brand-sky-soft);
+}
+
+.agenda-leyenda {
+  display: flex;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  margin: var(--kcm-space-3) 0 0;
+  color: var(--kcm-muted);
+  font-size: 0.76rem;
+}
+
+.agenda-leyenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.agenda-leyenda i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.agenda-llave-libre {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.agenda-llave-ocupada {
+  background: var(--kcm-warn);
+}
+
+.agenda-llave-pasada {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.agenda-llave-elegida {
+  background: var(--kcm-brand-dark);
+}
+
+/* El formulario de reservación. */
+.agenda-campo {
+  display: flex;
+  margin-bottom: var(--kcm-space-2);
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.agenda-dos {
+  display: grid;
+  gap: var(--kcm-space-2);
+  grid-template-columns: 1fr 1fr;
+}
+
+.agenda-primario {
+  width: 100%;
+  margin-top: var(--kcm-space-2);
+  padding: 0.7rem;
+  background: var(--kcm-brand-dark);
+  border: none;
+  border-radius: 12px;
+  color: #04101d;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.agenda-primario:hover {
+  background: #6fb2f4;
+}
+
+.agenda-privacidad {
+  margin: var(--kcm-space-2) 0 0;
+}
+
+.agenda-pie {
+  margin-top: var(--kcm-space-4);
+  color: var(--capta-tenue);
+  font-size: 0.76rem;
+  text-align: center;
+}
+
+@media (max-width: 1000px) {
+  .agenda-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ==========================================================================
+   Acceso a la plataforma
+   --------------------------------------------------------------------------
+   La puerta, y se comporta como una puerta: dos hojas que cubren la pantalla
+   —la azul con la marca, la blanca con las credenciales— y que al entrar se
+   corren hacia sus orillas dejando ver la consola.
+
+   Lo que hay detrás no es la consola de verdad: es su silueta —el lateral y tres
+   tarjetas— dibujada con cuatro rectángulos. Montar la consola real detrás de la
+   puerta obligaría a resolverla para alguien que todavía no entró.
+
+   Ya no es la pantalla del quiosco de sala. Lo era, y compartir la escena hacía
+   que la puerta de una consola de escritorio se viera como el tótem negro del
+   aula: mismo negro, mismos haces de WebGL, misma tipografía de despliegue. Con
+   el rediseño la puerta es del mismo material que lo que abre.
+   ========================================================================== */
+
+.puerta {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--kcm-canvas);
+}
+
+/* La silueta de la consola, al fondo y fija: es lo que la puerta descubre. */
+.puerta-fondo {
+  position: fixed;
+  display: grid;
+  inset: 0;
+  padding: 14px;
+  gap: 14px;
+  grid-template-columns: 244px minmax(0, 1fr);
+  pointer-events: none;
+}
+
+.puerta-fondo-lateral {
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow);
+}
+
+.puerta-fondo-lienzo {
+  display: grid;
+  gap: 14px;
+  grid-template-rows: 78px 1fr;
+}
+
+.puerta-fondo-pieza {
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow);
+}
+
+/*
+ * El marco de la puerta. Recorta a propósito: cuando las hojas se van a sus
+ * orillas quedan a ±101 % de su ancho, y sin recorte esos dos bloques cuentan
+ * como contenido del documento.
+ *
+ * `clip` y no `hidden`, y la diferencia se vio en pantalla: un contenedor
+ * `hidden` sigue siendo desplazable por programa, y el navegador lo
+ * desplaza solo para no perder de vista el elemento con el foco. Como el campo
+ * de usuario lleva `autofocus`, al correrse su hoja el navegador arrastraba
+ * 720 px la página entera detrás de ella y la consola aparecía descuadrada.
+ * `clip` no crea contenedor de desplazamiento, así que no hay nada que arrastrar.
+ */
+.puerta-hojas {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 100vh;
+  overflow: hidden;
+  overflow: clip;
+  grid-template-columns: 1.02fr 1fr;
+}
+
+/*
+ * Las dos hojas. `will-change` está a propósito: sin él la hoja azul, que lleva
+ * degradado y dos círculos difuminados, se repinta en cada cuadro del recorrido.
+ */
+.puerta-hoja {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  justify-content: center;
+  transition: transform 0.72s cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
+}
+
+.puerta-marca {
+  padding: clamp(2rem, 5.5vw, 4.5rem);
+  background: var(--kcm-gradient-brand);
+  color: #ffffff;
+}
+
+.puerta-forma {
+  padding: clamp(1.6rem, 5vw, 3.5rem);
+  overflow-y: auto;
+  background: #ffffff;
+  align-items: center;
+}
+
+.puerta-abierta .puerta-marca {
+  transform: translateX(-101%);
+}
+
+.puerta-abierta .puerta-forma {
+  transform: translateX(101%);
+}
+
+/* Dos halos de luz sobre el azul. No comunican nada: son la caída de la luz. */
+.puerta-halo {
+  position: absolute;
+  width: 34rem;
+  height: 34rem;
+  inset: -12rem auto auto -14rem;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.22), transparent 68%);
+  pointer-events: none;
+}
+
+.puerta-halo-bajo {
+  inset: auto -12rem -16rem auto;
+  width: 30rem;
+  height: 30rem;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.16), transparent 66%);
+}
+
+.puerta-marca-bloque {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/*
+ * El símbolo en blanco. `brightness(0)` deja todos los píxeles opacos en negro
+ * conservando el canal alfa, e `invert(1)` los sube a blanco: el contorno azul
+ * del archivo queda blanco sin necesidad de un segundo archivo que mantener.
+ */
+.puerta-simbolo {
+  width: clamp(52px, 6vw, 74px);
+  height: auto;
+  flex: none;
+  filter: brightness(0) invert(1);
+}
+
+.puerta-marca-texto {
+  display: grid;
+  line-height: 1.18;
+}
+
+.puerta-marca-texto strong {
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.puerta-marca-texto span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.puerta-titulo {
+  position: relative;
+  margin: clamp(1.8rem, 4vw, 3rem) 0 0;
+  max-width: 22ch;
+  font-family: var(--kcm-font-display);
+  font-size: clamp(1.9rem, 4vw, 3.1rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.puerta-lede {
+  position: relative;
+  margin: 1rem 0 0;
+  max-width: 42ch;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.puerta-sello {
+  position: relative;
+  margin: clamp(1.8rem, 4vw, 3rem) 0 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.puerta-tarjeta {
+  width: min(400px, 100%);
+  margin: 0 auto;
+}
+
+.puerta-titulo-forma {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: clamp(1.35rem, 2.4vw, 1.7rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.puerta-lede-forma {
+  margin: 0.5rem 0 clamp(1.4rem, 3vw, 2rem);
+  color: var(--kcm-muted);
+  font-size: 0.88rem;
+}
+
+.puerta-formulario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kcm-space-3);
+}
+
+.puerta-campo {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.puerta-campo span {
+  color: var(--kcm-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.puerta-campo input {
+  padding: 0.8rem 1rem;
+  background: var(--bento-mosaico);
+  border-radius: 14px;
+  font-size: 0.95rem;
+}
+
+/*
+ * El campo rechazado. El sacudón es de la clase y no de un guion: basta con que
+ * el campo la traiga puesta cuando la respuesta es un rechazo.
+ */
+.campo-rechazado {
+  border-color: rgba(179, 38, 30, 0.55);
+  animation: puertaSacudon 0.4s ease;
+}
+
+@keyframes puertaSacudon {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-7px);
+  }
+
+  75% {
+    transform: translateX(7px);
+  }
+}
+
+.puerta-boton {
+  margin-top: 0.3rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  font-size: 0.95rem;
+}
+
+.puerta-ayuda {
+  margin: 0;
+  color: var(--kcm-muted);
+  font-size: 0.8rem;
+}
+
+.puerta-ayuda-error {
+  color: var(--kcm-danger);
+  font-weight: 700;
+}
+
+/*
+ * Bajo 860 px no hay dos hojas que abrir: la marca se vuelve una franja arriba
+ * y el formulario ocupa el resto. La animación sigue existiendo, en vertical,
+ * porque el gesto —lo que cubría la pantalla se retira— es el mismo.
+ */
+@media (max-width: 860px) {
+  .puerta-fondo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .puerta-fondo-lateral {
+    display: none;
+  }
+
+  .puerta-hojas {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .puerta-marca {
+    padding: 1.6rem 1.4rem 2rem;
+  }
+
+  .puerta-titulo {
+    margin-top: 1.2rem;
+  }
+
+  .puerta-lede,
+  .puerta-sello {
+    display: none;
+  }
+
+  .puerta-abierta .puerta-marca {
+    transform: translateY(-101%);
+  }
+
+  .puerta-abierta .puerta-forma {
+    transform: translateY(101%);
+  }
+}
+
+/* El formulario de cancelación vive dentro de una celda: en línea y compacto. */
+.formulario-cancelar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.formulario-cancelar input {
+  width: auto;
+  max-width: 11rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * Fichas de conteo
+ *
+ * Son los tableros que contestan «¿cuadra?» de un vistazo: la concordancia DNC
+ * y el cuadre del padrón semanal. Las pantallas ya las pedían por clase, pero
+ * la hoja nunca las tuvo y salían como una lista de renglones sueltos.
+ *
+ * La rejilla es automática a propósito. El número de fichas cambia según la
+ * pantalla —siete en la concordancia, once en el padrón— y fijar columnas
+ * obligaría a retocar la hoja cada vez que se agrega una medición.
+ * -------------------------------------------------------------------------- */
+.rejilla-fichas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: var(--kcm-space-2);
+  margin: var(--kcm-space-3) 0;
+}
+
+.ficha {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: var(--kcm-space-2) var(--kcm-space-3);
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-left: 3px solid var(--kcm-brand-sky);
+  border-radius: var(--kcm-radius-sm);
+}
+
+.ficha-valor {
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ficha-etiqueta {
+  color: var(--kcm-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Sólo se enciende cuando el número que le duele a la pantalla no es cero: una
+ * ficha en rojo permanente deja de leerse a la semana. */
+.ficha-alerta {
+  background: var(--kcm-danger-bg);
+  border-color: rgba(185, 28, 28, 0.28);
+  border-left-color: var(--kcm-danger);
+}
+
+.ficha-alerta .ficha-valor {
+  color: var(--kcm-danger);
+}
+
+/* Renglón explicativo bajo un tablero o una tabla. Lo usan las pantallas de
+ * cobertura, del padrón y de la conexión con Excel. */
+.texto-nota {
+  margin: var(--kcm-space-2) 0 0;
+  max-width: 74ch;
+  color: var(--kcm-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.texto-nota strong {
+  color: var(--kcm-ink);
+}
+
+/* ==========================================================================
+   Gráfica de telaraña del avance DNC
+   --------------------------------------------------------------------------
+   El dibujo se compone en el servidor y llega como SVG en línea: la política
+   de contenido declara `default-src 'none'` y ninguna biblioteca de gráficas
+   podría cargarse. Lo «interactivo» vive aquí y en los `<title>` del marcado:
+   el globo nativo del navegador al pasar el puntero, y este realce.
+
+   Es la **única pieza de vidrio líquido** de la consola. El resto del rediseño
+   es plano a propósito, porque el vidrio competía con las tablas; aquí no hay
+   tabla que leer sino una figura, y el relieve la ayuda: el disco translúcido
+   despega la telaraña del fondo y las dos manchas de color que se ven por
+   detrás le dan profundidad sin añadir una sola línea más al dibujo.
+
+   El `viewBox` es ancho y lleva los rótulos dentro. Antes era cuadrado con
+   `overflow: visible`, y los rótulos de la izquierda se pintaban encima del
+   menú lateral y los de la derecha encima del resumen. Aquí ya no se declara
+   `overflow`: el recorte por omisión del `<svg>` vuelve a ser red de seguridad.
+   ========================================================================== */
+
+.radar-envoltura {
+  position: relative;
+  display: flex;
+  padding: clamp(0.7rem, 1.8vw, 1.2rem) clamp(0.8rem, 2vw, 1.4rem);
+  overflow: hidden;
+  align-items: center;
+  gap: var(--kcm-space-4);
+  flex-wrap: wrap;
+  justify-content: space-between;
+  background: var(--vidrio-fondo);
+  border: 1px solid var(--vidrio-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--vidrio-sombra);
+  backdrop-filter: var(--vidrio-desenfoque);
+  -webkit-backdrop-filter: var(--vidrio-desenfoque);
+}
+
+/*
+ * El destello diagonal. Va encima de todo y sin capturar el puntero: es la luz
+ * de una ventana sobre la lámina, y es lo que termina de convencer de que hay
+ * cristal y no un rectángulo de color claro.
+ */
+.radar-envoltura::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10%;
+  background: var(--vidrio-reflejo);
+  pointer-events: none;
+}
+
+/*
+ * El margen izquierdo es el ajuste que pidió la revisión: separa el dibujo del
+ * canto del panel sin centrarlo. Centrarlo dejaría el resumen colgando en el
+ * aire; así el dibujo respira y el resumen se queda pegado al borde derecho.
+ */
+.radar {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+  height: auto;
+  margin-left: clamp(0px, 1.6vw, 28px);
+  flex: 1 1 420px;
+}
+
+/* El disco de vidrio que va detrás de la telaraña. */
+.radar-lente {
+  fill: url(#radar-vidrio);
+}
+
+.radar-lente-filo {
+  fill: none;
+  stroke: url(#radar-canto);
+  stroke-width: 1.4;
+}
+
+.radar-canto-luz {
+  stop-color: #ffffff;
+  stop-opacity: 0.95;
+}
+
+.radar-canto-sombra {
+  stop-color: var(--kcm-brand);
+  stop-opacity: 0.26;
+}
+
+/* El reflejo alargado de arriba a la izquierda: la luz sobre el cristal. */
+.radar-lente-brillo {
+  fill: var(--vidrio-brillo);
+  opacity: 0.62;
+  filter: url(#radar-difuminado);
+}
+
+/*
+ * La cúpula. Oscurece hacia el canto en vez de desvanecerse: un disco que se
+ * aclara del centro al borde parece un halo; uno que se oscurece parece vidrio.
+ */
+.radar-vidrio-alto {
+  stop-color: #ffffff;
+  stop-opacity: 0.86;
+}
+
+.radar-vidrio-medio {
+  stop-color: #ffffff;
+  stop-opacity: 0.28;
+}
+
+.radar-vidrio-bajo {
+  stop-color: var(--kcm-brand-sky);
+  stop-opacity: 0.1;
+}
+
+.radar-vidrio-canto {
+  stop-color: var(--kcm-brand);
+  stop-opacity: 0.17;
+}
+
+.radar-anillo {
+  fill: none;
+  stroke: var(--bento-borde);
+  stroke-width: 1;
+}
+
+.radar-eje {
+  stroke: var(--bento-borde);
+  stroke-width: 1;
+}
+
+/* La silueta, dos veces: primero difuminada como halo y encima nítida. */
+.radar-halo {
+  fill: var(--kcm-brand);
+  opacity: 0.28;
+  filter: url(#radar-difuminado);
+}
+
+.radar-area {
+  fill: url(#radar-relleno);
+  stroke: url(#radar-filo);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+
+.radar-relleno-alto {
+  stop-color: var(--kcm-brand-sky);
+  stop-opacity: 0.58;
+}
+
+.radar-relleno-medio {
+  stop-color: var(--kcm-brand-bright);
+  stop-opacity: 0.4;
+}
+
+.radar-relleno-bajo {
+  stop-color: var(--kcm-brand-dark);
+  stop-opacity: 0.2;
+}
+
+.radar-filo-claro {
+  stop-color: var(--kcm-brand-sky);
+}
+
+.radar-filo-marca {
+  stop-color: var(--kcm-brand);
+}
+
+.radar-filo-hondo {
+  stop-color: var(--kcm-brand-dark);
+}
+
+/* El halo del vértice hereda su color del estado y sólo enciende al pasar. */
+.radar-aureola {
+  fill: currentcolor;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.radar-punto {
+  fill: currentcolor;
+  stroke: #ffffff;
+  stroke-width: 1.6;
+  transition: r 0.15s ease;
+}
+
+.radar-etiqueta {
+  fill: var(--kcm-muted);
+  font-family: var(--kcm-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+/* El vértice entero responde al puntero, no sólo el círculo: cuatro píxeles y
+ * medio de radio son un blanco imposible de acertar. */
+.radar-vertice:hover .radar-punto {
+  r: 7;
+}
+
+.radar-vertice:hover .radar-aureola {
+  opacity: 0.28;
+}
+
+.radar-vertice:hover .radar-etiqueta {
+  fill: var(--kcm-ink);
+}
+
+/*
+ * El color del estado se pone una sola vez, en el grupo, y el punto y su halo
+ * lo heredan con `currentcolor`.
+ *
+ * El valor por omisión va antes que los estados a propósito: comparten
+ * especificidad y gana el último declarado.
+ */
+.radar-vertice {
+  color: var(--kcm-brand);
+}
+
+.radar-estado-completado {
+  color: var(--kcm-ok);
+}
+
+.radar-estado-reforzar {
+  color: var(--kcm-danger);
+}
+
+.radar-estado-programado {
+  color: var(--kcm-warn);
+}
+
+.radar-estado-pendiente {
+  color: var(--capta-tenue);
+}
+
+.radar-resumen {
+  position: relative;
+  display: grid;
+  margin: 0;
+  gap: var(--kcm-space-3);
+}
+
+.radar-resumen dt {
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.radar-resumen dd {
+  margin: 0;
+  color: var(--kcm-brand);
+  font-family: var(--kcm-font-mono);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.radar-lista {
+  display: grid;
+  margin: var(--kcm-space-3) 0 0;
+  padding: 0;
+  gap: 0.3rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  list-style: none;
+}
+
+.radar-lista li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--kcm-space-2);
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--bento-borde);
+}
+
+.radar-lista-curso {
+  color: var(--kcm-ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/*
+ * El estado en la lista. Va después de los colores de vértice porque comparte
+ * especificidad con ellos: sin esto, `.radar-estado-pendiente` teñiría también
+ * el texto de la lista.
+ */
+.radar-lista-estado {
+  color: var(--kcm-muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.radar-lista .radar-estado-completado {
+  color: var(--kcm-ok);
+}
+
+.radar-lista .radar-estado-reforzar {
+  color: var(--kcm-danger);
+}
+
+.radar-lista .radar-estado-programado {
+  color: var(--kcm-warn);
+}
+
+/* ==========================================================================
+   El tablero de inicio
+   --------------------------------------------------------------------------
+   Inicio dejó de ser un índice. Antes era una retícula con las diez funciones
+   de la plataforma en recuadros y su estado de disponibilidad al lado —un menú
+   dibujado dos veces, porque el lateral ya lleva a los mismos sitios—. Ahora es
+   lo que se mira al llegar por la mañana: qué hay hoy, qué está abierto y qué
+   está esperando.
+
+   Ninguna de estas cifras es de adorno: todas salen de los servicios que la
+   consola ya tiene. Cuando la corrida usa repositorios en memoria salen en
+   cero, que es la verdad de esa corrida.
+   ========================================================================== */
+
+.tablero-columnas {
+  display: grid;
+  gap: var(--kcm-space-3);
+  grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.tablero-pila {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--kcm-space-3);
+}
+
+@media (max-width: 1180px) {
+  .tablero-columnas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * La tarjeta destacada, en azul lleno. Es la única superficie de color del
+ * tablero, y por eso lleva lo que hay que hacer a continuación y no un dato
+ * más: si todo fuera azul, nada lo sería.
+ */
+.destacado {
+  position: relative;
+  padding: clamp(1.3rem, 2.4vw, 1.75rem);
+  overflow: hidden;
+  background: var(--kcm-gradient-brand);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow-lg);
+  color: #ffffff;
+}
+
+.destacado-halo {
+  position: absolute;
+  width: 22rem;
+  height: 22rem;
+  inset: -11rem -8rem auto auto;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.22), transparent 68%);
+  pointer-events: none;
+}
+
+.destacado-rotulo {
+  position: relative;
+  display: block;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.destacado-titulo {
+  position: relative;
+  margin: 0.5rem 0 0.4rem;
+  color: #ffffff;
+  font-size: 1.22rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.destacado-texto {
+  position: relative;
+  margin: 0;
+  max-width: 46ch;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.87rem;
+  line-height: 1.55;
+}
+
+.destacado-acciones {
+  position: relative;
+  display: flex;
+  margin-top: 1.15rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.destacado-boton {
+  padding: 0.5rem 1.05rem;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--kcm-radius-pill);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.18s ease;
+}
+
+.destacado-boton:hover {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+/* La lista del tablero: una fila por cosa, con su sello a la izquierda. */
+.lista-tablero {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 0.45rem;
+  list-style: none;
+}
+
+.lista-fila {
+  display: flex;
+  padding: 0.6rem 0.8rem;
+  align-items: center;
+  gap: 0.8rem;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: 14px;
+}
+
+.lista-sello {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  background: var(--kcm-brand-light);
+  border-radius: 12px;
+  color: var(--kcm-brand);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.lista-cuerpo {
+  min-width: 0;
+  flex: 1;
+}
+
+.lista-titulo {
+  display: block;
+  overflow: hidden;
+  color: var(--kcm-ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lista-pista {
+  display: block;
+  color: var(--kcm-muted);
+  font-size: 0.75rem;
+}
+
+/* Cabecera de sección con su acción a la derecha, como en la referencia. */
+.cabecera-fila {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.cabecera-fila > * {
+  min-width: 0;
+}
+
+.enlace-seccion {
+  color: var(--kcm-brand);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.enlace-seccion:hover {
+  text-decoration: underline;
+}
+
+/*
+ * Sólo para lectores de pantalla. Se usa donde el rótulo visible es un icono:
+ * `clip-path` en vez de `display: none`, que lo sacaría del árbol accesible.
+ */
+.solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* El formulario que vive dentro de una celda de tabla: en línea y compacto. */
+.formulario-en-linea {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/*
+ * Piezas sueltas que las pantallas usaban sin que la hoja las declarara. Una
+ * clase inventada no rompe nada visible: el elemento sale sin estilo y se nota
+ * tarde. Van aquí, con su nombre original, en vez de renombrarlas en la vista.
+ */
+
+/* Casilla con su rótulo al lado, dentro de un formulario en retícula. */
+.opcion {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.opcion input {
+  width: auto;
+  margin: 0;
+}
+
+/* El bloque de insignias y puesto de la ficha del trabajador. */
+.perfil-datos-principales {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* ==========================================================================
+   Pasos de una operación
+   --------------------------------------------------------------------------
+   Para cuando una tarjeta ofrece varias acciones y el orden entre ellas
+   importa. Nació en el lote de DC-3, donde eran tres `<form>` sueltos uno
+   debajo de otro: sin separación se encimaban, y con el mismo aspecto los tres
+   no había forma de saber cuál había que oprimir primero ni cuál firmaba
+   documentos incompletos.
+
+   Cada paso lleva su número, su nombre, una línea de qué hace y su botón. El
+   número no es decoración: es la respuesta a «¿por dónde empiezo?».
+   ========================================================================== */
+
+.pasos {
+  display: flex;
+  margin: 0 0 var(--kcm-space-3);
+  padding: 0;
+  flex-direction: column;
+  gap: 0.6rem;
+  list-style: none;
+  counter-reset: paso;
+}
+
+.paso {
+  display: flex;
+  padding: 0.85rem 1rem;
+  align-items: center;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius);
+}
+
+.paso-numero {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  background: var(--kcm-gradient-brand);
+  border-radius: 50%;
+  box-shadow: var(--marca-halo);
+  color: #ffffff;
+  font-family: var(--kcm-font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.paso-cuerpo {
+  min-width: 12rem;
+  flex: 1;
+}
+
+.paso-titulo {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.paso-texto {
+  margin: 0.15rem 0 0;
+  max-width: 64ch;
+  color: var(--kcm-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+/* El formulario del paso es sólo el envoltorio del botón: no ocupa renglón. */
+.paso-accion {
+  display: flex;
+  flex: none;
+  align-items: center;
+}

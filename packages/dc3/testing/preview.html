@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Banco de pruebas DC-3 · KCM</title>
+<style>
+  :root{color-scheme:light dark;--fondo:#0f1b2d;--panel:#16263c;--linea:#27405f;--texto:#eef3f9;--tenue:#9fb3cc;--acento:#4da3ff;--ok:#3ecf8e;--alerta:#ffb454;--error:#ff6b6b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--texto);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+  header{padding:1.1rem 1.4rem;border-bottom:1px solid var(--linea);background:var(--panel)}
+  header h1{margin:0 0 .35rem;font-size:1.15rem}
+  main{padding:1.2rem 1.4rem 3rem;max-width:1100px;margin:0 auto}
+  section{margin:0 0 1.6rem;border:1px solid var(--linea);border-radius:10px;background:var(--panel);overflow:hidden}
+  section>h2{margin:0;padding:.75rem 1rem;font-size:1rem;border-bottom:1px solid var(--linea);background:rgba(255,255,255,.02)}
+  section>div{padding:1rem}
+  p{margin:.4rem 0}
+  .tenue{color:var(--tenue);font-size:.86rem}
+  .insignia{display:inline-block;padding:.12rem .5rem;border-radius:999px;font-size:.75rem;border:1px solid var(--linea);background:rgba(77,163,255,.12);color:var(--acento)}
+  .insignia.ok{background:rgba(62,207,142,.14);color:var(--ok);border-color:rgba(62,207,142,.4)}
+  .insignia.alerta{background:rgba(255,180,84,.14);color:var(--alerta);border-color:rgba(255,180,84,.4)}
+  .insignia.error{background:rgba(255,107,107,.14);color:var(--error);border-color:rgba(255,107,107,.4)}
+  .cursos{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .curso{border:1px solid var(--linea);border-radius:8px;padding:.8rem}
+  .curso h3{margin:0 0 .1rem;font-size:.95rem}
+  label{display:block;margin:.6rem 0 .15rem;font-size:.8rem;color:var(--tenue)}
+  input,select{width:100%;padding:.42rem .55rem;border-radius:6px;border:1px solid var(--linea);background:#0d1727;color:var(--texto);font:inherit;font-size:.9rem}
+  input:focus,select:focus{outline:2px solid var(--acento);outline-offset:-1px}
+  .acciones{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem}
+  button{padding:.5rem .9rem;border-radius:7px;border:1px solid var(--acento);background:var(--acento);color:#08131f;font:inherit;font-weight:600;cursor:pointer}
+  button.secundario{background:transparent;color:var(--acento)}
+  button:disabled{opacity:.5;cursor:progress}
+  .tarjetas{display:grid;gap:.7rem;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:.2rem 0 1rem}
+  .tarjeta{border:1px solid var(--linea);border-radius:8px;padding:.6rem .75rem}
+  .tarjeta b{display:block;font-size:1.5rem;line-height:1.2;font-variant-numeric:tabular-nums}
+  .tarjeta span{font-size:.78rem;color:var(--tenue)}
+  table{width:100%;border-collapse:collapse;font-size:.86rem}
+  th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--linea);vertical-align:top}
+  th{color:var(--tenue);font-weight:600}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .desborde{overflow-x:auto}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;color:var(--tenue);word-break:break-all}
+  .aviso{border-left:3px solid var(--alerta);padding:.5rem .75rem;background:rgba(255,180,84,.08);border-radius:0 6px 6px 0;margin:.6rem 0}
+  .aviso.malo{border-color:var(--error);background:rgba(255,107,107,.08)}
+  .oculto{display:none}
+  a.descarga{color:var(--acento)}
+  .visor{width:100%;height:min(78vh,900px);border:1px solid var(--linea);border-radius:8px;background:#fff;margin:.4rem 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Banco de pruebas DC-3 <span class="insignia" id="modo">cargando…</span></h1>
+  <p class="tenue" id="contexto">Servidor local de sólo lectura sobre las fuentes reales; la emisión con escritura ocurre en un proyecto sintético desechable.</p>
+</header>
+
+<main>
+  <section>
+    <h2>1 · Metadatos de ensayo por curso</h2>
+    <div>
+      <p class="tenue">Se aplican en memoria. No modifican la configuración privada ni emiten nada: para aprobar de verdad, captúrelos en <code>referencias/privado/dc3-config.json</code>.</p>
+      <div class="cursos" id="cursos"></div>
+      <div class="cursos" style="margin-top:.9rem">
+        <div class="curso">
+          <h3>Firmas (opcional)</h3>
+          <p class="tenue">Vacías conservan las que ya trae la plantilla oficial.</p>
+          <label for="firma-instructor">Instructor</label>
+          <input id="firma-instructor" autocomplete="off">
+          <label for="firma-patron">Representante del patrón</label>
+          <input id="firma-patron" autocomplete="off">
+          <label for="firma-trabajadores">Representante de los trabajadores</label>
+          <input id="firma-trabajadores" autocomplete="off">
+        </div>
+      </div>
+      <div class="acciones">
+        <button class="secundario" id="btn-ejemplo">Rellenar con valores de ensayo</button>
+        <button class="secundario" id="btn-limpiar">Limpiar</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Plan sobre las fuentes reales (sólo lectura)</h2>
+    <div>
+      <p class="tenue">Corre el mismo punto de entrada que <code>npm run dc3:plan</code> y publica únicamente conteos y hashes.</p>
+      <div class="acciones"><button id="btn-plan">Recalcular plan</button></div>
+      <div id="plan-salida" class="oculto"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Vista previa de la constancia (PDF)</h2>
+    <div>
+      <p class="tenue">Compone el PDF que se entrega al trabajador con una identidad inventada y los metadatos capturados arriba. Las leyendas son las del formato oficial; los catálogos del reverso no forman parte del documento.</p>
+      <label for="curso-muestra">Curso</label>
+      <select id="curso-muestra"></select>
+      <div class="acciones"><button id="btn-muestra">Generar vista previa</button></div>
+      <div id="muestra-salida" class="oculto"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 · Ensayo de emisión (proyecto sintético)</h2>
+    <div>
+      <p class="tenue">Emite constancias completas contra un padrón inventado en una carpeta temporal, corre dos veces y compara: la segunda vuelta debe reportar repetidas y cero nuevas.</p>
+      <div class="acciones"><button id="btn-ensayo">Ejecutar ensayo</button></div>
+      <div id="ensayo-salida" class="oculto"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const estado = { cursos: [], plantilla: null };
+
+function nodo(etiqueta, texto, clase) {
+  const elemento = document.createElement(etiqueta);
+  if (texto !== undefined && texto !== null) elemento.textContent = String(texto);
+  if (clase) elemento.className = clase;
+  return elemento;
+}
+
+function tarjeta(valor, titulo) {
+  const contenedor = nodo("div", null, "tarjeta");
+  contenedor.append(nodo("b", valor), nodo("span", titulo));
+  return contenedor;
+}
+
+function tarjetas(pares) {
+  const contenedor = nodo("div", null, "tarjetas");
+  for (const [valor, titulo] of pares) contenedor.append(tarjeta(valor, titulo));
+  return contenedor;
+}
+
+function tabla(encabezados, filas) {
+  const envoltura = nodo("div", null, "desborde");
+  const elemento = document.createElement("table");
+  const cabecera = document.createElement("tr");
+  for (const encabezado of encabezados) cabecera.append(nodo("th", encabezado));
+  elemento.append(cabecera);
+  for (const fila of filas) {
+    const renglon = document.createElement("tr");
+    for (const [indice, celda] of fila.entries()) {
+      const columna = nodo("td", celda, indice > 0 ? "num" : null);
+      renglon.append(columna);
+    }
+    elemento.append(renglon);
+  }
+  envoltura.append(elemento);
+  return envoltura;
+}
+
+function aviso(mensaje, malo) {
+  return nodo("p", mensaje, malo ? "aviso malo" : "aviso");
+}
+
+function conteos(objeto) {
+  const entradas = Object.entries(objeto || {});
+  return entradas.length ? entradas.map(([clave, valor]) => `${clave}: ${valor}`).join(" · ") : "ninguno";
+}
+
+function urlDeArchivo(base64, tipo = "application/pdf") {
+  const bytes = Uint8Array.from(atob(base64), (caracter) => caracter.charCodeAt(0));
+  return URL.createObjectURL(new Blob([bytes], { type: tipo }));
+}
+
+function descarga(nombre, base64, texto, tipo) {
+  const enlace = nodo("a", texto, "descarga");
+  enlace.href = urlDeArchivo(base64, tipo);
+  enlace.download = nombre;
+  return enlace;
+}
+
+function visorPdf(base64) {
+  const marco = document.createElement("iframe");
+  marco.className = "visor";
+  marco.title = "Vista previa de la constancia DC-3";
+  marco.src = urlDeArchivo(base64);
+  return marco;
+}
+
+function metadatosCapturados() {
+  const overrides = {};
+  for (const curso of estado.cursos) {
+    overrides[curso.courseId] = {
+      durationHours: document.getElementById(`duracion-${curso.courseId}`).value,
+      thematicArea: document.getElementById(`area-${curso.courseId}`).value,
+      trainingAgent: document.getElementById(`agente-${curso.courseId}`).value
+    };
+  }
+  return {
+    overrides,
+    signatures: {
+      instructor: document.getElementById("firma-instructor").value,
+      employerRepresentative: document.getElementById("firma-patron").value,
+      workerRepresentative: document.getElementById("firma-trabajadores").value
+    }
+  };
+}
+
+async function llamar(ruta, cuerpo) {
+  const respuesta = await fetch(ruta, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo)
+  });
+  const datos = await respuesta.json();
+  if (!respuesta.ok || !datos.ok) throw new Error(datos?.error?.message || `Error ${respuesta.status}`);
+  return datos.data;
+}
+
+async function conBoton(boton, destino, trabajo) {
+  boton.disabled = true;
+  destino.classList.remove("oculto");
+  destino.replaceChildren(nodo("p", "Procesando…", "tenue"));
+  try {
+    destino.replaceChildren(...await trabajo());
+  } catch (error) {
+    destino.replaceChildren(aviso(error.message, true));
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+function pintarCursos(datos) {
+  const contenedor = document.getElementById("cursos");
+  const selector = document.getElementById("curso-muestra");
+  contenedor.replaceChildren();
+  selector.replaceChildren();
+  for (const curso of datos.courses) {
+    const tarjetaCurso = nodo("div", null, "curso");
+    tarjetaCurso.append(nodo("h3", curso.courseId));
+    tarjetaCurso.append(nodo("p", curso.dc3Name, "tenue"));
+    const fuente = nodo("p", null, "tenue");
+    fuente.append(nodo("span", curso.sourceKind, "insignia"));
+    tarjetaCurso.append(fuente);
+    for (const [prefijo, etiqueta, valor, tipo] of [
+      ["duracion", "Duración en horas", curso.durationHours ?? "", "number"],
+      ["area", "Área temática", curso.thematicArea, "text"],
+      ["agente", "Agente capacitador", curso.trainingAgent, "text"]
+    ]) {
+      const identificador = `${prefijo}-${curso.courseId}`;
+      const etiquetaNodo = nodo("label", etiqueta);
+      etiquetaNodo.htmlFor = identificador;
+      const campo = document.createElement("input");
+      campo.id = identificador;
+      campo.type = tipo;
+      campo.value = valor;
+      campo.autocomplete = "off";
+      if (tipo === "number") {
+        campo.min = "1";
+        campo.max = "999";
+      }
+      tarjetaCurso.append(etiquetaNodo, campo);
+    }
+    contenedor.append(tarjetaCurso);
+    const opcion = document.createElement("option");
+    opcion.value = curso.courseId;
+    opcion.textContent = curso.courseId;
+    selector.append(opcion);
+  }
+}
+
+function pintarEncabezado(datos) {
+  const modo = document.getElementById("modo");
+  modo.textContent = datos.realSourcesAvailable ? "fuentes reales presentes" : "sólo ensayo sintético";
+  modo.className = datos.realSourcesAvailable ? "insignia ok" : "insignia alerta";
+  document.getElementById("contexto").textContent =
+    `Configuración ${datos.configPath} · versión ${datos.configVersion} · corte ${datos.cutoffDate} · ` +
+    `plantilla ${datos.template.origin.toLowerCase()} (${datos.template.name})`;
+  document.getElementById("firma-instructor").value = datos.signatures.instructor;
+  document.getElementById("firma-patron").value = datos.signatures.employerRepresentative;
+  document.getElementById("firma-trabajadores").value = datos.signatures.workerRepresentative;
+}
+
+function resumenPlan(datos) {
+  const piezas = [];
+  const listo = datos.readiness.metadataApproved;
+  const encabezado = nodo("p");
+  encabezado.append(nodo("span", listo ? "metadatos completos" : "metadatos pendientes", `insignia ${listo ? "ok" : "alerta"}`));
+  encabezado.append(nodo("span", ` ${datos.elapsedMs} ms`, "tenue"));
+  piezas.push(encabezado);
+  piezas.push(tarjetas([
+    [datos.detected, "detectadas"],
+    [datos.ready, "listas para emitir"],
+    [datos.blocked, "bloqueadas"],
+    [datos.readiness.emitOnApproval, "saldrán al aprobar"],
+    [datos.readiness.blockedBySource, "bloqueadas por origen"]
+  ]));
+  piezas.push(tabla(
+    ["Curso", "Detectadas", "Listas", "Bloqueadas", "Columnas fuente"],
+    datos.courses.map((curso) => [
+      curso.courseId, curso.detected, curso.ready, curso.blocked, curso.matchedSourceKeyCount
+    ])
+  ));
+  piezas.push(tabla(
+    ["Cobertura", "Trabajadores"],
+    [
+      ["con constancia detectada", datos.coverage.workersDetected],
+      ["con un curso", datos.coverage.withOneDocument],
+      ["con dos cursos", datos.coverage.withTwoDocuments],
+      ["con tres cursos", datos.coverage.withThreeDocuments]
+    ]
+  ));
+  piezas.push(nodo("p", `Motivos de bloqueo · ${conteos(datos.issues)}`, "tenue"));
+  if (datos.readiness.coursesPendingMetadata.length) {
+    piezas.push(aviso(
+      "Faltan metadatos en: " + datos.readiness.coursesPendingMetadata
+        .map((curso) => `${curso.courseId} (${curso.missingMetadata.length})`).join(", ")
+    ));
+  }
+  const fuentes = nodo("p", null, "tenue");
+  fuentes.append(nodo("code",
+    `matriz ${datos.sources.matrixSha256.slice(0, 16)}… · padrón ${datos.sources.rosterSha256.slice(0, 16)}… · ` +
+    `plantilla ${datos.sources.templateSha256.slice(0, 16)}… · ` +
+    `${datos.sources.matrixEmployees} en matriz · ${datos.sources.validActiveRosterEmployees} identidades completas`
+  ));
+  piezas.push(fuentes);
+  return piezas;
+}
+
+function resumenMuestra(datos) {
+  const campos = datos.fields;
+  const piezas = [nodo("p", `Leyendas oficiales tomadas de ${datos.template.name}`, "tenue")];
+  piezas.push(visorPdf(datos.document.base64));
+  const descargas = nodo("p");
+  descargas.append(descarga(datos.document.name, datos.document.base64, `Descargar ${datos.document.name}`));
+  descargas.append(nodo("span", ` · ${datos.document.byteSize} bytes · ${datos.document.sha256.slice(0, 16)}…`, "tenue"));
+  piezas.push(descargas);
+  piezas.push(tabla(["Campo del formato", "Valor impreso"], [
+    ["Nombre del trabajador", campos.workerName],
+    ["CURP", campos.curp],
+    ["Puesto", campos.position],
+    ["Ocupación específica", campos.occupation || "(vacía: falta mapeo autorizado)"],
+    ["Nombre del curso", campos.courseName],
+    ["Duración en horas", campos.durationHours],
+    ["Periodo", `${campos.startDate} a ${campos.endDate}`],
+    ["Área temática", campos.thematicArea],
+    ["Agente capacitador", campos.trainingAgent],
+    ["Firma instructor", campos.signatures.instructor || "(la de la plantilla)"],
+    ["Firma patrón", campos.signatures.employerRepresentative || "(la de la plantilla)"],
+    ["Firma trabajadores", campos.signatures.workerRepresentative || "(la de la plantilla)"]
+  ]));
+  return piezas;
+}
+
+function resumenEnsayo(datos) {
+  const piezas = [nodo(
+    "p",
+    `${datos.workers} trabajadores sintéticos · plantilla ${datos.template.origin.toLowerCase()} · ${datos.elapsedMs} ms`,
+    "tenue"
+  )];
+  piezas.push(tarjetas([
+    [datos.execution.generated, "generadas"],
+    [datos.execution.repeated, "repetidas"],
+    [datos.execution.recovered, "recuperadas"],
+    [datos.execution.conflicts, "conflictos"],
+    [datos.ledgerRecords, "registros en ledger"]
+  ]));
+  const idempotente = datos.replay.generated === 0 && datos.replay.conflicts === 0;
+  piezas.push(aviso(
+    idempotente
+      ? `Segunda vuelta idempotente: 0 nuevas, ${datos.replay.repeated} repetidas, 0 conflictos.`
+      : `Segunda vuelta con ${datos.replay.generated} nuevas y ${datos.replay.conflicts} conflictos: revise el ledger.`,
+    !idempotente
+  ));
+  if (datos.blocked) {
+    piezas.push(nodo("p", `Bloqueadas en el ensayo · ${conteos(datos.issues)}`, "tenue"));
+  }
+  if (datos.files.length) {
+    piezas.push(tabla(
+      ["Archivo emitido", "Bytes", "SHA-256"],
+      datos.files.slice(0, 12).map((archivo) => [archivo.name, archivo.byteSize, `${archivo.sha256.slice(0, 16)}…`])
+    ));
+  }
+  if (datos.sample) {
+    const descargas = nodo("p");
+    descargas.append(descarga(datos.sample.name, datos.sample.base64, "Descargar una constancia del ensayo"));
+    piezas.push(descargas);
+  }
+  piezas.push(nodo("p", "La carpeta temporal se elimina al terminar; nada se escribió en el proyecto.", "tenue"));
+  return piezas;
+}
+
+document.getElementById("btn-plan").addEventListener("click", (evento) => conBoton(
+  evento.currentTarget,
+  document.getElementById("plan-salida"),
+  async () => resumenPlan(await llamar("/api/plan", metadatosCapturados()))
+));
+
+document.getElementById("btn-muestra").addEventListener("click", (evento) => conBoton(
+  evento.currentTarget,
+  document.getElementById("muestra-salida"),
+  async () => resumenMuestra(await llamar("/api/muestra", {
+    ...metadatosCapturados(),
+    courseId: document.getElementById("curso-muestra").value
+  }))
+));
+
+document.getElementById("btn-ensayo").addEventListener("click", (evento) => conBoton(
+  evento.currentTarget,
+  document.getElementById("ensayo-salida"),
+  async () => resumenEnsayo(await llamar("/api/ensayo", metadatosCapturados()))
+));
+
+document.getElementById("btn-ejemplo").addEventListener("click", () => {
+  for (const curso of estado.cursos) {
+    document.getElementById(`duracion-${curso.courseId}`).value = "8";
+    document.getElementById(`area-${curso.courseId}`).value = "SEGURIDAD DE ENSAYO (NO APROBADA)";
+    document.getElementById(`agente-${curso.courseId}`).value = "AGENTE DE ENSAYO (NO APROBADO)";
+  }
+});
+
+document.getElementById("btn-limpiar").addEventListener("click", () => {
+  for (const curso of estado.cursos) {
+    for (const prefijo of ["duracion", "area", "agente"]) {
+      document.getElementById(`${prefijo}-${curso.courseId}`).value = "";
+    }
+  }
+});
+
+(async function iniciar() {
+  try {
+    const respuesta = await fetch("/api/estado");
+    const datos = await respuesta.json();
+    if (!datos.ok) throw new Error(datos?.error?.message || "No fue posible leer el estado local");
+    estado.cursos = datos.data.courses;
+    estado.plantilla = datos.data.template;
+    pintarEncabezado(datos.data);
+    pintarCursos(datos.data);
+    if (!datos.data.realSourcesAvailable) {
+      document.getElementById("plan-salida").classList.remove("oculto");
+      document.getElementById("plan-salida").replaceChildren(aviso(
+        "Las fuentes privadas (matriz, padrón y plantilla) no están en este equipo: sólo el ensayo sintético puede correr."
+      ));
+      document.getElementById("btn-plan").disabled = true;
+    }
+  } catch (error) {
+    document.getElementById("modo").textContent = "sin conexión local";
+    document.getElementById("modo").className = "insignia error";
+    document.getElementById("contexto").textContent = error.message;
+  }
+})();
+</script>
+</body>
+</html>

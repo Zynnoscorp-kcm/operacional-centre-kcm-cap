@@ -1,20 +1,48 @@
-# Render Blueprint — Worker OCR para KCM Cap
-# Este archivo define la infraestructura como codigo para Render.
-# Se despliega automaticamente al conectar el repositorio.
+# Blueprint de despliegue — Plataforma KCM Cap
+#
+# La única superficie publicada es la plataforma Node, que persiste su estado
+# operativo en PostgreSQL. Las variables con `sync: false` se cargan
+# exclusivamente en el panel del proveedor; no viven en el repositorio ni en
+# este archivo.
 
 services:
   - type: web
-    name: kcm-ocr-worker
+    name: operacional-centre-kcm-cap
     runtime: docker
-    dockerfilePath: ./deploy/ocr-worker/Dockerfile
+    dockerfilePath: ./infra/docker/Dockerfile
     dockerContext: .
     plan: free
     region: oregon
     healthCheckPath: /healthz
     envVars:
       - key: PORT
-        value: "8080"
-      - key: KCM_OCR_WORKER_BUILD_ID
-        value: render-001
-      - key: KCM_OCR_WORKER_SECRET
-        sync: false  # Se configura manualmente en el dashboard (secreto)
+        value: "8787"
+      # ATENCIÓN: `production` presupone una base sin corrida piloto abierta.
+      # Comprobar antes de publicar con `SELECT * FROM kcm_lectura.estado_piloto();`
+      # y, si `hay_corrida_abierta` es verdadero, reconstruir según `database/RESET.md`.
+      # La plataforma avisa por stderr al arrancar, pero no lo impide.
+      - key: KCM_ENV
+        value: production
+      - key: KCM_HOST
+        value: 0.0.0.0
+      # El balanceador enruta desde fuera, no desde loopback: el contenedor
+      # tiene que escuchar en 0.0.0.0. Con KCM_ENV=production,
+      # `loadConfig` exige que esa salida del loopback sea una decisión
+      # declarada y no un descuido, y sin esto el arranque falla cerrado.
+      - key: KCM_ALLOW_PUBLIC_BIND
+        value: "1"
+      - key: KCM_LOG_LEVEL
+        value: info
+      - key: KCM_REQUEST_TIMEOUT_MS
+        value: "30000"
+      - key: KCM_DATABASE_URL
+        sync: false
+      - key: KCM_KIOSK_TOKEN_SECRET
+        sync: false
+      - key: KCM_RELEASE_INTEGRITY_SECRET
+        sync: false
+      # Ninguna KCM_PILOT_* se declara aquí: son contraseñas planas y
+      # `loadConfig` rechaza el arranque si alguna sobrevive con
+      # KCM_ENV=production. Si están cargadas en el panel del proveedor hay que
+      # borrarlas ahí también: este archivo no las elimina de un servicio ya
+      # creado.
