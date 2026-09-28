@@ -19,7 +19,6 @@ import { pathToFileURL } from "node:url";
 import { ConfigError, loadConfig, requireSecret } from "./config/environment.ts";
 import { leerAgenteDelEntorno } from "./config/agente-ocupaciones.ts";
 import type { ServicioDeOcupacionesPort } from "./domain/ocupaciones/servicio.ts";
-import type { PuertaDeOcupacionesPort } from "./domain/ocupaciones/puerta.ts";
 import { buildServer, type ServerDeps } from "./server/build-server.ts";
 import { PostgresExecutor } from "./adapters/postgres/ejecutor.ts";
 import { SupabaseKioskSessionRepository } from "./adapters/postgres/quiosco.ts";
@@ -175,7 +174,6 @@ export async function construir(): Promise<{
   const agente = leerAgenteDelEntorno();
   if (agente) {
     let servicio: Promise<ServicioDeOcupacionesPort> | undefined;
-    let puerta: Promise<PuertaDeOcupacionesPort> | undefined;
     const fabrica = () => import("./adapters/ia/agente-ocupaciones.ts");
     Object.assign(deps, {
       occupationService: () =>
@@ -183,13 +181,6 @@ export async function construir(): Promise<{
           .then((modulo) => modulo.armarServicioDeOcupaciones(agente))
           .catch((error: unknown) => {
             servicio = undefined;
-            throw error;
-          })),
-      occupationGateway: () =>
-        (puerta ??= fabrica()
-          .then((modulo) => modulo.armarPuertaDeOcupaciones(agente))
-          .catch((error: unknown) => {
-            puerta = undefined;
             throw error;
           })),
     } satisfies Partial<ServerDeps>);

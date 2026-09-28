@@ -21,9 +21,6 @@ const files = [
   // codigo y no de la memoria de quien escribe la siguiente rutina: sin una
   // prueba, el proximo `MsgBox` suelto vuelve a sonar a recado.
   "KcmAvisos.bas", "KcmPanel.bas", "KcmConfigButtons.bas", "KcmAsistente.bas",
-  // Clasificar faltantes: entra para que las reglas de siempre -ASCII, voz,
-  // frontera de plataforma- tambien lo cubran.
-  "KcmOcupaciones.bas"
 ];
 const modules = Object.fromEntries(await Promise.all(files.map(async (file) => [
   file, await readFile(`clients/excel/vba/${file}`, "utf8")
@@ -86,12 +83,8 @@ test("ROSTER_PATH sirve al barrido del padron y no a la emision", () => {
   // `KcmPanel` entra por lo mismo: rotula la clave en la tabla de configuracion
   // para que quien instala el cliente sepa que es y cada cuanto cambia. Rotular
   // no es leer, y abajo se comprueba que tampoco toque los bytes.
-  // `KcmOcupaciones` entra con una excepcion nombrada y fijada abajo: entrega el
-  // padron igual que el barrido, y solo lo abre para escribir las claves en una
-  // copia, sin vinculos y sin guardar nunca sobre el original.
   const permitidos = new Set([
-    "KcmBridgeCore.bas", "KcmPadronSync.bas", "KcmJornada.bas", "KcmPanel.bas",
-    "KcmOcupaciones.bas"
+    "KcmBridgeCore.bas", "KcmPadronSync.bas", "KcmJornada.bas", "KcmPanel.bas"
   ]);
   for (const [file, source] of Object.entries(modules)) {
     const code = source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n");
@@ -111,25 +104,6 @@ test("ROSTER_PATH sirve al barrido del padron y no a la emision", () => {
   assert.doesNotMatch(jornada, /KcmFileBase64|Workbooks\.Open|KcmOpenMaster/,
     "la jornada declara la ruta del padron, pero leer el archivo le toca al barrido");
 
-  const ocupaciones = modules["KcmOcupaciones.bas"];
-  assert.ok(ocupaciones, "falta el modulo de Clasificar faltantes");
-  assert.match(ocupaciones, /KcmFileBase64/, "el padron se entrega en bytes, como en el barrido");
-  assert.match(ocupaciones, /OCCUPATION_PLAN_V1/, "quien interpreta el padron es el servidor");
-  assert.match(ocupaciones, /Workbooks\.Open\(Filename:=origen, UpdateLinks:=0, ReadOnly:=True\)/,
-    "el padron se abre sin vinculos y de solo lectura");
-  assert.match(ocupaciones, /libro\.SaveAs Filename:=destino/,
-    "las claves se escriben en una copia, nunca en el original");
-  assert.ok(
-    ocupaciones.indexOf("libro.SaveAs") < ocupaciones.indexOf("libro.Save\n"),
-    "la copia se crea antes de guardar cualquier cambio"
-  );
-  assert.match(ocupaciones, /KcmHttpPost\("OCCUPATION_STEP_V1", lote, _\s+KcmNewRequestId\("vba-ocupaciones-paso"\), OCUP_INTENTOS_POR_PASO\)/,
-    "cada paso se reintenta con paciencia: un corte breve no tira lo ya consultado");
-  assert.match(ocupaciones, /KcmOcupacionesUltimaCopia\(rutaPadron\)/,
-    "si ya hay una copia clasificada, se ofrece seguir sobre ella en lugar del original");
-
-  // Clasificar faltantes apunta ROSTER_PATH a su copia y Padron de la semana la
-  // manda: fijar una clave vacia la cache, y la entrada lee configuracion fresca.
   const fijar = jornada.slice(jornada.indexOf("Public Sub KcmJornadaFijar"));
   assert.match(fijar.slice(0, fijar.indexOf("End Sub")), /KcmResetCaches/,
     "fijar una clave debe vaciar la cache de configuracion");

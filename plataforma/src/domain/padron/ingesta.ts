@@ -34,6 +34,7 @@ import type { ComparacionConLaAnterior } from "../cargas/tipos.ts";
 import { DomainError } from "../comun/errores.ts";
 import type {
   CambioDePuesto,
+  ClasificacionAutomatica,
   CuadreDePadron,
   Divergencia,
   EmpleadoDelPadron,
@@ -685,6 +686,73 @@ export class RosterIngestService {
     // pasó a ser ésta.
     this.#comparacion = undefined;
     return { plan: guardado.plan, ...escrito, aplicadoEn: this.#clock.nowIso() };
+  }
+
+  /**
+   * Clasifica con IA a los trabajadores activos que no tienen clave de ocupación.
+   *
+   * Se llama justo después de aplicar el padrón: las claves que el archivo traía
+   * ya están escritas, y lo que queda son los casos que el departamento aún no
+   * capturó. La función clasificadora viene de fuera para no acoplar el padrón
+   * al agente de ocupaciones.
+   */
+  async clasificarFaltantes(
+    clasificar: (caso: {
+      puesto: string;
+      centroDeCostos: string;
+    }) => Promise<{ codigo: string; estado: string } | null>,
+  ): Promise<ClasificacionAutomatica> {
+    const padron = await this.#repository.leerPadronBase();
+    const sinClave = padron.filter(
+      (fila) => fila.activo && fila.puesto && !fila.claveOcupacion,
+    );
+    if (sinClave.length === 0) return { faltantes: 0, consultados: 0, escritos: 0 };
+
+    const grupos = new Map<
+      string,
+      { puesto: string; centroDeCostos: string; trabajadores: string[] }
+    >();
+    for (const fila of sinClave) {
+      const cc = (fila.centroCostosNombre ?? "").trim();
+      if (!cc) continue;
+      const llave = `${clave(fila.puesto!)}|${clave(cc)}`;
+      const grupo = grupos.get(llave);
+      if (grupo) grupo.trabajadores.push(fila.trabajadorId);
+      else
+        grupos.set(llave, {
+          puesto: fila.puesto!,
+          centroDeCostos: cc,
+          trabajadores: [fila.trabajadorId],
+        });
+    }
+
+    const ocupaciones: [string, string][] = [];
+    let consultados = 0;
+    for (const grupo of grupos.values()) {
+      consultados += 1;
+      try {
+        const resultado = await clasificar({
+          puesto: grupo.puesto,
+          centroDeCostos: grupo.centroDeCostos,
+        });
+        if (resultado && resultado.estado === "sugerida") {
+          for (const tid of grupo.trabajadores) ocupaciones.push([tid, resultado.codigo]);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (ocupaciones.length > 0) {
+      await this.#repository.aplicar({
+        curp: [],
+        altas: [],
+        inducciones: [],
+        ocupaciones,
+      });
+    }
+
+    return { faltantes: sinClave.length, consultados, escritos: ocupaciones.length };
   }
 
   #podar(ahora: number): void {

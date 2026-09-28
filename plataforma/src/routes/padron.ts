@@ -23,6 +23,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppConfig } from "../config/environment.ts";
 import { DomainError } from "../domain/comun/errores.ts";
 import type { RosterIngestService } from "../domain/padron/ingesta.ts";
+import type { ServicioDeOcupacionesPort } from "../domain/ocupaciones/servicio.ts";
 import type { Clock } from "../ports/reloj.port.ts";
 import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { MultipartError, parseMultipart } from "../server/multipart.ts";
@@ -38,10 +39,12 @@ export interface RosterRouteDeps {
   readonly sessions: ConsoleSessionCodec;
   /** Ausente cuando no hay base: la pantalla lo explica y no ofrece subir nada. */
   readonly service?: RosterIngestService;
+  /** Fábrica perezosa del agente de ocupaciones. Ausente sin llave de proveedor. */
+  readonly occupationService?: () => Promise<ServicioDeOcupacionesPort>;
 }
 
 export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps): void {
-  const { config, clock, sessions, service } = deps;
+  const { config, clock, sessions, service, occupationService } = deps;
 
   const pantalla = (
     respuesta: FastifyReply,
@@ -185,6 +188,27 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
         },
         "padrón aplicado",
       );
+
+      if (occupationService) {
+        try {
+          const servicio = await occupationService();
+          const clasificacion = await service.clasificarFaltantes(async (caso) => {
+            const sugerencia = await servicio.sugerir(caso);
+            if (!sugerencia.sugerencia) return null;
+            return { codigo: sugerencia.sugerencia.codigo, estado: sugerencia.estado };
+          });
+          peticion.log.info(clasificacion, "clasificación automática de ocupaciones");
+          return pantalla(respuesta, 200, {
+            resultado: { ...resultado, clasificacion },
+          });
+        } catch (error) {
+          peticion.log.warn(
+            { err: error instanceof Error ? error.message : String(error) },
+            "la clasificación automática falló; el padrón ya se aplicó",
+          );
+        }
+      }
+
       return pantalla(respuesta, 200, { resultado });
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;

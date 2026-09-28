@@ -708,12 +708,9 @@ Private Sub KcmPanelBotones(ByVal hoja As Worksheet)
     ' encender aqui, y el aviso al terminar dice como salio cada envio.
     y = y + TARJETA_ALTO + HUECO_TARJETAS
     KcmPanelTarjeta hoja, "3", izq, y, ancho, TARJETA_ALTO, "Padr{o}n de la semana", _
-        "Env{i}a el archivo sem NN CAP.xlsx para su revisi{o}n. Clasificar faltantes llena la clave de ocupaci{o}n de quien no la tiene."
+        "Env{i}a el archivo sem NN CAP.xlsx para su revisi{o}n."
     KcmPintarBoton hoja, BOTON_PREFIJO & "B_PAD", izq + 18, y + TARJETA_ALTO - 52, 190, 34, _
         KcmAcentos("Padr{o}n de la semana"), "KcmPadronDeLaSemana", COLOR_MARCA, 11
-    ' Va antes que el envio: clasifica, deja la copia abierta y ROSTER_PATH apuntando a ella.
-    KcmPintarBotonSecundario hoja, BOTON_PREFIJO & "B_OCUP", izq + 218, y + TARJETA_ALTO - 52, 170, 34, _
-        "Clasificar faltantes", "KcmClasificarFaltantes"
 
     ' --- Fila 3: el equipo ------------------------------------------------------
     y = y + TARJETA_ALTO + HUECO_TARJETAS

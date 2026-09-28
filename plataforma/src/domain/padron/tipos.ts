@@ -233,4 +233,12 @@ export interface ResultadoDePadron {
   /** Claves de ocupación escritas, por trabajador. */
   readonly ocupaciones: number;
   readonly aplicadoEn: string;
+  /** Clasificación automática que corrió después de aplicar, si había agente. */
+  readonly clasificacion?: ClasificacionAutomatica;
+}
+
+export interface ClasificacionAutomatica {
+  readonly faltantes: number;
+  readonly consultados: number;
+  readonly escritos: number;
 }

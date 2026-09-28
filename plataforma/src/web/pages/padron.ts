@@ -204,7 +204,22 @@ function renderResultado(resultado: ResultadoDePadron): Html {
           "ok",
         )}
       </div>
+      ${resultado.clasificacion ? renderClasificacion(resultado.clasificacion) : ""}
     </section>
+  `;
+}
+
+function renderClasificacion(c: ResultadoDePadron["clasificacion"] & {}): Html {
+  if (c.faltantes === 0) {
+    return html`<p class="texto-nota">Todos los trabajadores ya tienen clave de ocupación.</p>`;
+  }
+  return html`
+    <h3>Clasificación automática de ocupaciones</h3>
+    <div class="kpi-tira">
+      ${renderKpi("Faltantes", c.faltantes, "Trabajadores activos sin clave", "neutro")}
+      ${renderKpi("Casos consultados", c.consultados, "Combinaciones únicas de puesto y centro de costos", "neutro")}
+      ${renderKpi("Escritos", c.escritos, "Claves sugeridas por la IA y aplicadas", c.escritos > 0 ? "ok" : "aviso")}
+    </div>
   `;
 }
 

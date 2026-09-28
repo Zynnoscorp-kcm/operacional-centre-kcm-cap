@@ -84,7 +84,6 @@ import type { LoadLogPort } from "../ports/bitacora-cargas.port.ts";
 
 import { registerRosterRoutes } from "../routes/padron.ts";
 import type { ServicioDeOcupacionesPort } from "../domain/ocupaciones/servicio.ts";
-import type { PuertaDeOcupacionesPort } from "../domain/ocupaciones/puerta.ts";
 import { registerOccupationRoutes } from "../routes/ocupaciones.ts";
 import type { SincroniaPort } from "../ports/sincronia.port.ts";
 import { SincroniaService } from "../domain/sincronia/servicio.ts";
@@ -172,11 +171,6 @@ export interface ServerDeps {
    * primera vez: LangGraph no se carga hasta que alguien pide una sugerencia.
    */
   readonly occupationService?: () => Promise<ServicioDeOcupacionesPort>;
-  /**
-   * El botón «Clasificar faltantes» del libro de Excel, por el puente. Ausente
-   * sin llave de proveedor; entonces las dos acciones responden por qué.
-   */
-  readonly occupationGateway?: () => Promise<PuertaDeOcupacionesPort>;
   /**
    * Destino de la bitácora. Por omisión la salida estándar. Redirigirlo es lo
    * que permite comprobar en una prueba que lo que sale ya viene saneado.
@@ -434,7 +428,6 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     clock,
     scans: matrixScanService,
     ...(rosterService ? { roster: rosterService } : {}),
-    ...(deps.occupationGateway ? { ocupaciones: deps.occupationGateway } : {}),
     // El apagado desde Excel sólo existe en la computadora del departamento.
     ...(config.role === "local"
       ? { apagarLocal: () => programarApagado(deps.apagar ?? apagadoPorOmision) }
@@ -568,6 +561,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     clock,
     sessions: consoleSessions,
     ...(rosterService ? { service: rosterService } : {}),
+    ...(deps.occupationService ? { occupationService: deps.occupationService } : {}),
   });
   registerOccupationRoutes(app, {
     config,

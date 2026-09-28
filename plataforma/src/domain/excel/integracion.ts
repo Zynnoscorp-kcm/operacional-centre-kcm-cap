@@ -7,7 +7,6 @@ import { MatrixImportService } from "../importacion-matriz/servicio.ts";
 import type { MatrixSnapshot } from "../importacion-matriz/tipos.ts";
 import type { MatrixScanService } from "../barrido-matriz/servicio.ts";
 import type { RosterIngestService } from "../padron/ingesta.ts";
-import type { PuertaDeOcupacionesPort } from "../ocupaciones/puerta.ts";
 import type {
   BridgeAction,
   BridgeRequest,
@@ -34,8 +33,6 @@ const ACTIONS = new Set([
   "STATUS_V1",
   "LOCAL_SHUTDOWN_V1",
   "UPLOAD_PART_V1",
-  "OCCUPATION_PLAN_V1",
-  "OCCUPATION_STEP_V1",
 ]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 
@@ -49,8 +46,6 @@ const PARTIBLES = new Set([
   "ROSTER_SCAN_V1",
   "RELEASE_ACK_V1",
   "DC3_REPORT_V1",
-  "OCCUPATION_PLAN_V1",
-  "OCCUPATION_STEP_V1",
 ]);
 /** Techo de partes por envío: 64 de ~3 MB son casi 200 MB, muy por encima de cualquier libro. */
 const MAXIMO_DE_PARTES = 64;
@@ -117,21 +112,6 @@ function leerSobreDePadron(payload: string): { nombreArchivo: string; archivo: B
   }
   return { nombreArchivo, archivo };
 }
-
-/** Encabezados del plan: dónde escribe Excel cada clave. */
-const COLUMNAS_DEL_PLAN = ["hoja", "fila", "numero", "columna", "columnaNumero", "caso"] as const;
-/** Encabezados del resultado: una fila por caso. */
-const COLUMNAS_DEL_RESULTADO = [
-  "caso",
-  "estado",
-  "codigo",
-  "descripcion",
-  "subarea",
-  "confianza",
-  "alternativa",
-  "verificador",
-  "razon",
-] as const;
 
 /** El índice parcial de PostgreSQL impide dos credenciales vigentes para la
  * misma instalación. Traducirlo aquí evita que un conflicto esperado se vea
@@ -220,7 +200,6 @@ export class ExcelIntegrationService {
   readonly #scans: MatrixScanService | undefined;
   /** Padrón semanal. Opcional por el mismo motivo que el barrido de matriz. */
   readonly #roster: RosterIngestService | undefined;
-  readonly #ocupaciones: (() => Promise<PuertaDeOcupacionesPort>) | undefined;
   /**
    * Apagado de la plataforma local, pedido desde Excel. Sólo se entrega en la
    * computadora del departamento: en la nube no existe y la acción se rechaza.
@@ -240,11 +219,6 @@ export class ExcelIntegrationService {
     clock: Clock;
     scans?: MatrixScanService;
     roster?: RosterIngestService;
-    /**
-     * El botón «Clasificar faltantes». Es una función porque el agente se arma
-     * la primera vez que se usa: LangGraph no se carga al arrancar.
-     */
-    ocupaciones?: () => Promise<PuertaDeOcupacionesPort>;
     apagarLocal?: () => void;
     logger?: { error(bindings: Record<string, unknown>, message: string): void };
   }) {
@@ -254,7 +228,6 @@ export class ExcelIntegrationService {
     this.#clock = input.clock;
     this.#scans = input.scans;
     this.#roster = input.roster;
-    this.#ocupaciones = input.ocupaciones;
     this.#apagarLocal = input.apagarLocal;
     this.#logger = input.logger;
   }
@@ -554,8 +527,6 @@ export class ExcelIntegrationService {
     if (request.action === "DC3_REPORT_V1") return this.#reportDc3(request, payload);
     if (request.action === "MATRIX_SCAN_V1") return this.#scan(request, payload);
     if (request.action === "ROSTER_SCAN_V1") return this.#rosterScan(request, payload);
-    if (request.action === "OCCUPATION_PLAN_V1") return this.#planDeOcupaciones(payload);
-    if (request.action === "OCCUPATION_STEP_V1") return this.#pasoDeOcupaciones(payload);
     if (request.action === "MATRIX_IMPORT_V1") {
       const snapshot = JSON.parse(payload) as MatrixSnapshot;
       const preview = await this.receiveImport(
@@ -619,91 +590,6 @@ export class ExcelIntegrationService {
         }),
       ),
     };
-  }
-
-  async #puertaDeOcupaciones(): Promise<PuertaDeOcupacionesPort> {
-    if (!this.#ocupaciones)
-      throw new DomainError(
-        "EXCEL_OCUPACIONES_APAGADAS",
-        "El agente de ocupaciones está apagado: no hay llave de proveedor en el entorno.",
-      );
-    return this.#ocupaciones();
-  }
-
-  /**
-   * «Clasificar faltantes», primer acto. El padrón llega igual que en
-   * `ROSTER_SCAN_V1` y regresa el plan: una fila por trabajador sin clave, con la
-   * celda donde irá su respuesta, y el estado inicial del lote. No toca la base.
-   */
-  async #planDeOcupaciones(payload: string): Promise<Record<string, string | number | boolean>> {
-    const puerta = await this.#puertaDeOcupaciones();
-    const { archivo } = leerSobreDePadron(payload);
-    const { plan, lote } = await puerta.planear(archivo);
-    return {
-      cases: plan.casos.length,
-      rows: plan.filas.length,
-      withKey: plan.conClave,
-      withText: plan.conTextoNoClave,
-      skipped: plan.omitidos,
-      sheetsWithoutColumn: plan.hojasSinColumna.join("|"),
-      pendingCases: plan.pendientes.casos,
-      pendingRows: plan.pendientes.trabajadores,
-      lote,
-      payload: encodePayload(
-        tsv(
-          COLUMNAS_DEL_PLAN,
-          plan.filas.map((fila) => [
-            fila.hoja,
-            fila.fila,
-            fila.numero,
-            fila.columna,
-            fila.columnaDelNumero,
-            fila.caso,
-          ]),
-        ),
-      ),
-    };
-  }
-
-  /**
-   * «Clasificar faltantes», un paso. Recibe el estado del lote, trabaja hasta
-   * que se acaba el tiempo del paso y lo devuelve. Al terminar trae además una
-   * fila por caso con la clave, el estado y la razón.
-   */
-  async #pasoDeOcupaciones(payload: string): Promise<Record<string, string | number | boolean>> {
-    const puerta = await this.#puertaDeOcupaciones();
-    const avance = await puerta.avanzar(payload);
-    const campos: Record<string, string | number | boolean> = {
-      done: avance.terminado,
-      queries: avance.consultas,
-      cases: avance.casos,
-      proposed: avance.conPropuesta,
-      lote: avance.lote,
-    };
-    if (avance.resultados) {
-      campos.payload = encodePayload(
-        tsv(
-          COLUMNAS_DEL_RESULTADO,
-          avance.resultados.map((resultado) => {
-            const propuesta = resultado.sugerencia;
-            return [
-              resultado.id,
-              resultado.estado,
-              propuesta?.codigo ?? "",
-              propuesta?.descripcion ?? "",
-              propuesta ? `${propuesta.subarea} ${propuesta.denominacionDeSubarea}` : "",
-              propuesta?.confianza ?? "",
-              propuesta?.alternativa
-                ? `${propuesta.alternativa.codigo} ${propuesta.alternativa.descripcion}`
-                : "",
-              resultado.verificador?.codigo ?? "",
-              resultado.razon,
-            ];
-          }),
-        ),
-      );
-    }
-    return campos;
   }
 
   /**

@@ -27,3 +27,4 @@ artifacts/
 .agents/
 .claude/skills/
 skills-lock.json
+.vercel
