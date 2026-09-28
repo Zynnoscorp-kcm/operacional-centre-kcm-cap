@@ -49,7 +49,7 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
   const pantalla = (
     respuesta: FastifyReply,
     codigo: number,
-    datos: Omit<DatosDePadron, "entorno" | "sinBase">,
+    datos: Omit<DatosDePadron, "entorno" | "sinBase" | "iaDisponible">,
   ): FastifyReply =>
     respuesta
       .type("text/html; charset=utf-8")
@@ -59,6 +59,7 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
           entorno: config.environment,
           papel: config.role,
           sinBase: service === undefined,
+          iaDisponible: occupationService !== undefined,
           ...datos,
         }),
       );
@@ -173,8 +174,12 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
       });
     }
 
-    const cuerpo = (peticion.body ?? {}) as { planId?: unknown };
+    const cuerpo = (peticion.body ?? {}) as {
+      planId?: unknown;
+      clasificarConIa?: unknown;
+    };
     const planId = typeof cuerpo.planId === "string" ? cuerpo.planId : "";
+    const quiereIa = cuerpo.clasificarConIa === "1";
 
     try {
       // El plan pudo leerse en otra instancia: se trae antes de aplicarlo.
@@ -189,7 +194,7 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
         "padrón aplicado",
       );
 
-      if (occupationService) {
+      if (quiereIa && occupationService) {
         try {
           const servicio = await occupationService();
           const clasificacion = await service.clasificarFaltantes(async (caso) => {

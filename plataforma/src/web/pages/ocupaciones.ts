@@ -162,41 +162,44 @@ function renderConsulta(datos: DatosDeOcupaciones): Html {
 function renderLeyenda(): Html {
   return html`<section class="tarjeta" aria-labelledby="titulo-leyenda">
     <div class="seccion-cabecera">
-      <span class="capta-rotulo">Clasificar faltantes</span>
-      <h2 id="titulo-leyenda">La copia del padrón</h2>
+      <span class="capta-rotulo">Clasificación automática</span>
+      <h2 id="titulo-leyenda">Cómo funciona</h2>
       <p>
-        Clasificar faltantes, en el libro de Excel, escribe la clave de quien no la tiene en una
-        copia del padrón. Cada celda lleva un color y una nota con el motivo.
+        Al aplicar el padrón desde la plataforma, los trabajadores activos sin clave de ocupación se
+        clasifican automáticamente con inteligencia artificial. Dos modelos resuelven cada caso por
+        separado; sólo viajan el puesto y el centro de costos.
       </p>
     </div>
     <ul class="lista-tablero">
       <li class="lista-fila">
         <span class="foco foco-verde"></span>
         <span class="lista-cuerpo">
-          <span class="lista-titulo">Verde · sugerida</span>
-          <span class="lista-pista">Los dos modelos eligieron la misma clave.</span>
+          <span class="lista-titulo">Sugerida</span>
+          <span class="lista-pista"
+            >Los dos modelos eligieron la misma clave; se escribe automáticamente.</span
+          >
         </span>
       </li>
       <li class="lista-fila">
         <span class="foco foco-ambar"></span>
         <span class="lista-cuerpo">
-          <span class="lista-titulo">Amarillo · a revisar</span>
+          <span class="lista-titulo">A revisar</span>
           <span class="lista-pista"
-            >No coincidieron o alguno dudó; la nota trae las dos claves.</span
+            >No coincidieron o alguno dudó; no se escribe sin revisión.</span
           >
         </span>
       </li>
       <li class="lista-fila">
         <span class="foco foco-rojo"></span>
         <span class="lista-cuerpo">
-          <span class="lista-titulo">Rojo · sin respuesta</span>
-          <span class="lista-pista">La celda queda vacía.</span>
+          <span class="lista-titulo">Sin respuesta</span>
+          <span class="lista-pista">Ningún modelo dejó una clave válida.</span>
         </span>
       </li>
     </ul>
     <p class="texto-nota nota-bajo-tira">
-      Una celda vacía y sin color no cupo en la corrida; la siguiente la toma, empezando por los
-      puestos con más trabajadores. Padrón de la semana envía la copia ya revisada.
+      Desde esta pantalla se puede consultar un caso individual o buscar en el catálogo de la
+      Secretaría del Trabajo.
     </p>
   </section>`;
 }
