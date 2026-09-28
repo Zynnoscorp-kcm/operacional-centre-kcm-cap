@@ -37,8 +37,6 @@ export interface DatosDePadron {
   readonly comparacion?: ComparacionConLaAnterior | undefined;
   /** Sin base conectada la pantalla explica y no ofrece subir nada. */
   readonly sinBase?: boolean;
-  /** Si el agente de IA de ocupaciones está disponible en esta instalación. */
-  readonly iaDisponible?: boolean;
 }
 
 /**
@@ -133,7 +131,7 @@ function renderColumnas(hojas: readonly HojaLeida[]): Html | string {
   `;
 }
 
-function renderRevision(plan: PlanDePadron, iaDisponible?: boolean): Html {
+function renderRevision(plan: PlanDePadron): Html {
   const c = plan.cuadre;
   return html`
     ${renderPanelDeCambios({
@@ -159,29 +157,9 @@ function renderRevision(plan: PlanDePadron, iaDisponible?: boolean): Html {
         { valor: c.puestosNuevos, rotulo: "puestos fuera del catálogo", tono: "aviso" },
       ],
     })}
-    ${
-      iaDisponible
-        ? html`<div class="tarjeta-aviso tarjeta-aviso-ia">
-            <p>
-              <strong>Clasificación con IA disponible.</strong> Al aplicar, los trabajadores activos
-              sin clave de ocupación se clasifican automáticamente con inteligencia artificial. Sólo
-              viajan al modelo el puesto y el centro de costos; ningún dato personal sale de la
-              plataforma. Puede tardar hasta un minuto.
-            </p>
-          </div>`
-        : ""
-    }
     <div class="acciones-formulario">
       <form method="POST" action="/padron/aplicar" class="formulario">
         <input type="hidden" name="planId" value="${plan.planId}" />
-        ${
-          iaDisponible
-            ? html`<label class="opcion-formulario">
-                <input type="checkbox" name="clasificarConIa" value="1" checked />
-                Clasificar ocupaciones faltantes con IA
-              </label>`
-            : ""
-        }
         <button type="submit" ${plan.sinCambios ? "disabled" : ""}>
           ${plan.sinCambios ? "No hay nada que aplicar" : "Aplicar los cambios"}
         </button>
@@ -226,22 +204,7 @@ function renderResultado(resultado: ResultadoDePadron): Html {
           "ok",
         )}
       </div>
-      ${resultado.clasificacion ? renderClasificacion(resultado.clasificacion) : ""}
     </section>
-  `;
-}
-
-function renderClasificacion(c: ResultadoDePadron["clasificacion"] & {}): Html {
-  if (c.faltantes === 0) {
-    return html`<p class="texto-nota">Todos los trabajadores ya tienen clave de ocupación.</p>`;
-  }
-  return html`
-    <h3>Clasificación automática de ocupaciones</h3>
-    <div class="kpi-tira">
-      ${renderKpi("Faltantes", c.faltantes, "Trabajadores activos sin clave", "neutro")}
-      ${renderKpi("Casos consultados", c.consultados, "Combinaciones únicas de puesto y centro de costos", "neutro")}
-      ${renderKpi("Escritos", c.escritos, "Claves sugeridas por la IA y aplicadas", c.escritos > 0 ? "ok" : "aviso")}
-    </div>
   `;
 }
 
@@ -278,7 +241,7 @@ export function renderRosterPage(datos: DatosDePadron): string {
   const contenido = html`
     ${datos.error ? html`<p class="aviso-error" role="alert">${datos.error}</p>` : ""}
     ${datos.resultado ? renderResultado(datos.resultado) : ""}
-    ${datos.plan ? renderRevision(datos.plan, datos.iaDisponible) : renderFormulario(datos)}
+    ${datos.plan ? renderRevision(datos.plan) : renderFormulario(datos)}
     ${
       datos.plan
         ? ""

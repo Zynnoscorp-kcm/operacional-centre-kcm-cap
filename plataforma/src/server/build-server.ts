@@ -561,10 +561,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     clock,
     sessions: consoleSessions,
     ...(rosterService ? { service: rosterService } : {}),
-    ...(deps.occupationService ? { occupationService: deps.occupationService } : {}),
   });
+  const extractorDeOcupaciones = deps.rosterExtractor ?? new RosterExtractorAdapter();
   registerOccupationRoutes(app, {
     config,
+    extraer: (archivo) => extractorDeOcupaciones.extraer(archivo),
     ...(deps.occupationService ? { servicio: deps.occupationService } : {}),
   });
 

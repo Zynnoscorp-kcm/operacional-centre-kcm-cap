@@ -1,160 +1,124 @@
 /**
- * Ocupaciones: la clave del Catálogo Nacional de Ocupaciones que pide el DC-3.
+ * Ocupaciones: clasificación automática con IA.
  *
- * La pantalla existe para acortar la revisión de la copia del padrón que deja
- * «Clasificar faltantes» en Excel. Ahí las celdas en amarillo esperan a alguien
- * que decida, y decidir pedía abrir el archivo de la Secretaría —4 737 renglones—
- * y recorrerlo. Aquí se hace en el mismo sitio y en dos gestos:
+ * El flujo:
+ * 1. Subir el padrón (`sem NN CAP.xlsx`).
+ * 2. La IA clasifica los trabajadores sin clave de ocupación.
+ * 3. Se descarga el Excel con las claves llenas.
+ * 4. Se revisa fuera de línea; si es correcto, se sube a `/padron`.
  *
- * 1. **Buscar en el catálogo**, por palabras, por el comienzo de la clave o por
- *    subárea. No usa modelo ni gasta consultas: es el archivo de la Secretaría,
- *    ya leído.
- * 2. **Consultar al agente** un puesto con su centro de costos. Dos modelos lo
- *    resuelven por separado y la pantalla enseña lo que eligió cada uno.
- *
- * La leyenda de colores de la copia va al lado de la consulta porque es lo que
- * se tiene enfrente al llegar aquí.
- *
- * El recorrido de cada consulta —qué modelo contestó, cuánto tardó, qué
- * decidió— queda plegado en un `<details>`: sirve para auditar, no para decidir.
+ * La búsqueda en el catálogo se conserva como herramienta de verificación.
  */
 
 import type { EnvironmentName } from "../../config/environment.ts";
 import type { Ocupacion, Subarea } from "../../domain/ocupaciones/catalogo.ts";
-import type {
-  EstadoDeSugerencia,
-  PasoDeTraza,
-  PropuestaValidada,
-} from "../../domain/ocupaciones/comunes.ts";
-import type { Confianza } from "../../domain/ocupaciones/instrucciones.ts";
-import type { SugerenciaDeOcupacion } from "../../domain/ocupaciones/servicio.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
 export interface BusquedaEnCatalogo {
   readonly texto: string;
   readonly subarea: string;
-  /** Falso mientras nadie haya buscado: entonces no se dibuja la tabla. */
   readonly realizada: boolean;
   readonly total: number;
   readonly ocupaciones: readonly Ocupacion[];
 }
 
+export interface ResultadoDeClasificacion {
+  readonly faltantes: number;
+  readonly consultados: number;
+  readonly escritos: number;
+  readonly conClave: number;
+  readonly pendientes: { readonly casos: number; readonly trabajadores: number };
+}
+
 export interface DatosDeOcupaciones {
   readonly entorno: EnvironmentName;
-  /** Falso cuando la plataforma no tiene con qué consultar al agente. */
-  readonly consultaDisponible: boolean;
-  readonly consulta?: { readonly puesto: string; readonly centroDeCostos: string };
-  readonly sugerencia?: SugerenciaDeOcupacion;
+  readonly iaDisponible: boolean;
   readonly error?: string;
+  readonly resultado?: ResultadoDeClasificacion;
   readonly busqueda: BusquedaEnCatalogo;
   readonly subareas: readonly Subarea[];
   readonly tamanoDelCatalogo: number;
-  /** Cuántas filas enseña la búsqueda como máximo. */
   readonly limiteDeBusqueda: number;
 }
-
-const ESTADO: Readonly<
-  Record<
-    EstadoDeSugerencia,
-    { readonly rotulo: string; readonly insignia: string; readonly kpi: string }
-  >
-> = {
-  sugerida: { rotulo: "Sugerida", insignia: "insignia insignia-completado", kpi: "kpi kpi-ok" },
-  revisar: { rotulo: "A revisar", insignia: "insignia insignia-aviso", kpi: "kpi kpi-aviso" },
-  sin_respuesta: {
-    rotulo: "Sin respuesta",
-    insignia: "insignia insignia-inactivo",
-    kpi: "kpi kpi-alerta",
-  },
-};
-
-const CONFIANZA: Readonly<Record<Confianza, string>> = {
-  alta: "Alta",
-  media: "Media",
-  baja: "Baja",
-};
-
-/** Los nodos del agente, dichos como pasos. */
-const PASOS: Readonly<Record<string, string>> = {
-  principal_subareas: "Primer modelo · subárea",
-  principal_ocupacion: "Primer modelo · ocupación",
-  principal_validacion: "Primer modelo · comprobación",
-  verificador_subareas: "Segundo modelo · subárea",
-  verificador_ocupacion: "Segundo modelo · ocupación",
-  verificador_validacion: "Segundo modelo · comprobación",
-  conciliacion: "Resultado",
-};
 
 function cifra(valor: number): string {
   return valor.toLocaleString("es-MX");
 }
 
-function segundos(milisegundos: number): string {
-  return `${(milisegundos / 1000).toFixed(1)} s`;
-}
-
-/** La razón del agente como oración: empieza con mayúscula. */
-function oracion(texto: string): string {
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
-
-/** El modelo sin el proveedor ni la marca de plan: `nemotron-3-super-120b-a12b`. */
-function modeloCorto(modelo: string): string {
-  return modelo.replace(/^[^/]+\//u, "").replace(/:free$/u, "");
-}
-
-// ------------------------------------------------------------ la consulta
-
-function renderConsulta(datos: DatosDeOcupaciones): Html {
-  const puesto = datos.consulta?.puesto ?? "";
-  const centro = datos.consulta?.centroDeCostos ?? "";
-  return html`<section class="tarjeta" aria-labelledby="titulo-consulta">
+function renderFormulario(datos: DatosDeOcupaciones): Html {
+  return html`<section class="tarjeta" aria-labelledby="titulo-clasificacion">
     <div class="seccion-cabecera">
-      <span class="capta-rotulo">Consulta</span>
-      <h2 id="titulo-consulta">Consultar una ocupación</h2>
-      <p>Dos modelos la resuelven por separado. Cuando eligen la misma clave, queda sugerida.</p>
+      <span class="capta-rotulo">Clasificación</span>
+      <h2 id="titulo-clasificacion">Clasificar ocupaciones con IA</h2>
+      <p>
+        Sube el padrón semanal. Los trabajadores activos sin clave de ocupación se clasifican
+        automáticamente. El archivo regresa con las claves llenas para que lo revises antes de
+        aplicarlo a la base desde <a href="/padron">Padrón</a>.
+      </p>
     </div>
     ${datos.error ? html`<p class="aviso-error" role="alert">${datos.error}</p>` : ""}
     ${
-      datos.consultaDisponible
-        ? html`<form method="post" action="/ocupaciones" class="formulario-busqueda">
-              <div class="campo-busqueda campo-busqueda-ancho">
-                <label for="ocupacion-puesto" class="etiqueta-formulario">Puesto</label>
-                <input
-                  id="ocupacion-puesto"
-                  name="puesto"
-                  class="input-kcm"
-                  value="${puesto}"
-                  maxlength="120"
-                  placeholder="Ej. *OPERARIO 2°"
-                  required
-                />
-              </div>
-              <div class="campo-busqueda campo-busqueda-ancho">
-                <label for="ocupacion-centro" class="etiqueta-formulario">Centro de costos</label>
-                <input
-                  id="ocupacion-centro"
-                  name="centroDeCostos"
-                  class="input-kcm"
-                  value="${centro}"
-                  maxlength="120"
-                  placeholder="Ej. HIGIENICOS"
-                  required
-                />
-              </div>
-              <div class="acciones-busqueda">
-                <button type="submit">Consultar</button>
-              </div>
+      datos.iaDisponible
+        ? html`<form
+              method="POST"
+              action="/ocupaciones"
+              enctype="multipart/form-data"
+              class="formulario"
+            >
+              <label>
+                Archivo del padrón
+                <input type="file" name="archivo" accept=".xlsx" required />
+              </label>
+              <button type="submit">Clasificar faltantes</button>
             </form>
             <p class="texto-nota nota-bajo-tira">
-              Cada consulta tarda cerca de un minuto y usa cuatro de las cincuenta consultas diarias
-              del plan gratuito. Sólo viajan el puesto y el centro de costos.
+              Sólo viajan al modelo el puesto y el centro de costos; ningún dato personal sale de la
+              plataforma. Puede tardar hasta un minuto.
             </p>`
         : html`<p class="texto-vacio">
-            La consulta al agente no está disponible en esta instalación. La búsqueda en el catálogo
-            sí.
+            El agente de ocupaciones no está disponible en esta instalación. La búsqueda en el
+            catálogo sí funciona.
           </p>`
+    }
+  </section>`;
+}
+
+function renderResultado(r: ResultadoDeClasificacion): Html {
+  if (r.faltantes === 0) {
+    return html`<section class="tarjeta">
+      <p class="texto-nota">
+        Todos los ${cifra(r.conClave)} trabajadores ya tienen clave de ocupación. No hay nada que
+        clasificar.
+      </p>
+    </section>`;
+  }
+  return html`<section class="tarjeta">
+    <h3>Clasificación sin resultado para descargar</h3>
+    <div class="kpi-tira">
+      <div class="kpi">
+        <span class="kpi-etiqueta">Faltantes</span>
+        <span class="kpi-dato"><span class="kpi-cifra">${r.faltantes}</span></span>
+        <span class="kpi-pista">Trabajadores activos sin clave</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-etiqueta">Consultados</span>
+        <span class="kpi-dato"><span class="kpi-cifra">${r.consultados}</span></span>
+        <span class="kpi-pista">Combinaciones únicas</span>
+      </div>
+      <div class="kpi kpi-aviso">
+        <span class="kpi-etiqueta">Escritos</span>
+        <span class="kpi-dato"><span class="kpi-cifra">${r.escritos}</span></span>
+        <span class="kpi-pista">Ningún caso fue sugerido con confianza</span>
+      </div>
+    </div>
+    ${
+      r.pendientes.casos > 0
+        ? html`<p class="texto-nota">
+            Quedan ${cifra(r.pendientes.casos)} casos (${cifra(r.pendientes.trabajadores)}
+            trabajadores) para la siguiente corrida.
+          </p>`
+        : ""
     }
   </section>`;
 }
@@ -162,157 +126,49 @@ function renderConsulta(datos: DatosDeOcupaciones): Html {
 function renderLeyenda(): Html {
   return html`<section class="tarjeta" aria-labelledby="titulo-leyenda">
     <div class="seccion-cabecera">
-      <span class="capta-rotulo">Clasificación automática</span>
-      <h2 id="titulo-leyenda">Cómo funciona</h2>
-      <p>
-        Al aplicar el padrón desde la plataforma, los trabajadores activos sin clave de ocupación se
-        clasifican automáticamente con inteligencia artificial. Dos modelos resuelven cada caso por
-        separado; sólo viajan el puesto y el centro de costos.
-      </p>
+      <span class="capta-rotulo">Cómo funciona</span>
+      <h2 id="titulo-leyenda">Flujo de clasificación</h2>
     </div>
     <ul class="lista-tablero">
       <li class="lista-fila">
         <span class="foco foco-verde"></span>
         <span class="lista-cuerpo">
-          <span class="lista-titulo">Sugerida</span>
+          <span class="lista-titulo">1. Subir el padrón</span>
           <span class="lista-pista"
-            >Los dos modelos eligieron la misma clave; se escribe automáticamente.</span
+            >El archivo <code>sem NN CAP.xlsx</code> con sus hojas de activos.</span
           >
         </span>
       </li>
       <li class="lista-fila">
         <span class="foco foco-ambar"></span>
         <span class="lista-cuerpo">
-          <span class="lista-titulo">A revisar</span>
+          <span class="lista-titulo">2. Clasificación con IA</span>
           <span class="lista-pista"
-            >No coincidieron o alguno dudó; no se escribe sin revisión.</span
+            >Dos modelos resuelven cada caso. Sólo se llenan las celdas vacías con claves
+            sugeridas.</span
           >
         </span>
       </li>
       <li class="lista-fila">
-        <span class="foco foco-rojo"></span>
+        <span class="foco foco-verde"></span>
         <span class="lista-cuerpo">
-          <span class="lista-titulo">Sin respuesta</span>
-          <span class="lista-pista">Ningún modelo dejó una clave válida.</span>
+          <span class="lista-titulo">3. Descargar y revisar</span>
+          <span class="lista-pista"
+            >Se descarga el Excel con las claves llenas. Nada se escribe en la base de datos.</span
+          >
+        </span>
+      </li>
+      <li class="lista-fila">
+        <span class="foco foco-verde"></span>
+        <span class="lista-cuerpo">
+          <span class="lista-titulo">4. Aplicar desde Padrón</span>
+          <span class="lista-pista"
+            >Si las claves son correctas, se sube el archivo revisado a
+            <a href="/padron">Padrón</a> para aplicar.</span
+          >
         </span>
       </li>
     </ul>
-    <p class="texto-nota nota-bajo-tira">
-      Desde esta pantalla se puede consultar un caso individual o buscar en el catálogo de la
-      Secretaría del Trabajo.
-    </p>
-  </section>`;
-}
-
-// ------------------------------------------------------------ el resultado
-
-function renderPropuesta(rotulo: string, propuesta: PropuestaValidada | null): Html {
-  return html`<dt>${rotulo}</dt>
-    <dd>
-      ${
-        propuesta
-          ? html`${propuesta.codigo} ${propuesta.descripcion} ·
-            ${CONFIANZA[propuesta.confianza].toLowerCase()}`
-          : html`<span class="texto-atenuado">Sin propuesta</span>`
-      }
-    </dd>`;
-}
-
-function renderRecorrido(pasos: readonly PasoDeTraza[], sugerencia: SugerenciaDeOcupacion): Html {
-  return html`<details class="plegable">
-    <summary>Recorrido de la consulta</summary>
-    <div class="tabla-contenedor">
-      <table class="tabla-kcm">
-        <thead>
-          <tr>
-            <th scope="col">Paso</th>
-            <th scope="col">Modelo</th>
-            <th scope="col">Tiempo</th>
-            <th scope="col">Lo que decidió</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pasos.map(
-            (paso) =>
-              html`<tr>
-                <td>${PASOS[paso.nodo] ?? paso.nodo}</td>
-                <td class="celda-mono">${paso.modelo ? modeloCorto(paso.modelo) : "—"}</td>
-                <td class="celda-numero">${paso.modelo ? segundos(paso.milisegundos) : "—"}</td>
-                <td>${paso.nota}</td>
-              </tr>`,
-          )}
-        </tbody>
-      </table>
-    </div>
-    <p class="texto-nota">
-      Versión del agente ${sugerencia.version} · configuración ${sugerencia.huella}
-    </p>
-  </details>`;
-}
-
-function renderResultado(sugerencia: SugerenciaDeOcupacion): Html {
-  const estado = ESTADO[sugerencia.estado];
-  const propuesta = sugerencia.sugerencia;
-  return html`<section class="tarjeta" aria-labelledby="titulo-resultado">
-    <div class="seccion-cabecera cabecera-fila">
-      <h3 id="titulo-resultado">${sugerencia.caso.puesto} · ${sugerencia.caso.centroDeCostos}</h3>
-      <span class="${estado.insignia}">${estado.rotulo}</span>
-    </div>
-
-    ${
-      propuesta
-        ? html`<div class="kpi-tira kpi-tira-compacta">
-              <div class="${estado.kpi}">
-                <span class="kpi-etiqueta">Clave de ocupación</span>
-                <span class="kpi-dato"><span class="kpi-cifra">${propuesta.codigo}</span></span>
-                <span class="kpi-pista">${propuesta.descripcion}</span>
-              </div>
-              <div class="kpi">
-                <span class="kpi-etiqueta">Subárea del DC-3</span>
-                <span class="kpi-dato"><span class="kpi-cifra">${propuesta.subarea}</span></span>
-                <span class="kpi-pista">${propuesta.denominacionDeSubarea}</span>
-              </div>
-              <div class="kpi">
-                <span class="kpi-etiqueta">Confianza</span>
-                <span class="kpi-dato"
-                  ><span class="kpi-cifra">${CONFIANZA[propuesta.confianza]}</span></span
-                >
-                <span class="kpi-pista"
-                  >${propuesta === sugerencia.principal ? "Del primer modelo" : "Del segundo modelo"}</span
-                >
-              </div>
-            </div>
-            <p class="texto-nota"><strong>Motivo.</strong> ${propuesta.motivo}</p>
-            <p class="texto-nota">
-              <strong>${estado.rotulo}.</strong> ${oracion(sugerencia.razon)}
-            </p>`
-        : html`<p class="texto-vacio">Ningún modelo dejó una clave válida: ${sugerencia.razon}.</p>`
-    }
-
-    <dl class="definiciones">
-      ${
-        propuesta?.alternativa
-          ? html`<dt>Alternativa</dt>
-              <dd>${propuesta.alternativa.codigo} ${propuesta.alternativa.descripcion}</dd>`
-          : ""
-      }
-      ${renderPropuesta("Primer modelo", sugerencia.principal)}
-      ${renderPropuesta("Segundo modelo", sugerencia.verificador)}
-    </dl>
-    ${
-      propuesta
-        ? html`<div class="acciones-fila nota-bajo-tira">
-            <a
-              class="boton-pequeno boton-secundario"
-              href="/ocupaciones?subarea=${propuesta.subarea}#titulo-catalogo"
-              target="_blank"
-              rel="noopener"
-              >Ver las ocupaciones de ${propuesta.subarea} en otra pestaña</a
-            >
-          </div>`
-        : ""
-    }
-    ${renderRecorrido(sugerencia.traza, sugerencia)}
   </section>`;
 }
 
@@ -431,18 +287,18 @@ function renderResultadosDelCatalogo(datos: DatosDeOcupaciones): Html {
 
 export function renderOccupationsPage(datos: DatosDeOcupaciones): string {
   const contenido = html`
-    <div class="rejilla-dos">${renderConsulta(datos)} ${renderLeyenda()}</div>
-    ${datos.sugerencia ? renderResultado(datos.sugerencia) : ""} ${renderCatalogo(datos)}
+    <div class="rejilla-dos">${renderFormulario(datos)} ${renderLeyenda()}</div>
+    ${datos.resultado ? renderResultado(datos.resultado) : ""} ${renderCatalogo(datos)}
   `;
 
   return renderLayout({
     titulo: "Ocupaciones",
-    subtitulo: "Clave del Catálogo Nacional de Ocupaciones para el DC-3",
+    subtitulo: "Clasificación automática de la clave de ocupación con IA",
     rutaActiva: "/ocupaciones",
     entorno: datos.entorno,
-    estado: datos.consultaDisponible
-      ? html`<span class="insignia insignia-completado">Consulta disponible</span>`
-      : html`<span class="insignia insignia-inactivo">Consulta apagada</span>`,
+    estado: datos.iaDisponible
+      ? html`<span class="insignia insignia-completado">IA disponible</span>`
+      : html`<span class="insignia insignia-inactivo">IA apagada</span>`,
     contenido,
   });
 }

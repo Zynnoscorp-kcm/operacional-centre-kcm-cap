@@ -1,36 +1,41 @@
 /**
- * Rutas del agente de ocupaciones.
+ * Rutas de clasificación de ocupaciones con IA.
  *
- * - `GET /ocupaciones` es la pantalla: la consulta al agente, la leyenda de la
- *   copia del padrón y la búsqueda en el catálogo. La búsqueda va en la
- *   dirección (`?q=…&subarea=…`) para que una búsqueda se pueda compartir y
- *   volver a abrir; no usa modelo.
- * - `POST /ocupaciones` consulta al agente desde la pantalla y la vuelve a
- *   dibujar con el resultado y el formulario lleno.
- * - `POST /api/ocupaciones/sugerir` es lo mismo en JSON.
+ * El flujo es independiente de la base de datos:
  *
- * Un caso por petición: un caso puede tardar hasta cien segundos entre
- * reintentos y respaldo, y la función publicada corta a los ciento veinte.
+ * 1. El usuario sube el padrón (`sem NN CAP.xlsx`) en `POST /ocupaciones`.
+ * 2. La plataforma lo lee, identifica a los trabajadores activos sin clave de
+ *    ocupación y clasifica cada combinación única de puesto y centro de costos
+ *    con el agente de IA.
+ * 3. Las claves sugeridas se escriben de vuelta en las celdas del XLSX y el
+ *    archivo modificado se devuelve para descarga.
+ * 4. El usuario revisa el Excel fuera de línea. Si las claves son correctas,
+ *    sube el archivo revisado a `/padron` para aplicarlo a la base.
  *
- * Nacen cerradas, como toda ruta nueva: sin sesión de consola, el guardia las
- * rechaza antes de llegar aquí. La bitácora anota el estado y la duración de
- * cada consulta, nunca el puesto ni la respuesta del modelo.
+ * Nada se escribe en la base de datos desde aquí. La búsqueda en el catálogo
+ * y la API JSON de un caso suelto se conservan.
  */
 
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
 import { DomainError } from "../domain/comun/errores.ts";
+import type { PadronLeido } from "../domain/padron/tipos.ts";
 import { catalogoDeLaPlataforma, SUBAREAS_CNO } from "../domain/ocupaciones/catalogo.ts";
+import { planearClasificacion } from "../domain/ocupaciones/plan.ts";
+import { escribirCodigosEnXlsx } from "../domain/ocupaciones/escritor-xlsx.ts";
 import type { ServicioDeOcupacionesPort } from "../domain/ocupaciones/servicio.ts";
+import { MultipartError, parseMultipart } from "../server/multipart.ts";
 import {
   renderOccupationsPage,
   type BusquedaEnCatalogo,
   type DatosDeOcupaciones,
 } from "../web/pages/ocupaciones.ts";
 
-/** Filas que enseña la búsqueda; más allá, más palabras acotan mejor que desplazarse. */
+const MAXIMO_DEL_ARCHIVO = 8 * 1024 * 1024;
+const MAXIMO_EN_LA_NUBE = 4 * 1024 * 1024;
 const LIMITE_DE_BUSQUEDA = 60;
+const CASOS_POR_CORRIDA = 30;
 
 const SIN_BUSQUEDA: BusquedaEnCatalogo = {
   texto: "",
@@ -40,7 +45,6 @@ const SIN_BUSQUEDA: BusquedaEnCatalogo = {
   ocupaciones: [],
 };
 
-/** Un campo de formulario o de consulta como texto; el primero si vino repetido. */
 function texto(valor: unknown): string {
   const uno: unknown = Array.isArray(valor) ? valor[0] : valor;
   return typeof uno === "string" ? uno.trim() : "";
@@ -63,18 +67,14 @@ export function registerOccupationRoutes(
   app: FastifyInstance,
   deps: {
     readonly config: AppConfig;
-    /**
-     * Ausente cuando no hay llave de ningún proveedor. Es una función porque el
-     * agente se arma la primera vez que se usa, no al arrancar.
-     */
+    readonly extraer: (archivo: Buffer) => PadronLeido;
     readonly servicio?: () => Promise<ServicioDeOcupacionesPort>;
   },
 ): void {
   const pantalla = (
     respuesta: FastifyReply,
     codigo: number,
-    datos: Pick<DatosDeOcupaciones, "busqueda"> &
-      Partial<Pick<DatosDeOcupaciones, "consulta" | "sugerencia" | "error">>,
+    datos: Partial<DatosDeOcupaciones>,
   ): FastifyReply =>
     respuesta
       .type("text/html; charset=utf-8")
@@ -82,10 +82,11 @@ export function registerOccupationRoutes(
       .send(
         renderOccupationsPage({
           entorno: deps.config.environment,
-          consultaDisponible: deps.servicio !== undefined,
+          iaDisponible: deps.servicio !== undefined,
           subareas: SUBAREAS_CNO,
           tamanoDelCatalogo: catalogoDeLaPlataforma().tamano,
           limiteDeBusqueda: LIMITE_DE_BUSQUEDA,
+          busqueda: SIN_BUSQUEDA,
           ...datos,
         }),
       );
@@ -96,33 +97,123 @@ export function registerOccupationRoutes(
     }),
   );
 
-  app.post("/ocupaciones", async (peticion, respuesta) => {
-    const cuerpo = (peticion.body ?? {}) as Record<string, unknown>;
-    const consulta = {
-      puesto: texto(cuerpo.puesto),
-      centroDeCostos: texto(cuerpo.centroDeCostos),
-    };
-    if (!deps.servicio) {
-      return pantalla(respuesta, 503, {
-        consulta,
-        error: "La consulta al agente no está disponible en esta instalación.",
-        busqueda: SIN_BUSQUEDA,
-      });
-    }
-    const servicio = await deps.servicio();
-    const inicio = Date.now();
-    try {
-      const sugerencia = await servicio.sugerir(consulta);
+  app.post(
+    "/ocupaciones",
+    {
+      bodyLimit: deps.config.role === "nube" ? MAXIMO_EN_LA_NUBE : MAXIMO_DEL_ARCHIVO,
+      errorHandler: (error, _peticion, respuesta) => {
+        if (error.statusCode !== 413) throw error;
+        void pantalla(respuesta, 413, {
+          error: "El archivo supera el tamaño máximo aceptado.",
+        });
+      },
+    },
+    async (peticion: FastifyRequest, respuesta: FastifyReply) => {
+      if (!deps.servicio) {
+        return pantalla(respuesta, 503, {
+          error: "El agente de ocupaciones no está disponible en esta instalación.",
+        });
+      }
+
+      let archivo;
+      try {
+        const formulario = parseMultipart(
+          peticion.body as Buffer,
+          peticion.headers["content-type"],
+        );
+        archivo = formulario.archivos.find((parte) => parte.campo === "archivo");
+      } catch (error) {
+        if (!(error instanceof MultipartError)) throw error;
+        return pantalla(respuesta, 400, { error: "El formulario llegó incompleto o dañado." });
+      }
+
+      if (!archivo || archivo.contenido.length === 0) {
+        return pantalla(respuesta, 400, { error: "No se recibió ningún archivo." });
+      }
+
+      let padron: PadronLeido;
+      try {
+        padron = deps.extraer(archivo.contenido);
+      } catch (error) {
+        const mensaje = error instanceof Error ? error.message : String(error);
+        return pantalla(respuesta, 422, {
+          error: `El archivo no tiene la forma del padrón semanal: ${mensaje}`,
+        });
+      }
+
+      let plan;
+      try {
+        plan = planearClasificacion(padron, CASOS_POR_CORRIDA);
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        return pantalla(respuesta, 422, { error: error.message });
+      }
+
+      if (plan.casos.length === 0) {
+        return pantalla(respuesta, 200, {
+          resultado: {
+            faltantes: 0,
+            consultados: 0,
+            escritos: 0,
+            conClave: plan.conClave,
+            pendientes: plan.pendientes,
+          },
+        });
+      }
+
+      const servicio = await deps.servicio();
+      const codigos: Array<{ casoId: string; codigo: string }> = [];
+      let consultados = 0;
+
+      for (const caso of plan.casos) {
+        consultados += 1;
+        try {
+          const sugerencia = await servicio.sugerir({
+            puesto: caso.puesto,
+            centroDeCostos: caso.centroDeCostos,
+          });
+          if (sugerencia.sugerencia && sugerencia.estado === "sugerida") {
+            codigos.push({ casoId: caso.id, codigo: sugerencia.sugerencia.codigo });
+          }
+        } catch {
+          continue;
+        }
+      }
+
       peticion.log.info(
-        { estado: sugerencia.estado, milisegundos: Date.now() - inicio },
-        "ocupación consultada desde la pantalla",
+        { faltantes: plan.filas.length, consultados, escritos: codigos.length },
+        "clasificación de ocupaciones completada",
       );
-      return pantalla(respuesta, 200, { consulta, sugerencia, busqueda: SIN_BUSQUEDA });
-    } catch (error) {
-      if (!(error instanceof DomainError)) throw error;
-      return pantalla(respuesta, 400, { consulta, error: error.message, busqueda: SIN_BUSQUEDA });
-    }
-  });
+
+      if (codigos.length === 0) {
+        return pantalla(respuesta, 200, {
+          resultado: {
+            faltantes: plan.filas.length,
+            consultados,
+            escritos: 0,
+            conClave: plan.conClave,
+            pendientes: plan.pendientes,
+          },
+        });
+      }
+
+      const { buffer } = escribirCodigosEnXlsx(
+        archivo.contenido,
+        plan.filas,
+        codigos,
+      );
+
+      const nombre = archivo.nombre
+        ? archivo.nombre.replace(/\.xlsx$/i, " — con ocupaciones.xlsx")
+        : "padron-con-ocupaciones.xlsx";
+
+      return respuesta
+        .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .header("content-disposition", `attachment; filename="${nombre}"`)
+        .code(200)
+        .send(buffer);
+    },
+  );
 
   app.post("/api/ocupaciones/sugerir", async (peticion, respuesta) => {
     if (!deps.servicio) {
