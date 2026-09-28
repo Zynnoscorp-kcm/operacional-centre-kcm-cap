@@ -16,6 +16,35 @@ export type EnvironmentName = "development" | "staging" | "production";
 export type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 
 /**
+ * Qué papel juega este proceso en un despliegue partido.
+ *
+ * `local` es el comportamiento histórico y el valor por omisión: un proceso que
+ * lo hace todo, con disco propio y sin techo de tamaño en las peticiones. Es lo
+ * que corre en el equipo del departamento y lo que corre en las pruebas.
+ *
+ * `nube` declara lo contrario: un proceso efímero, sin disco que sobreviva y
+ * detrás de un alojamiento que corta las peticiones grandes —4.5 MB en Vercel,
+ * y es un techo de la plataforma, no del plan contratado—. Ahí las dos
+ * operaciones pesadas del ciclo se rechazan con su explicación en vez de
+ * fallar por truncamiento a mitad de una carga:
+ *
+ * - el snapshot completo de la matriz (`MATRIX_IMPORT_V1`, `MATRIX_SCAN_V1`),
+ * - el padrón semanal (`ROSTER_SCAN_V1` y la carga por `/padron`).
+ *
+ * Las constancias DC-3 se emiten en los dos papeles, con topes de tamaño
+ * distintos: allá la respuesta tiene techo.
+ *
+ * Lo que **no** se cierra en la nube son las actualizaciones ligeras de fechas
+ * —`RELEASE_ACK_V1` y las demás acciones acotadas del puente—, que son la
+ * operación más frecuente del día y caben de sobra.
+ *
+ * Por omisión `local` y no `nube` por la regla de siempre: el valor por omisión
+ * conserva el comportamiento existente, y publicar en un alojamiento con techos
+ * es la decisión que hay que declarar.
+ */
+export type DeploymentRole = "local" | "nube";
+
+/**
  * Credenciales de la corrida piloto.
  *
  * Son contraseñas planas leídas del entorno, sin directorio, sin rotación y sin
@@ -55,6 +84,8 @@ export interface PilotCredentials {
 
 export interface AppConfig {
   readonly environment: EnvironmentName;
+  /** Papel en el despliegue partido. Ver `DeploymentRole`. */
+  readonly role: DeploymentRole;
   readonly host: string;
   readonly port: number;
   readonly logLevel: LogLevel;
@@ -92,6 +123,23 @@ export interface AppConfig {
    * `/salas` agenda sin clave, como antes de la prueba.
    */
   readonly pilot: PilotCredentials;
+  /**
+   * Contraseña de la agenda para producción (`KCM_ROOM_PASSWORD`).
+   *
+   * No es de piloto: `/agenda` es pública, y publicada en internet sin clave
+   * cualquiera podría reservar o cancelar una sala. Por eso en la nube es
+   * obligatoria. Donde falta, las rutas caen a la de piloto, como antes.
+   */
+  readonly roomPassword?: string;
+  /**
+   * Dominios propios del quiosco y de la agenda (`KCM_DOMINIO_QUIOSCO`,
+   * `KCM_DOMINIO_AGENDA`, separados por coma). En ellos sólo responde su
+   * pantalla; ver `server/dominios.ts`. Vacíos, todo vive en un solo dominio.
+   */
+  readonly dedicatedHosts: {
+    readonly kiosk: readonly string[];
+    readonly agenda: readonly string[];
+  };
 }
 
 export type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -105,6 +153,7 @@ export class ConfigError extends Error {
 
 const ENTORNOS: readonly EnvironmentName[] = ["development", "staging", "production"];
 const NIVELES: readonly LogLevel[] = ["fatal", "error", "warn", "info", "debug", "trace"];
+const PAPELES: readonly DeploymentRole[] = ["local", "nube"];
 
 /**
  * La plataforma se publica por un único FQDN, mediante túnel nombrado hacia
@@ -116,6 +165,7 @@ const DIRECCIONES_LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
 export function loadConfig(source: EnvSource = process.env): AppConfig {
   const environment = leerEnumerado("KCM_ENV", source.KCM_ENV, ENTORNOS, "development");
+  const role = leerEnumerado("KCM_ROLE", source.KCM_ROLE, PAPELES, "local");
   const host = (source.KCM_HOST ?? "127.0.0.1").trim();
   const port = leerPuerto("KCM_PORT", source.KCM_PORT, 8787);
   const logLevel = leerEnumerado(
@@ -156,8 +206,25 @@ export function loadConfig(source: EnvSource = process.env): AppConfig {
     );
   }
 
+  const roomPassword = (source.KCM_ROOM_PASSWORD ?? "").trim();
+  // La agenda es pública. Publicada en la nube y sin clave, cualquiera en
+  // internet podría reservar o cancelar: se exige antes de arrancar.
+  if (role === "nube" && roomPassword === "") {
+    throw new ConfigError(
+      "En la nube KCM_ROOM_PASSWORD es obligatoria: /agenda es pública y sin clave cualquiera " +
+        "podría reservar o cancelar una sala desde internet.",
+    );
+  }
+
+  const dominios = (valor: string | undefined): string[] =>
+    (valor ?? "")
+      .split(",")
+      .map((dominio) => dominio.trim().toLowerCase())
+      .filter((dominio) => dominio !== "");
+
   return {
     environment,
+    role,
     host,
     port,
     logLevel,
@@ -165,6 +232,11 @@ export function loadConfig(source: EnvSource = process.env): AppConfig {
     trustedProxyHops,
     ...(databaseUrl === "" ? {} : { databaseUrl }),
     pilot: leerCredencialesDePiloto(source, environment),
+    ...(roomPassword === "" ? {} : { roomPassword }),
+    dedicatedHosts: {
+      kiosk: dominios(source.KCM_DOMINIO_QUIOSCO),
+      agenda: dominios(source.KCM_DOMINIO_AGENDA),
+    },
   };
 }
 

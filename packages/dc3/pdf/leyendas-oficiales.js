@@ -22,10 +22,9 @@
 // social que se imprime y una errata en ella invalida la constancia. Por eso la prueba que compara
 // contra el borrador lo excluye a proposito: es la unica diferencia declarada.
 //
-// De todos modos sigue siendo un respaldo. La razon social viaja en los datos, desde
-// `employer.legalName` de `dc3-config.json`, y al viajar ahi entra en la huella del documento: un
-// cambio de razon social no se emite en silencio. Las firmas tambien pueden sustituirse desde la
-// configuracion.
+// La consola imprime estos valores tal cual: la razon social y las firmas son las mismas en todas
+// las constancias y en cualquier equipo que emita. El compositor admite sustituirlas en los datos
+// de una constancia, y entonces el cambio entra en la huella del documento.
 
 export const LEYENDAS_DC3 = Object.freeze({
   title: "FORMATO DC-3 CONSTANCIA DE COMPETENCIAS O DE HABILIDADES LABORALES",

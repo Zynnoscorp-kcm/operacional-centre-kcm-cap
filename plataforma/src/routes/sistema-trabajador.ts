@@ -4,14 +4,13 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppConfig } from "../config/environment.ts";
-import { tryParseWorkerNumber } from "../domain/numero-trabajador.ts";
+import { tryParseWorkerNumber } from "../domain/comun/numero-trabajador.ts";
 import { WorkerSystemService } from "../domain/sistema-trabajador/servicio.ts";
 import type { WorkerSystemRepositoryPort } from "../ports/sistema-trabajador.port.ts";
 import { renderWorkerListPage } from "../web/pages/sistema-trabajador/directorio.ts";
 import { renderWorkerProfilePage } from "../web/pages/sistema-trabajador/ficha.ts";
 import { renderDepartmentSummaryPage } from "../web/pages/sistema-trabajador/resumen-departamento.ts";
 import { renderCourseCoveragePage } from "../web/pages/sistema-trabajador/cobertura-cursos.ts";
-import { renderPlantComparisonPage } from "../web/pages/sistema-trabajador/comparativa-planta.ts";
 import { renderDncCoveragePage } from "../web/pages/sistema-trabajador/cobertura-dnc.ts";
 
 export function registerWorkerSystemRoutes(
@@ -130,15 +129,11 @@ export function registerWorkerSystemRoutes(
     return reply.type("text/html; charset=utf-8").send(htmlContent);
   });
 
-  // 4. Comparativa de planta (HTML)
-  app.get("/trabajadores/comparativa", async (_request: FastifyRequest, reply: FastifyReply) => {
-    const report = await service.getPlantComparisonReport();
-    const htmlContent = renderPlantComparisonPage({
-      report,
-      entorno: config.environment,
-    });
-    return reply.type("text/html; charset=utf-8").send(htmlContent);
-  });
+  // 4. La comparativa de planta repetía las cifras de Departamentos en tarjetas;
+  // las dos vistas son ahora una. La dirección vieja lleva a la nueva.
+  app.get("/trabajadores/comparativa", (_request: FastifyRequest, reply: FastifyReply) =>
+    reply.redirect("/trabajadores/departamentos", 301),
+  );
 
   // 5. Ficha individual por trabajador (HTML)
   app.get("/trabajadores/:workerNumber", async (request: FastifyRequest, reply: FastifyReply) => {

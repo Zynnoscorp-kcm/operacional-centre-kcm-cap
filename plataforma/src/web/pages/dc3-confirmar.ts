@@ -1,18 +1,23 @@
 /**
- * La advertencia previa a emitir.
+ * La advertencia previa a emitir, como pantalla.
  *
  * Emitir asienta la constancia en la bitácora, y eso no se deshace: el renglón
  * queda marcado como emitido para siempre. Por eso el botón no emite de golpe,
- * pregunta antes. Quien dice que no se va sin haber tocado nada; quien dice que
- * sí recibe el documento en la carpeta de descargas y el registro queda hecho.
+ * pregunta antes.
+ *
+ * Normalmente la pregunta sale encima de la lista, en un `popover`, sin cambiar
+ * de pantalla. Esta página es el respaldo para el navegador que no entiende
+ * `popover` y el destino del enlace de «Emitir con recuadros escribibles».
+ * Quien dice que no vuelve a la lista tal como la dejó; quien dice que sí,
+ * también, con el documento bajando solo.
  *
  * Es una pantalla y no un cuadro de diálogo del navegador porque la consola
- * declara `default-src 'none'` y no corre guiones. Se queda deliberadamente en
- * lo mínimo: la pregunta, a quién afecta, y las dos salidas.
+ * declara `default-src 'none'` y no corre guiones.
  */
 import type { AppConfig } from "../../config/environment.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
+import { renderBarraDeModulo } from "./dc3/kit.ts";
 
 export interface Dc3ConfirmarPageInput {
   readonly config: AppConfig;
@@ -23,14 +28,14 @@ export interface Dc3ConfirmarPageInput {
   readonly accion: string;
   /** Campos ocultos que el «sí» tiene que llevarse consigo. */
   readonly ocultos: readonly (readonly [string, string])[];
-  /** A dónde vuelve el «no»: el plan tal como lo tenía. */
+  /** A dónde vuelve el «no»: la lista tal como estaba. */
   readonly regreso: string;
   /** Recuadros que saldrían vacíos. Vacío significa constancia completa. */
   readonly blankFields: readonly string[];
 }
 
 export function renderDc3ConfirmarPage(input: Dc3ConfirmarPageInput): string {
-  const contenido: Html = html`<section class="tarjeta">
+  const contenido: Html = html`<section class="tarjeta confirmacion-pagina">
     <h2>¿Emitir y descargar el DC-3?</h2>
     <p>
       Se emitirá la constancia de <strong>${input.workerName}</strong>, nómina
@@ -48,8 +53,8 @@ export function renderDc3ConfirmarPage(input: Dc3ConfirmarPageInput): string {
     }
 
     <p class="texto-nota">
-      Si acepta, el PDF se descarga y la emisión queda registrada en la bitácora con actor, fecha y
-      curso. Esa marca no se borra. Si cancela, no se descarga ni se registra nada.
+      Al emitir, el PDF se descarga y la emisión queda registrada con fecha y cuenta; el registro es
+      permanente. Cancelar no descarga ni registra nada.
     </p>
 
     <form method="post" action="${input.accion}" class="acciones-fila">
@@ -63,9 +68,11 @@ export function renderDc3ConfirmarPage(input: Dc3ConfirmarPageInput): string {
 
   return renderLayout({
     titulo: "Confirmar emisión",
-    rutaActiva: "/dc3",
+    rutaActiva: "/dc3/constancia",
     subtitulo: input.workerName,
     entorno: input.config.environment,
+    papel: input.config.role,
+    modulo: renderBarraDeModulo({ activa: "bandeja" }),
     contenido,
   });
 }

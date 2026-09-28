@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import type { AuditEventRecord } from "../../domain/quiosco/tipos.ts";
-import type { RoomId, RoomReservation, RoomReservationRepository } from "../../domain/salas/tipos.ts";
+import type {
+  RoomId,
+  RoomReservation,
+  RoomReservationRepository,
+} from "../../domain/salas/tipos.ts";
 
 export class MemoryRoomReservationRepository implements RoomReservationRepository {
   readonly #reservations = new Map<string, RoomReservation>();

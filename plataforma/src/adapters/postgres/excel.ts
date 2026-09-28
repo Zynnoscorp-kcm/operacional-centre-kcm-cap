@@ -7,7 +7,7 @@
  * Dos cosas que no son evidentes al leer el puerto:
  *
  * 1. `listPendingReleases` no consulta tablas: llama a
- *    `kcm_lectura.obtener_liberaciones_pendientes`, que resuelve la liberación
+ *    `lectura.obtener_liberaciones_pendientes`, que resuelve la liberación
  *    contra el mapeo vigente y el destino activo. Una liberación sin mapeo no se
  *    entrega, y esa regla vive en la base para que ningún adaptador pueda
  *    saltársela.
@@ -22,9 +22,13 @@ import type {
   DeviceCredential,
   ExcelCredentialScope,
   ExcelReleaseAck,
+  UltimoLoteAplicado,
   ExcelRepository,
   PendingExcelRelease,
   PowerQueryWorkerRow,
+  UploadKey,
+  UploadPart,
+  UploadPartSummary,
 } from "../../domain/excel/tipos.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
@@ -33,7 +37,7 @@ const ACTOR_SISTEMA = "sistema.configuracion";
 
 interface FilaCredencial {
   credencial_id: string;
-  client_id: string;
+  cliente_id: string;
   principal: string;
   perfil_windows: string;
   equipo: string;
@@ -61,7 +65,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
 
   async #actorId(identificador = ACTOR_SISTEMA): Promise<string> {
     const { rows } = await this.#db.query<{ actor_id: string }>(
-      `INSERT INTO kcm.actor (identificador, nombre_visible)
+      `INSERT INTO seguridad.actor (identificador, nombre_visible)
        VALUES ($1, $1)
        ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
        RETURNING actor_id;`,
@@ -77,8 +81,8 @@ export class SupabaseExcelRepository implements ExcelRepository {
   async insertCredential(credential: DeviceCredential): Promise<void> {
     const emisor = await this.#actorId();
     await this.#db.query(
-      `INSERT INTO kcm.credencial_equipo (
-         credencial_id, client_id, principal, perfil_windows, equipo,
+      `INSERT INTO seguridad.credencial_equipo (
+         credencial_id, cliente_id, principal, perfil_windows, equipo,
          alcance, recurso, credencial_hash, sal, algoritmo,
          emitida_por, emitida_en, expira_en
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'scrypt',$10,$11,$12);`,
@@ -104,17 +108,17 @@ export class SupabaseExcelRepository implements ExcelRepository {
     scope: ExcelCredentialScope,
   ): Promise<readonly DeviceCredential[]> {
     const { rows } = await this.#db.query<FilaCredencial>(
-      `SELECT credencial_id, client_id, principal, perfil_windows, equipo, alcance,
+      `SELECT credencial_id, cliente_id, principal, perfil_windows, equipo, alcance,
               recurso, sal, credencial_hash, emitida_en, expira_en, revocada_en,
               motivo_revocacion, ultimo_uso_en
-         FROM kcm.credencial_equipo
-        WHERE client_id = $1 AND alcance = $2
+         FROM seguridad.credencial_equipo
+        WHERE cliente_id = $1 AND alcance = $2
         ORDER BY emitida_en DESC;`,
       [clientId, scope],
     );
     return rows.map((r) => ({
       credentialId: r.credencial_id,
-      clientId: r.client_id,
+      clientId: r.cliente_id,
       principal: r.principal,
       windowsProfile: r.perfil_windows,
       equipment: r.equipo,
@@ -140,7 +144,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
     // sin dejar quién lo hizo no es revocar, es borrar el rastro.
     const revocador = credential.revokedAt ? await this.#actorId() : null;
     await this.#db.query(
-      `UPDATE kcm.credencial_equipo
+      `UPDATE seguridad.credencial_equipo
           SET ultimo_uso_en = $2,
               revocada_en = $3,
               revocada_por = $4,
@@ -172,12 +176,24 @@ export class SupabaseExcelRepository implements ExcelRepository {
       destination_header: string;
       target_mapping_version: string;
       overwrite_policy: "NO_OVERWRITE" | "OVERWRITE_WITH_HISTORY";
-    }>(`SELECT * FROM kcm_lectura.obtener_liberaciones_pendientes(500);`);
+      codigo_sesion: string | null;
+    }>(
+      // El código de la sesión no sale de la función de lectura y se recoge
+      // aquí, no dentro de ella: cambiarle la firma obligaría a una migración
+      // para agregar un dato que ninguna de sus reglas necesita. El `LEFT JOIN`
+      // no puede quitar renglones —una liberación sin sesión no existe—, y si
+      // alguna vez faltara, la fila sigue viniendo con el código vacío en vez de
+      // desaparecer de la carga que Excel debe escribir.
+      `SELECT p.*, s.codigo_sesion
+         FROM lectura.obtener_liberaciones_pendientes(500) p
+         LEFT JOIN operacion.sesion s ON s.sesion_id = p.session_id::uuid;`,
+    );
 
     return rows.map((r) => ({
       idempotencyKey: r.idempotency_key,
       batchId: r.batch_id,
       sessionId: r.session_id,
+      sessionCode: r.codigo_sesion ?? "",
       employeeId: r.employee_id,
       trainingId: r.training_id,
       completionDate: r.completion_date,
@@ -208,7 +224,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
       `SELECT acuse_id, solicitud_id, cliente_equipo, clave_idempotencia, lote_id,
               version_mapeo, fecha_capacitacion, estado, sha256_xlsb,
               direccion_aplicada, detalle, recibido_en
-         FROM kcm.acuse_liberacion_vba
+         FROM matriz.liberacion_acuse
         ORDER BY recibido_en ASC;`,
     );
     return rows.map((r) => ({
@@ -227,6 +243,29 @@ export class SupabaseExcelRepository implements ExcelRepository {
     }));
   }
 
+  async lastAppliedReleaseBatch(): Promise<UltimoLoteAplicado | undefined> {
+    const { rows } = await this.#db.query<{
+      recibido_en: string | Date;
+      fechas: string | number;
+      cliente_equipo: string;
+    }>(
+      `SELECT max(recibido_en) AS recibido_en, count(*) AS fechas, min(cliente_equipo) AS cliente_equipo
+         FROM matriz.liberacion_acuse
+        WHERE estado::text IN ('APPLIED', 'RECOVERED')
+        GROUP BY solicitud_id
+        ORDER BY max(recibido_en) DESC
+        LIMIT 1;`,
+    );
+    const fila = rows[0];
+    return fila
+      ? {
+          recibidoEn: iso(fila.recibido_en),
+          fechas: Number(fila.fechas),
+          equipo: fila.cliente_equipo,
+        }
+      : undefined;
+  }
+
   /**
    * El lote entero entra en una transacción: un acuse a medias dejaría al
    * cliente sin saber cuáles quedaron registrados.
@@ -236,7 +275,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
     await this.#db.transaction(async (tx) => {
       for (const row of rows) {
         await tx.query(
-          `INSERT INTO kcm.acuse_liberacion_vba (
+          `INSERT INTO matriz.liberacion_acuse (
              acuse_id, clave_idempotencia, lote_id, cliente_equipo, version_mapeo,
              fecha_capacitacion, estado, sha256_xlsb, direccion_aplicada,
              detalle, solicitud_id, recibido_en
@@ -266,8 +305,8 @@ export class SupabaseExcelRepository implements ExcelRepository {
     const { rows } = await this.#db.query<{
       evento_id: string;
       solicitud_id: string;
-      client_id: string;
-      dc3_key: string;
+      cliente_id: string;
+      clave_dc3: string;
       numero_trabajador: string;
       clave_curso: string;
       fecha_curso: string | null;
@@ -277,16 +316,16 @@ export class SupabaseExcelRepository implements ExcelRepository {
       codigo_error: string | null;
       recibido_en: string | Date;
     }>(
-      `SELECT evento_id, solicitud_id, client_id, dc3_key, numero_trabajador, clave_curso,
+      `SELECT evento_id, solicitud_id, cliente_id, clave_dc3, numero_trabajador, clave_curso,
               fecha_curso, estado, sha256_archivo, generado_en, codigo_error, recibido_en
-         FROM kcm.evento_dc3_vba
+         FROM dc3.evento_excel
         ORDER BY recibido_en ASC;`,
     );
     return rows.map((r) => ({
       eventId: r.evento_id,
       requestId: r.solicitud_id,
-      clientId: r.client_id,
-      dc3Key: r.dc3_key,
+      clientId: r.cliente_id,
+      dc3Key: r.clave_dc3,
       employeeId: r.numero_trabajador,
       courseId: r.clave_curso,
       completionDate: r.fecha_curso ? String(r.fecha_curso).slice(0, 10) : "",
@@ -303,8 +342,8 @@ export class SupabaseExcelRepository implements ExcelRepository {
     await this.#db.transaction(async (tx) => {
       for (const row of rows) {
         await tx.query(
-          `INSERT INTO kcm.evento_dc3_vba (
-             evento_id, solicitud_id, client_id, dc3_key, numero_trabajador,
+          `INSERT INTO dc3.evento_excel (
+             evento_id, solicitud_id, cliente_id, clave_dc3, numero_trabajador,
              clave_curso, fecha_curso, estado, sha256_archivo, generado_en,
              codigo_error, recibido_en
            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
@@ -333,11 +372,11 @@ export class SupabaseExcelRepository implements ExcelRepository {
   async useNonce(clientId: string, nonce: string, expiresAt: string): Promise<boolean> {
     // La limpieza va antes del intento: una fila caducada no debe rechazar un
     // nonce nuevo, y así la tabla no crece sin fin.
-    await this.#db.query(`DELETE FROM kcm.nonce_puente WHERE expira_en < now();`);
+    await this.#db.query(`DELETE FROM seguridad.nonce WHERE expira_en < now();`);
     const { rows } = await this.#db.query<{ nonce: string }>(
-      `INSERT INTO kcm.nonce_puente (client_id, nonce, expira_en)
+      `INSERT INTO seguridad.nonce (cliente_id, nonce, expira_en)
        VALUES ($1,$2,$3)
-       ON CONFLICT (client_id, nonce) DO NOTHING
+       ON CONFLICT (cliente_id, nonce) DO NOTHING
        RETURNING nonce;`,
       [clientId, nonce, expiresAt],
     );
@@ -353,7 +392,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
       area: string;
       position: string;
       active: boolean;
-    }>(`SELECT * FROM kcm_lectura.obtener_padron_power_query();`);
+    }>(`SELECT * FROM lectura.obtener_padron_power_query();`);
     return rows.map((r) => ({
       employeeId: r.employee_id,
       department: r.department,
@@ -367,18 +406,109 @@ export class SupabaseExcelRepository implements ExcelRepository {
 
   async saveImportSnapshot(importId: string, snapshot: MatrixSnapshot): Promise<void> {
     await this.#db.query(
-      `INSERT INTO kcm.snapshot_importacion (importacion_id, snapshot)
+      `INSERT INTO matriz.importacion_contenido (importacion_id, contenido)
        VALUES ($1, $2)
-       ON CONFLICT (importacion_id) DO UPDATE SET snapshot = EXCLUDED.snapshot;`,
+       ON CONFLICT (importacion_id) DO UPDATE SET contenido = EXCLUDED.contenido;`,
       [importId, JSON.stringify(snapshot)],
     );
   }
 
   async getImportSnapshot(importId: string): Promise<MatrixSnapshot | null> {
     const { rows } = await this.#db.query<{ snapshot: MatrixSnapshot }>(
-      `SELECT snapshot FROM kcm.snapshot_importacion WHERE importacion_id = $1;`,
+      `SELECT contenido AS snapshot FROM matriz.importacion_contenido WHERE importacion_id = $1;`,
       [importId],
     );
     return rows[0]?.snapshot ?? null;
+  }
+
+  // ------------------------------------------------------------ envío en partes
+
+  async saveUploadPart(part: UploadPart, now: string): Promise<void> {
+    // Como con los nonces, la limpieza va antes: la tabla no crece con envíos
+    // que se interrumpieron y nadie repitió.
+    await this.#db.query(`DELETE FROM sistema.envio_parte WHERE vence_en <= $1;`, [now]);
+    await this.#db.query(
+      `INSERT INTO sistema.envio_parte
+              (cliente_id, solicitud_id, total_caracteres, numero_parte, total_partes,
+               accion, contenido, vence_en)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (cliente_id, solicitud_id, total_caracteres, numero_parte) DO UPDATE
+          SET total_partes = EXCLUDED.total_partes,
+              accion = EXCLUDED.accion,
+              contenido = EXCLUDED.contenido,
+              vence_en = EXCLUDED.vence_en,
+              recibida_en = now();`,
+      [
+        part.clientId,
+        part.requestId,
+        part.totalCharacters,
+        part.partNumber,
+        part.totalParts,
+        part.action,
+        part.content,
+        part.expiresAt,
+      ],
+    );
+  }
+
+  async listUploadPartNumbers(
+    envio: UploadKey,
+    now: string,
+  ): Promise<readonly UploadPartSummary[]> {
+    // Sin `contenido`: mientras falten partes, cada llegada sólo cuenta cuáles hay.
+    const { rows } = await this.#db.query<{
+      numero_parte: number;
+      total_partes: number;
+      accion: string;
+    }>(
+      `SELECT numero_parte, total_partes, accion
+         FROM sistema.envio_parte
+        WHERE cliente_id = $1 AND solicitud_id = $2 AND total_caracteres = $3
+          AND vence_en > $4;`,
+      [envio.clientId, envio.requestId, envio.totalCharacters, now],
+    );
+    return rows.map((r) => ({
+      partNumber: Number(r.numero_parte),
+      totalParts: Number(r.total_partes),
+      action: r.accion,
+    }));
+  }
+
+  async discardUploadParts(envio: UploadKey): Promise<void> {
+    await this.#db.query(
+      `DELETE FROM sistema.envio_parte
+        WHERE cliente_id = $1 AND solicitud_id = $2 AND total_caracteres = $3;`,
+      [envio.clientId, envio.requestId, envio.totalCharacters],
+    );
+  }
+
+  async listUploadParts(envio: UploadKey, now: string): Promise<readonly UploadPart[]> {
+    const { rows } = await this.#db.query<{
+      cliente_id: string;
+      solicitud_id: string;
+      total_caracteres: number;
+      numero_parte: number;
+      total_partes: number;
+      accion: string;
+      contenido: string;
+      vence_en: string | Date;
+    }>(
+      `SELECT cliente_id, solicitud_id, total_caracteres, numero_parte, total_partes,
+              accion, contenido, vence_en
+         FROM sistema.envio_parte
+        WHERE cliente_id = $1 AND solicitud_id = $2 AND total_caracteres = $3
+          AND vence_en > $4;`,
+      [envio.clientId, envio.requestId, envio.totalCharacters, now],
+    );
+    return rows.map((r) => ({
+      clientId: r.cliente_id,
+      requestId: r.solicitud_id,
+      totalCharacters: Number(r.total_caracteres),
+      partNumber: Number(r.numero_parte),
+      totalParts: Number(r.total_partes),
+      action: r.accion,
+      content: r.contenido,
+      expiresAt: new Date(r.vence_en).toISOString(),
+    }));
   }
 }

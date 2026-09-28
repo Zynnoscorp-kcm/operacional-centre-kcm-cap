@@ -2,8 +2,8 @@
  * Adaptador PostgreSQL de la consola interna.
  *
  * Casi todo lo que hay aquí es `SELECT`. Las dos únicas escrituras —declarar un
- * campo y aprobarlo— van sobre `kcm.campo_declarado`, que es un catálogo, y
- * dejan su evento en `kcm.auditoria` dentro de la misma transacción: si la
+ * campo y aprobarlo— van sobre `organizacion.atributo_definicion`, que es un catálogo, y
+ * dejan su evento en `sistema.bitacora_auditoria` dentro de la misma transacción: si la
  * bitácora falla, el alta no queda.
  *
  * Nada de aquí toca el camino de operación. Ni sesiones, ni asistencias, ni
@@ -23,7 +23,11 @@ import type {
   TableSummary,
   TipoDeCampo,
 } from "../../domain/consola-interna/tipos.ts";
-import { COLUMNAS_ENMASCARADAS, TABLAS_VEDADAS } from "../../domain/consola-interna/tipos.ts";
+import {
+  COLUMNAS_ENMASCARADAS,
+  ESQUEMAS_DEL_DOMINIO,
+  TABLAS_VEDADAS,
+} from "../../domain/consola-interna/tipos.ts";
 import { ROOMS } from "../../domain/salas/tipos.ts";
 import type { InternalConsolePort } from "../../ports/consola-interna.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
@@ -92,12 +96,12 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
               s.creada_en,
               s.abierta_en,
               s.cerrada_en,
-              (SELECT count(*) FROM kcm.asistencia x WHERE x.sesion_id = s.sesion_id) AS asistencias,
-              (SELECT count(*) FROM kcm.asistencia x
+              (SELECT count(*) FROM operacion.asistencia x WHERE x.sesion_id = s.sesion_id) AS asistencias,
+              (SELECT count(*) FROM operacion.asistencia x
                 WHERE x.sesion_id = s.sesion_id AND x.liberada) AS liberadas
-         FROM kcm.sesion s
-         JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-         LEFT JOIN kcm.actor a ON a.actor_id = s.capacitador_id
+         FROM operacion.sesion s
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+         LEFT JOIN seguridad.actor a ON a.actor_id = s.capacitador_id
         WHERE GREATEST(s.creada_en, COALESCE(s.abierta_en, s.creada_en),
                        COALESCE(s.cerrada_en, s.creada_en)) >= now() - make_interval(days => $1::int)
         ORDER BY GREATEST(s.creada_en, COALESCE(s.abierta_en, s.creada_en),
@@ -156,9 +160,9 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
               r.cancelada_en,
               COALESCE(ac.nombre_visible, ac.identificador) AS cancelador,
               r.motivo_cancelacion
-         FROM kcm.reserva_sala r
-         JOIN kcm.sala sa ON sa.sala_id = r.sala_id
-         LEFT JOIN kcm.actor ac ON ac.actor_id = r.cancelada_por
+         FROM operacion.sala_reserva r
+         JOIN catalogo.sala sa ON sa.sala_id = r.sala_id
+         LEFT JOIN seguridad.actor ac ON ac.actor_id = r.cancelada_por
         WHERE GREATEST(r.creada_en, COALESCE(r.cancelada_en, r.creada_en))
               >= now() - make_interval(days => $1::int)
         ORDER BY GREATEST(r.creada_en, COALESCE(r.cancelada_en, r.creada_en)) DESC;`,
@@ -167,7 +171,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
 
     return rows.map((r) => ({
       reservationId: r.reserva_id,
-      // El nombre visible sale de `ROOMS`, no de la base. `kcm.sala` guarda los
+      // El nombre visible sale de `ROOMS`, no de la base. `catalogo.sala` guarda los
       // nombres con los que se sembró el catálogo y renombrar una sala se hace
       // en la constante: si la auditoría leyera el de la base, la misma sala se
       // llamaría distinto según la pantalla.
@@ -192,7 +196,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
 
   /**
    * La liberación sabe qué escribió; no sabe qué había antes. Eso vive en
-   * `kcm.historial_sobrescritura_fecha`, el ledger que conserva el valor previo
+   * `operacion.historial_capacitacion_cambio`, el ledger que conserva el valor previo
    * de toda sobrescritura con actor, motivo y momento.
    *
    * El `LATERAL` los une por el único vínculo que existe entre los dos: mismo
@@ -240,15 +244,15 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
               COALESCE(lo.motivo_sobrescritura, h.motivo) AS motivo_sobrescritura,
               COALESCE(ha.nombre_visible, ha.identificador) AS actor_sobrescritura,
               h.registrado_en AS sobrescrito_en
-         FROM kcm.liberacion l
-         JOIN kcm.lote_liberacion lo ON lo.lote_id = l.lote_id
-         JOIN kcm.sesion s ON s.sesion_id = l.sesion_id
-         JOIN kcm.trabajador t ON t.trabajador_id = l.trabajador_id
-         JOIN kcm.capacitacion c ON c.capacitacion_id = l.capacitacion_id
-         LEFT JOIN kcm.actor cb ON cb.actor_id = lo.creado_por
+         FROM matriz.liberacion l
+         JOIN matriz.liberacion_lote lo ON lo.lote_id = l.lote_id
+         JOIN operacion.sesion s ON s.sesion_id = l.sesion_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = l.trabajador_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = l.capacitacion_id
+         LEFT JOIN seguridad.actor cb ON cb.actor_id = lo.creado_por
          LEFT JOIN LATERAL (
            SELECT hh.fecha_anterior, hh.motivo, hh.actor_id, hh.registrado_en
-             FROM kcm.historial_sobrescritura_fecha hh
+             FROM operacion.historial_capacitacion_cambio hh
             WHERE hh.trabajador_id = l.trabajador_id
               AND hh.capacitacion_id = l.capacitacion_id
               AND hh.tipo_cambio = 'SOBRESCRITA'
@@ -257,7 +261,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
             ORDER BY hh.secuencia DESC
             LIMIT 1
          ) h ON true
-         LEFT JOIN kcm.actor ha ON ha.actor_id = h.actor_id
+         LEFT JOIN seguridad.actor ha ON ha.actor_id = h.actor_id
         ORDER BY l.creada_en DESC
         LIMIT $1;`,
       [limit],
@@ -318,11 +322,11 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
               COALESCE(ap.nombre_visible, ap.identificador) AS aprobado_por,
               cd.aprobado_en,
               cd.creado_en,
-              (SELECT count(*) FROM kcm.atributo_declarado ad
+              (SELECT count(*) FROM organizacion.trabajador_atributo ad
                 WHERE ad.nombre_atributo = cd.nombre_campo
                   AND ad.vigente_hasta IS NULL) AS valores
-         FROM kcm.campo_declarado cd
-         LEFT JOIN kcm.actor ap ON ap.actor_id = cd.aprobado_por
+         FROM organizacion.atributo_definicion cd
+         LEFT JOIN seguridad.actor ap ON ap.actor_id = cd.aprobado_por
         ORDER BY cd.creado_en DESC;`,
     );
 
@@ -341,7 +345,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
   }
 
   /**
-   * Alta y bitácora en una sola transacción. Si el `INSERT` en `kcm.auditoria`
+   * Alta y bitácora en una sola transacción. Si el `INSERT` en `sistema.bitacora_auditoria`
    * falla —por un rol que el enum no admite, por ejemplo—, el campo tampoco
    * queda: un catálogo que crece sin dejar rastro de quién lo hizo crecer es
    * precisamente lo que este registro existe para evitar.
@@ -349,8 +353,8 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
   async declareField(input: DeclareFieldInput, actor: string): Promise<DeclaredField> {
     const campoId = await this.#db.transaction(async (tx) => {
       const { rows } = await tx.query<{ campo_id: string }>(
-        `INSERT INTO kcm.campo_declarado (nombre_campo, tipo_dato, descripcion, origen_fuente)
-         VALUES ($1, $2, $3, $4::kcm.origen_fuente)
+        `INSERT INTO organizacion.atributo_definicion (nombre_campo, tipo_dato, descripcion, origen_fuente)
+         VALUES ($1, $2, $3, $4::comun.origen_fuente)
          RETURNING campo_id;`,
         [input.name, input.dataType, input.description ?? null, input.source],
       );
@@ -358,7 +362,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
       if (id === undefined) throw new Error("El alta del campo no devolvió identificador.");
 
       await tx.query(
-        `INSERT INTO kcm.auditoria (
+        `INSERT INTO sistema.bitacora_auditoria (
            actor, rol, entidad_tipo, entidad_id, accion, estado_nuevo, motivo, procedencia
          ) VALUES ($1, 'ADMINISTRADOR', 'CAMPO_DECLARADO', $2, 'DECLARAR', 'SIN_APROBAR', $3, 'PLATAFORMA');`,
         [actor, id, `Campo «${input.name}» declarado como ${input.dataType}.`],
@@ -373,7 +377,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     await this.#db.transaction(async (tx) => {
       const actorId = await resolverActor(tx, actor);
       const { rows } = await tx.query<{ nombre_campo: string }>(
-        `UPDATE kcm.campo_declarado
+        `UPDATE organizacion.atributo_definicion
             SET aprobado_para_reglas = true,
                 aprobado_por = $2,
                 aprobado_en = now()
@@ -389,7 +393,7 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
       if (nombre === undefined) return;
 
       await tx.query(
-        `INSERT INTO kcm.auditoria (
+        `INSERT INTO sistema.bitacora_auditoria (
            actor, rol, entidad_tipo, entidad_id, accion,
            estado_anterior, estado_nuevo, motivo, procedencia
          ) VALUES ($1, 'ADMINISTRADOR', 'CAMPO_DECLARADO', $2, 'APROBAR',
@@ -443,11 +447,11 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
               ) AS solo_agrega
          FROM pg_class c
          JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'kcm'
+        WHERE n.nspname = ANY ($2::text[])
           AND c.relkind = 'r'
           AND c.relname <> ALL ($1::text[])
         ORDER BY c.relname;`,
-      [TABLAS_VEDADAS],
+      [TABLAS_VEDADAS, ESQUEMAS_DEL_DOMINIO],
     );
 
     return rows.map((r) => ({
@@ -462,16 +466,21 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     // El nombre se resuelve contra el catálogo del servidor. Lo que no aparece
     // aquí no se consulta, y con eso la interpolación posterior no puede
     // referirse a nada que no exista y esté permitido.
-    const { rows: catalogo } = await this.#db.query<{ tabla: string; comentario: string | null }>(
-      `SELECT c.relname AS tabla, obj_description(c.oid, 'pg_class') AS comentario
+    const { rows: catalogo } = await this.#db.query<{
+      esquema: string;
+      tabla: string;
+      comentario: string | null;
+    }>(
+      `SELECT n.nspname AS esquema, c.relname AS tabla,
+              obj_description(c.oid, 'pg_class') AS comentario
          FROM pg_class c
          JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'kcm'
+        WHERE n.nspname = ANY ($3::text[])
           AND c.relkind = 'r'
           AND c.relname = $1
           AND c.relname <> ALL ($2::text[])
         LIMIT 1;`,
-      [table, TABLAS_VEDADAS],
+      [table, TABLAS_VEDADAS, ESQUEMAS_DEL_DOMINIO],
     );
     const encontrada = catalogo[0];
     if (encontrada === undefined) return null;
@@ -479,14 +488,15 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     const { rows: columnas } = await this.#db.query<{ column_name: string }>(
       `SELECT column_name
          FROM information_schema.columns
-        WHERE table_schema = 'kcm' AND table_name = $1
+        WHERE table_schema = $1 AND table_name = $2
         ORDER BY ordinal_position;`,
-      [table],
+      [encontrada.esquema, encontrada.tabla],
     );
     const nombresDeColumna = columnas.map((c) => c.column_name);
     const enmascaradas = nombresDeColumna.filter(esColumnaSensible);
 
-    const identificador = `kcm."${encontrada.tabla.replace(/"/gu, '""')}"`;
+    const citar = (nombre: string): string => `"${nombre.replace(/"/gu, '""')}"`;
+    const identificador = `${citar(encontrada.esquema)}.${citar(encontrada.tabla)}`;
 
     // Cinturón sobre el tirante: la lectura corre en una transacción declarada
     // de sólo lectura. Si un cambio futuro colara una sentencia que escribe,
@@ -531,7 +541,7 @@ function nombreDeSala(claveSala: string, nombreEnBase: string): string {
   return ROOMS.find((sala) => sala.roomId === claveSala)?.name ?? nombreEnBase;
 }
 
-/** Coincidencia exacta o por sufijo: `journal_mac` cae por `mac`, `curp` por sí misma. */
+/** Coincidencia exacta o por sufijo: `firma_hmac` cae por `hmac`, `curp` por sí misma. */
 function esColumnaSensible(columna: string): boolean {
   const nombre = columna.toLowerCase();
   return COLUMNAS_ENMASCARADAS.some(
@@ -566,7 +576,7 @@ function aTexto(valor: unknown): string | null {
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {
   const clave = identificador.trim() || "SISTEMA";
   const { rows } = await tx.query<{ actor_id: string }>(
-    `INSERT INTO kcm.actor (identificador, nombre_visible)
+    `INSERT INTO seguridad.actor (identificador, nombre_visible)
      VALUES ($1, $1)
      ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
      RETURNING actor_id;`,

@@ -293,7 +293,7 @@ export function renderKioskPage(props: KioskPageProps): string {
               <p
                 style="margin:0 0 26px;font-size:15px;font-weight:500;color:rgba(226,230,236,0.55)"
               >
-                Abra la sesión en esta sala para recibir registros de asistencia.
+                La sesión se abre en esta sala para recibir registros de asistencia.
               </p>
               <button
                 id="kiosk-start-btn"
@@ -622,7 +622,7 @@ export function renderKioskPage(props: KioskPageProps): string {
                   Registro de asistencia
                 </h2>
                 <p style="margin: 0; font-size: 15px; font-weight: 500; color: #FFFFFF">
-                  Escriba el número de trabajador de cinco dígitos.
+                  El número de trabajador son cinco dígitos.
                 </p>
                 <!--
                     El curso queda a la vista mientras dura el registro. Antes la

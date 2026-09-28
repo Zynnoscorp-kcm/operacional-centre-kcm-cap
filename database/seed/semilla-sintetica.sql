@@ -24,19 +24,19 @@ COMMENT ON SCHEMA kcm IS
 -- -----------------------------------------------------------------------------
 -- Actor responsable de la semilla
 -- -----------------------------------------------------------------------------
-INSERT INTO kcm.actor (identificador, nombre_visible)
+INSERT INTO seguridad.actor (identificador, nombre_visible)
 VALUES ('sistema.semilla.local', 'Semilla de desarrollo')
 ON CONFLICT (identificador) DO NOTHING;
 
 -- `asignacion_rol` no tiene restricción de unicidad, así que `ON CONFLICT` no
 -- protegería de nada: una segunda corrida agregaría otra asignación idéntica.
 -- La guarda tiene que ser explícita.
-INSERT INTO kcm.asignacion_rol (actor_id, rol, otorgado_por)
+INSERT INTO seguridad.actor_rol (actor_id, rol, otorgado_por)
 SELECT a.actor_id, 'ADMINISTRADOR', a.actor_id
-FROM kcm.actor a
+FROM seguridad.actor a
 WHERE a.identificador = 'sistema.semilla.local'
   AND NOT EXISTS (
-    SELECT 1 FROM kcm.asignacion_rol r
+    SELECT 1 FROM seguridad.actor_rol r
     WHERE r.actor_id = a.actor_id AND r.rol = 'ADMINISTRADOR' AND r.vigente_hasta IS NULL
   );
 
@@ -48,7 +48,7 @@ WHERE a.identificador = 'sistema.semilla.local'
 -- técnicos por área, así que la semilla necesita al menos un área con población
 -- propia para que esa distinción se pueda probar.
 -- -----------------------------------------------------------------------------
-INSERT INTO kcm.departamento (nombre, nombre_normalizado) VALUES
+INSERT INTO organizacion.departamento (nombre, nombre_normalizado) VALUES
   ('OPERACION DE MAQUINAS',   'OPERACION DE MAQUINAS'),
   ('GERENCIA DE MANTTO.',     'GERENCIA DE MANTTO '),
   ('ASEGURAMIENTO DE CALIDAD','ASEGURAMIENTO DE CALIDAD'),
@@ -56,7 +56,7 @@ INSERT INTO kcm.departamento (nombre, nombre_normalizado) VALUES
   ('ALMACEN Y EMBARQUES',     'ALMACEN Y EMBARQUES')
 ON CONFLICT (nombre) DO NOTHING;
 
-INSERT INTO kcm.area (departamento_id, nombre, nombre_normalizado)
+INSERT INTO organizacion.area (departamento_id, nombre, nombre_normalizado)
 SELECT d.departamento_id, v.nombre, v.norm
 FROM (VALUES
   ('GERENCIA DE MANTTO.',      'GERENCIA DE MANTTO. ELECTRICO', 'GERENCIA DE MANTTO  ELECTRICO'),
@@ -64,10 +64,10 @@ FROM (VALUES
   ('OPERACION DE MAQUINAS',    'MAQUINA 1',                     'MAQUINA 1'),
   ('CONVERSION',               'LINEA DE CONVERSION A',         'LINEA DE CONVERSION A')
 ) AS v(departamento, nombre, norm)
-JOIN kcm.departamento d ON d.nombre = v.departamento
+JOIN organizacion.departamento d ON d.nombre = v.departamento
 ON CONFLICT (departamento_id, nombre) DO NOTHING;
 
-INSERT INTO kcm.puesto (nombre, nombre_normalizado) VALUES
+INSERT INTO organizacion.puesto (nombre, nombre_normalizado) VALUES
   ('*OPERARIO 1°',            'OPERARIO 1'),
   ('*OPERARIO 2°',            'OPERARIO 2'),
   ('*OPERARIO 3°',            'OPERARIO 3'),
@@ -84,7 +84,7 @@ ON CONFLICT (nombre) DO NOTHING;
 -- agregan cinco de calidad del TSV y dos técnicos, que son los que dan sentido
 -- a las reglas de dos niveles.
 -- -----------------------------------------------------------------------------
-INSERT INTO kcm.capacitacion (clave_curso, nombre, nombre_normalizado, clave_origen) VALUES
+INSERT INTO catalogo.capacitacion (clave_curso, nombre, nombre_normalizado, clave_origen) VALUES
   ('BPM',   'BUENAS PRACTICAS DE MANUFACTURA', 'BUENAS PRACTICAS DE MANUFACTURA', 'hc-course:bpm'),
   ('BPR',   'BUENAS PRACTICAS REGULATORIAS',   'BUENAS PRACTICAS REGULATORIAS',   'hc-course:bpr'),
   ('HACCP', 'HACCP',                           'HACCP',                           'hc-course:haccp'),
@@ -101,11 +101,11 @@ ON CONFLICT (clave_curso) DO NOTHING;
 -- pendiente para la planta entera. Se siembra para que el defecto no pueda
 -- reaparecer sin que una prueba local lo note.
 -- -----------------------------------------------------------------------------
-INSERT INTO kcm.alias_capacitacion
+INSERT INTO catalogo.capacitacion_alias
   (capacitacion_id, alias, alias_normalizado, origen_fuente, aprobado_por)
 SELECT c.capacitacion_id, 'BPM', 'BPM', 'TSV_DNC', a.actor_id
-FROM kcm.capacitacion c
-CROSS JOIN kcm.actor a
+FROM catalogo.capacitacion c
+CROSS JOIN seguridad.actor a
 WHERE c.clave_curso = 'BPM' AND a.identificador = 'sistema.semilla.local'
 ON CONFLICT (alias) DO NOTHING;
 
@@ -121,7 +121,7 @@ ON CONFLICT (alias) DO NOTHING;
 -- reportar como DATOS_INSUFICIENTES y dejar fuera de todo porcentaje; sin ellos
 -- ese camino nunca se ejercita en local.
 -- -----------------------------------------------------------------------------
-INSERT INTO kcm.trabajador
+INSERT INTO organizacion.trabajador
   (numero_trabajador, nombre_completo, fecha_alta, tipo_nomina,
    puesto_id, departamento_id, area_id, planta, curp, activo)
 SELECT
@@ -129,10 +129,10 @@ SELECT
   nombre,
   alta,
   nomina,
-  (SELECT puesto_id FROM kcm.puesto WHERE nombre = puesto),
-  (SELECT departamento_id FROM kcm.departamento WHERE nombre = departamento),
-  (SELECT a.area_id FROM kcm.area a
-     JOIN kcm.departamento d ON d.departamento_id = a.departamento_id
+  (SELECT puesto_id FROM organizacion.puesto WHERE nombre = puesto),
+  (SELECT departamento_id FROM organizacion.departamento WHERE nombre = departamento),
+  (SELECT a.area_id FROM organizacion.area a
+     JOIN organizacion.departamento d ON d.departamento_id = a.departamento_id
     WHERE a.nombre = area),
   planta,
   curp,
@@ -179,9 +179,9 @@ ON CONFLICT (numero_trabajador) DO NOTHING;
 -- El filtro por `9%` no es decorativo: acota el UPDATE a las filas sintéticas.
 -- Sin él, correr esta semilla por error contra una base con el padrón real
 -- reasignaría departamentos de personas de verdad.
-UPDATE kcm.trabajador t
+UPDATE organizacion.trabajador t
 SET departamento_id = a.departamento_id
-FROM kcm.area a
+FROM organizacion.area a
 WHERE t.area_id = a.area_id
   AND t.numero_trabajador LIKE '9%'
   AND t.departamento_id IS DISTINCT FROM a.departamento_id;
@@ -194,7 +194,7 @@ WHERE t.area_id = a.area_id
 -- estados que importan: COMPLETADO, REFORZAR —fecha vieja, fuera de vigencia—
 -- y PENDIENTE, que es simplemente la ausencia de fila.
 -- -----------------------------------------------------------------------------
-INSERT INTO kcm.registro_hc
+INSERT INTO operacion.historial_capacitacion
   (clave_idempotencia, trabajador_id, capacitacion_id, fecha_capacitacion,
    procedencia, estado_registro, version_mapeo)
 SELECT
@@ -211,8 +211,8 @@ SELECT
   'XLSB_IMPORT',
   'VIGENTE',
   'semilla-local-v1'
-FROM kcm.trabajador t
-JOIN kcm.capacitacion c ON c.clave_curso IN ('BPM', 'QMS', 'HACCP')
+FROM organizacion.trabajador t
+JOIN catalogo.capacitacion c ON c.clave_curso IN ('BPM', 'QMS', 'HACCP')
 WHERE t.numero_trabajador LIKE '9%'
   -- El resto queda sin fila para que existan PENDIENTE de verdad.
   AND (right(t.numero_trabajador, 2)::int % 4) <> 3
@@ -228,37 +228,37 @@ ON CONFLICT (clave_idempotencia) DO NOTHING;
 -- Igual que en `asignacion_rol`: `regla_dnc` no declara unicidad, de modo que
 -- la idempotencia depende de comprobarla aquí. Se identifica una regla por
 -- curso, nivel, población y versión, que es lo que la hace la misma regla.
-INSERT INTO kcm.regla_dnc
+INSERT INTO dnc.regla
   (capacitacion_id, nivel, departamento_id, meses_recurrencia, dias_gracia,
    version_regla, aprobada_por)
 SELECT c.capacitacion_id, 'DEPARTMENT', d.departamento_id, 12, 30,
        'SEMILLA-LOCAL-V1', a.actor_id
-FROM kcm.capacitacion c
-CROSS JOIN kcm.departamento d
-CROSS JOIN kcm.actor a
+FROM catalogo.capacitacion c
+CROSS JOIN organizacion.departamento d
+CROSS JOIN seguridad.actor a
 WHERE c.clave_curso IN ('BPM', 'QMS', 'HACCP')
   AND a.identificador = 'sistema.semilla.local'
   AND NOT EXISTS (
-    SELECT 1 FROM kcm.regla_dnc r
+    SELECT 1 FROM dnc.regla r
     WHERE r.capacitacion_id = c.capacitacion_id
       AND r.nivel = 'DEPARTMENT'
       AND r.departamento_id = d.departamento_id
       AND r.version_regla = 'SEMILLA-LOCAL-V1'
   );
 
-INSERT INTO kcm.regla_dnc
+INSERT INTO dnc.regla
   (capacitacion_id, nivel, area_id, meses_recurrencia, dias_gracia,
    version_regla, aprobada_por)
 SELECT c.capacitacion_id, 'AREA', ar.area_id, 24, 30,
        'SEMILLA-LOCAL-V1', a.actor_id
-FROM kcm.capacitacion c
-CROSS JOIN kcm.area ar
-CROSS JOIN kcm.actor a
+FROM catalogo.capacitacion c
+CROSS JOIN organizacion.area ar
+CROSS JOIN seguridad.actor a
 WHERE c.clave_curso IN ('NEUMATICA_BASICA', 'FISICA_BASICA')
   AND ar.nombre = 'GERENCIA DE MANTTO. ELECTRICO'
   AND a.identificador = 'sistema.semilla.local'
   AND NOT EXISTS (
-    SELECT 1 FROM kcm.regla_dnc r
+    SELECT 1 FROM dnc.regla r
     WHERE r.capacitacion_id = c.capacitacion_id
       AND r.nivel = 'AREA'
       AND r.area_id = ar.area_id

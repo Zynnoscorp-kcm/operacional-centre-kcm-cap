@@ -45,8 +45,8 @@ Quien acompaña remotamente deja listo:
    Se dan de alta con `tools/db/alta-cuenta-consola.js`; la plataforma verifica
    cuentas pero no las crea.
 3. **La carpeta `excel/` completa** enviada a la laptop de escritura, en un
-   lugar fácil de encontrar, por ejemplo `Escritorio\KCM`. Son los quince
-   módulos de `clients/excel/vba/` —catorce `.bas` y el módulo de clase
+   lugar fácil de encontrar, por ejemplo `Escritorio\KCM`. Son los diecisiete
+   módulos de `clients/excel/vba/` —dieciséis `.bas` y el módulo de clase
    `KcmDiccionario.cls`— y, si la laptop es una Mac, también `clients/excel/mac/`, cuyo
    instalador de un paso hay que ejecutar una vez.
 4. **Una copia del XLSB de la matriz**, no el original. La primera conexión se
@@ -103,13 +103,11 @@ Las macros deben quedar habilitadas: si aparece una barra amarilla que dice
 Con el libro abierto, pulse `Alt` + `F11`. Se abre el editor de VBA.
 
 En el menú **Archivo → Importar archivo**, vaya a la carpeta donde están los
-`.bas` e importe **ocho** de los nueve archivos, uno por uno:
+módulos e importe **los diecisiete**, uno por uno: los dieciséis `.bas` y
+`KcmDiccionario.cls`. Todos son necesarios.
 
-`KcmBridgeCore`, `KcmBridgeHttp`, `KcmReleaseSync`, `KcmMatrixSync`,
-`KcmCoordinator`, `KcmConfigButtons`, `KcmMatrixPanel` y `KcmAsistente`.
-
-**`KcmDiagHash` no se importa**: es una herramienta de diagnóstico y sólo se usa
-si alguien se lo pide expresamente.
+En un libro que ya los tiene no hace falta repetir esto: la macro
+**`KcmActualizarModulos`** los reemplaza todos de una vez.
 
 Después, en el menú **Depuración → Compilar VBAProject**. Si no dice nada, está
 bien: en VBA el silencio es el resultado correcto. Si aparece un error, tome una

@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryKioskSessionRepository } from "../../src/adapters/memoria/quiosco.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import { KioskAuthService } from "../../src/domain/quiosco/autenticacion.ts";
 import { KioskService } from "../../src/domain/quiosco/registro.ts";
 import { SessionService } from "../../src/domain/quiosco/sesiones.ts";

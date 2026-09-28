@@ -2,7 +2,7 @@
  * Errores específicos del dominio de importación y reconciliación de matriz.
  */
 
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 
 export class MatrixImportError extends DomainError {
   constructor(code: string, message: string) {

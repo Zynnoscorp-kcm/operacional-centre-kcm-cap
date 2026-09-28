@@ -53,7 +53,7 @@ export function renderExcelPage(input: DatosDeExcel): string {
         input.pendientesDeExcel,
         input.pendientesDeExcel === 0
           ? "Sin pendientes en la matriz."
-          : "Se escriben en el próximo ciclo del libro.",
+          : "Se escriben en la próxima actualización.",
         input.pendientesDeExcel === 0 ? "ok" : "aviso",
       )}
       ${renderKpi(
@@ -67,14 +67,15 @@ export function renderExcelPage(input: DatosDeExcel): string {
     <section class="tarjeta">
       <div class="seccion-cabecera">
         <h2>Dirección del puente</h2>
-        <p>Dirección que el libro debe registrar. Cambia con el nombre publicado.</p>
+        <p>Se registra en la hoja <code>KCM_CONFIG</code> del libro.</p>
       </div>
       <dl class="definiciones">
-        <dt>Endpoint</dt>
+        <dt><code>ENDPOINT</code></dt>
         <dd><code>${input.endpoint}</code></dd>
-        <dt>Línea a cambiar en <code>KCM_CONFIG</code></dt>
-        <dd><code>ENDPOINT = ${input.endpoint}</code></dd>
       </dl>
+      <p class="texto-nota">
+        Los envíos de más de 3 MB salen de Excel en partes y la plataforma los junta.
+      </p>
     </section>
 
     <section class="tarjeta">
@@ -88,10 +89,7 @@ export function renderExcelPage(input: DatosDeExcel): string {
     <section class="tarjeta">
       <div class="seccion-cabecera">
         <h2>Conectar un equipo</h2>
-        <p>
-          La credencial queda ligada a principal, perfil de Windows y equipo, y es revocable. El
-          secreto se muestra <strong>una sola vez</strong>.
-        </p>
+        <p>La clave se muestra <strong>una sola vez</strong>. La credencial se puede revocar.</p>
       </div>
       <form method="post" action="/api/excel/credentials" class="formulario">
         <div class="fila-campos">
@@ -107,7 +105,7 @@ export function renderExcelPage(input: DatosDeExcel): string {
             />
           </div>
           <div class="grupo-campo">
-            <label for="vba-principal">Principal *</label>
+            <label for="vba-principal">Cuenta *</label>
             <input
               type="text"
               id="vba-principal"
@@ -139,8 +137,8 @@ export function renderExcelPage(input: DatosDeExcel): string {
           <div class="grupo-campo">
             <label for="vba-scope">Alcance</label>
             <select id="vba-scope" name="scope" class="control-formulario">
-              <option value="PUENTE_VBA">PUENTE_VBA</option>
-              <option value="POWER_QUERY_LECTURA">POWER_QUERY_LECTURA</option>
+              <option value="PUENTE_VBA">Libro de Excel (lectura y escritura de la matriz)</option>
+              <option value="POWER_QUERY_LECTURA">Power Query (sólo lectura)</option>
             </select>
           </div>
           <div class="grupo-campo">
@@ -178,8 +176,9 @@ export function renderExcelPage(input: DatosDeExcel): string {
   return renderLayout({
     titulo: "Conexión Excel",
     rutaActiva: "/excel",
-    subtitulo: "Puente VBA y credenciales por equipo",
+    subtitulo: "Conexión de los libros de Excel y credenciales por equipo",
     entorno: input.config.environment,
+    papel: input.config.role,
     contenido,
   });
 }
@@ -187,19 +186,16 @@ export function renderExcelPage(input: DatosDeExcel): string {
 function renderPasos(): Html {
   const pasos = [
     {
-      titulo: "Abrir el libro controlador",
-      texto: html`Archivo <code>.xlsm</code> independiente de la matriz. Excel pide habilitar macros
-        la primera vez.`,
+      titulo: "Abrir el libro del puente",
+      texto: html`Archivo <code>.xlsm</code>. Requiere macros habilitadas.`,
     },
     {
       titulo: "Conectar",
-      texto: html`Pulse <strong>Conectar</strong>. La autorización se hace en el navegador con la
-        cuenta del usuario; el libro conserva el permiso en memoria y no guarda claves.`,
+      texto: html`<strong>Conectar este equipo</strong> registra las direcciones y la credencial.`,
     },
     {
       titulo: "Verificar",
-      texto: html`<strong>Probar conexión</strong> revisa credencial, ruta, hoja, columnas y red, y
-        escribe el reporte por etapas en la hoja <code>KCM_ESTADO</code>.`,
+      texto: html`<strong>Verificar conexión</strong> revisa la credencial, las rutas y la red.`,
     },
   ];
 

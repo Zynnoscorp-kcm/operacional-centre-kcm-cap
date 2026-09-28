@@ -9,7 +9,15 @@
  * Produce dos documentos con la misma identidad visual: un acta de hallazgos
  * cuando la revisión encontró algo, y un talón de sesión concluida cuando no.
  *
- * Dos modos, y la diferencia importa:
+ * La plantilla tiene dos bloques y nada más: el encabezado con los datos
+ * generales de la sesión y, debajo, el detalle enumerado de quiénes la tomaron.
+ *
+ * Antes traía además una banda de color con el veredicto, seis recuadros con los
+ * contadores, una sección aparte con los códigos de hallazgo y tres líneas de
+ * firma. Todo eso repetía —los contadores se pueden contar en el detalle, la
+ * banda decía lo que ya dice el título— y empujaba el padrón a la segunda hoja,
+ * que es lo único que alguien lee de verdad en este documento. El veredicto y
+ * las observaciones bajaron a dos renglones del encabezado; el resto se quitó.
  * - `VISTA_PREVIA` no toca nada. Se puede pedir cuantas veces se quiera sin
  *   cambiar la revisión ni la etapa de la sesión ni dejar rastro.
  * - `ARCHIVO` deja evidencia inmutable con su SHA-256 y un asiento de auditoría,
@@ -17,10 +25,13 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { Clock } from "../../ports/reloj.ts";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { PreReleaseRepositoryPort } from "../../ports/preliberacion.port.ts";
 import type { ActorIdentity } from "../quiosco/tipos.ts";
 import { PdfPage, buildPdf, rgb, wrapText, type Color } from "../../web/pdf/escritor.ts";
+import { leerImagen, type ImagenParaPdf } from "../../web/pdf/imagenes.ts";
 import { InvalidPreReleaseStateError, PreReleaseInputError } from "./errores.ts";
 import { ROSTER_SITUATION_LABELS, rosterSituation } from "./servicio.ts";
 import type { WorkbenchService } from "./banco-de-trabajo.ts";
@@ -33,11 +44,13 @@ import type {
   WorkbenchState,
 } from "./tipos.ts";
 import {
+  BLOCKING_REASON_LABELS,
   EXAM_OUTCOME_LABELS,
   MAX_REPORT_BYTES,
   PRERELEASE_FINDINGS,
   REPORT_KIND,
   REPORT_MIME_TYPE,
+  type BlockingReason,
   type FindingCode,
 } from "./tipos.ts";
 
@@ -59,20 +72,70 @@ const BRAND = {
 const PAGE = { width: 612, height: 792, margin: 40 } as const;
 const CONTENT_WIDTH = PAGE.width - PAGE.margin * 2;
 
-/** Columnas del padrón, en puntos y proporcionales al ancho útil. */
+/**
+ * El logotipo de la empresa en el encabezado.
+ *
+ * Es el mismo archivo que membreta la DC-3 y vive donde ella lo busca, fuera de
+ * Git: es material de identidad de la empresa y no código. El símbolo que la
+ * consola pone en su barra lateral no sirve aquí —está guardado entrelazado y el
+ * lector de PNG del escritor de PDF lo rechaza—, y de todas formas el logotipo
+ * con el nombre es lo que corresponde a un documento impreso.
+ *
+ * Si el archivo falta —un clon nuevo no trae `referencias/privado`— el
+ * encabezado cae al nombre de la empresa en texto. Un logotipo ausente no puede
+ * impedir que se imprima el acta de una sesión.
+ */
+const LOGO_PATH = "referencias/privado/logotipos/empresa.png";
+
+/** Alto del logotipo en puntos. Manda sobre el ancho, que se deriva del original. */
+const LOGO_HEIGHT = 34;
+
+/**
+ * Columnas del detalle, en puntos. Suman el ancho útil de la hoja.
+ *
+ * Al quitar los recuadros y la banda, el detalle empieza mucho más arriba y las
+ * dos columnas de texto libre —el nombre y los motivos— pudieron ensancharse:
+ * antes un nombre de tres apellidos y un motivo compuesto se truncaban los dos.
+ */
 const ROSTER_COLUMNS = [
-  { key: "index", label: "#", width: 24, align: "right" as const },
-  { key: "employeeId", label: "Nómina", width: 58, align: "left" as const },
-  { key: "displayName", label: "Trabajador", width: 168, align: "left" as const },
-  { key: "examStatus", label: "Examen", width: 76, align: "left" as const },
-  { key: "state", label: "Estado", width: 66, align: "left" as const },
-  { key: "reasons", label: "Motivos", width: 140, align: "left" as const },
+  { key: "index", label: "#", width: 26, align: "right" as const },
+  { key: "employeeId", label: "Nómina", width: 60, align: "left" as const },
+  { key: "displayName", label: "Trabajador", width: 190, align: "left" as const },
+  { key: "examStatus", label: "Examen", width: 78, align: "left" as const },
+  { key: "state", label: "Estado", width: 62, align: "left" as const },
+  { key: "reasons", label: "Motivos", width: 116, align: "left" as const },
 ];
+
+/**
+ * Lee el logotipo una sola vez por raíz de proyecto.
+ *
+ * Se cachea —incluido el fallo— porque el reporte se compone muchas veces por
+ * jornada y decodificar el mismo PNG en cada una no compra nada. El `null` de un
+ * archivo ausente también se recuerda: si no está, no va a aparecer solo.
+ */
+const LOGOTIPOS = new Map<string, ImagenParaPdf | null>();
+
+function leerLogotipo(projectRoot: string): ImagenParaPdf | null {
+  const ruta = resolve(projectRoot, LOGO_PATH);
+  const recordado = LOGOTIPOS.get(ruta);
+  if (recordado !== undefined) return recordado;
+
+  let imagen: ImagenParaPdf | null;
+  try {
+    imagen = leerImagen(readFileSync(ruta));
+  } catch {
+    imagen = null;
+  }
+  LOGOTIPOS.set(ruta, imagen);
+  return imagen;
+}
 
 export interface ReportServiceDeps {
   readonly repository: PreReleaseRepositoryPort;
   readonly workbench: WorkbenchService;
   readonly clock: Clock;
+  /** Desde dónde se resuelve el logotipo. Por omisión, la raíz del proceso. */
+  readonly projectRoot?: string;
 }
 
 export interface GenerateReportInput {
@@ -84,11 +147,13 @@ export class PreReleaseReportService {
   private readonly repo: PreReleaseRepositoryPort;
   private readonly workbench: WorkbenchService;
   private readonly clock: Clock;
+  private readonly projectRoot: string;
 
   constructor(deps: ReportServiceDeps) {
     this.repo = deps.repository;
     this.workbench = deps.workbench;
     this.clock = deps.clock;
+    this.projectRoot = deps.projectRoot ?? process.cwd();
   }
 
   /**
@@ -203,29 +268,19 @@ export class PreReleaseReportService {
 
   private compose(state: WorkbenchState, now: Date): Buffer {
     const pages: PdfPage[] = [];
-    let page = new PdfPage({ width: PAGE.width, height: PAGE.height });
+    const page = new PdfPage({ width: PAGE.width, height: PAGE.height });
     pages.push(page);
 
     const clean = state.findings.length === 0;
     let y: number = PAGE.margin;
 
-    y = this.drawHeader(page, y, now);
-    y = this.drawTitle(page, y, clean);
-    y = this.drawBanner(page, y, clean, state.findings.length);
-    y = this.drawSessionGrid(page, y, state.session);
-    y = this.drawTotals(page, y, state.counters);
+    y = this.drawHeader(page, y, now, clean);
+    y = this.drawSessionGrid(page, y, state.session, state.findings, state.review.comments);
 
-    if (!clean) y = this.drawFindings(page, y, state.findings);
+    // El detalle puede desbordar; cuando pasa, la página nueva repite el
+    // encabezado de columnas para que ninguna hoja suelta quede sin contexto.
+    this.drawRoster(pages, page, y, state.roster);
 
-    // El padrón puede desbordar; cuando pasa, la página nueva repite encabezado
-    // de tabla para que ninguna hoja suelta quede sin contexto.
-    const rosterResult = this.drawRoster(pages, page, y, state.roster);
-    page = rosterResult.page;
-    y = rosterResult.y;
-
-    if (state.review.comments) y = this.drawComments(page, y, state.review.comments);
-
-    this.drawSignatures(page, y);
     this.drawFooter(pages, state.session);
 
     return buildPdf({
@@ -237,76 +292,61 @@ export class PreReleaseReportService {
     });
   }
 
-  private drawHeader(page: PdfPage, y: number, now: Date): number {
-    page.text("KIMBERLY-CLARK DE MÉXICO", {
-      x: PAGE.margin,
-      y,
-      size: 13,
-      bold: true,
-      color: BRAND.dark,
-    });
-    page.text("CONTROL DE CAPACITACIONES", {
-      x: PAGE.margin,
-      y: y + 3,
-      size: 7,
-      width: CONTENT_WIDTH,
-      align: "right",
-      color: BRAND.muted,
-    });
+  /**
+   * Encabezado: el logotipo y el título del documento.
+   *
+   * El logotipo manda: es lo primero que identifica la hoja cuando alguien la
+   * saca de un montón, y a 46 puntos se reconoce impreso, que a los 13 del
+   * nombre en texto de la versión anterior no ocurría. El título va a su
+   * derecha, alineado con él, y no debajo, para que los dos ocupen la misma
+   * banda en vez de dos.
+   */
+  private drawHeader(page: PdfPage, y: number, now: Date, clean: boolean): number {
+    const logo = leerLogotipo(this.projectRoot);
+
+    if (logo) {
+      page.image(logo, {
+        x: PAGE.margin,
+        y,
+        width: (logo.width / logo.height) * LOGO_HEIGHT,
+        height: LOGO_HEIGHT,
+      });
+    } else {
+      // Sin logotipo, el nombre ocupa su lugar: la hoja no puede salir sin decir
+      // de qué empresa es. Con logotipo no se repite, que es dato de sobra.
+      page.text("KIMBERLY-CLARK DE MÉXICO", {
+        x: PAGE.margin,
+        y: y + 10,
+        size: 14,
+        bold: true,
+        color: BRAND.dark,
+      });
+    }
+
     page.text(this.formattedDateTime(now), {
       x: PAGE.margin,
-      y: y + 13,
+      y: y + 4,
       size: 7,
       width: CONTENT_WIDTH,
       align: "right",
       color: BRAND.muted,
-    });
-    page.line(PAGE.margin, y + 24, PAGE.width - PAGE.margin, y + 24, {
-      color: BRAND.primary,
-      lineWidth: 1.6,
-    });
-    return y + 36;
-  }
-
-  private drawTitle(page: PdfPage, y: number, clean: boolean): number {
-    page.text(clean ? "PRELIBERACIÓN SIN OBSERVACIONES" : "PRELIBERACIÓN CON OBSERVACIONES", {
-      x: PAGE.margin,
-      y,
-      size: 7,
-      bold: true,
-      color: BRAND.primary,
     });
     page.text(clean ? "Talón de sesión concluida" : "Acta de hallazgos de preliberación", {
       x: PAGE.margin,
-      y: y + 11,
-      size: 16,
+      y: y + LOGO_HEIGHT + 8,
+      size: 15,
       bold: true,
-      color: BRAND.dark,
+      color: BRAND.primary,
+      width: CONTENT_WIDTH,
+      align: "right",
     });
-    page.paragraph(
-      clean
-        ? "La revisión no encontró observaciones que impidan la liberación."
-        : "La revisión registró observaciones que deben atenderse.",
-      { x: PAGE.margin, y: y + 32, size: 9, width: CONTENT_WIDTH * 0.78, color: BRAND.muted },
-    );
-    return y + 50;
-  }
 
-  private drawBanner(page: PdfPage, y: number, clean: boolean, findingCount: number): number {
-    const color = clean ? BRAND.ok : BRAND.alert;
-    page.rect(PAGE.margin, y, CONTENT_WIDTH, 22, {
-      fill: null,
-      fillColor: clean ? rgb("#F0F8F4") : rgb("#FCF3F4"),
-      stroke: null,
+    const base = y + LOGO_HEIGHT + 26;
+    page.line(PAGE.margin, base, PAGE.width - PAGE.margin, base, {
+      color: BRAND.primary,
+      lineWidth: 1.6,
     });
-    page.rect(PAGE.margin, y, 3, 22, { fill: null, fillColor: color, stroke: null });
-    page.text(
-      clean
-        ? "SESIÓN SIN HALLAZGOS · APTA PARA LIBERACIÓN"
-        : `SESIÓN CON ${findingCount} HALLAZGO(S) · REVISIÓN REQUERIDA`,
-      { x: PAGE.margin + 12, y: y + 6, size: 9, bold: true, color },
-    );
-    return y + 34;
+    return base + 16;
   }
 
   private drawSectionTitle(page: PdfPage, y: number, label: string): number {
@@ -315,94 +355,126 @@ export class PreReleaseReportService {
     return y + 18;
   }
 
-  private drawSessionGrid(page: PdfPage, y: number, session: SessionHeader): number {
-    let cursor = this.drawSectionTitle(page, y, "Datos de la sesión");
-    const fields: readonly [string, string][] = [
-      ["Código de sesión", session.sessionCode],
-      ["Capacitación", session.trainingName],
-      ["Fecha", this.formattedDate(session.date)],
-      ["Instructor", session.instructor],
-      ["Estado", session.status],
-      ["Autorizada", session.authorized ? "Sí" : "No"],
+  /**
+   * Datos generales de la sesión.
+   *
+   * Etiqueta arriba y valor abajo, en tres columnas y sin ningún recuadro: los
+   * seis campos caben en dos renglones y el detalle empieza casi de inmediato.
+   *
+   * El veredicto y las observaciones cierran el bloque en dos renglones de
+   * texto. Antes eran una banda de color y una sección aparte con los códigos
+   * internos —`EXAMENES_FALTANTES`— que no significan nada fuera del sistema;
+   * aquí van con el nombre que se lee, que es el mismo que enseña la pantalla.
+   */
+  private drawSessionGrid(
+    page: PdfPage,
+    y: number,
+    session: SessionHeader,
+    findings: readonly string[],
+    comments: string,
+  ): number {
+    let cursor = this.drawSectionTitle(page, y, "Datos generales de la sesión");
+    // Rejilla de tres columnas. La capacitación ocupa dos: es el campo más largo
+    // con diferencia, y a un tercio de hoja se truncaba —«BUENAS PRÁCTICAS DE»—
+    // justo donde empieza a decir algo. El estado y la autorización van juntos
+    // porque son la misma pregunta partida en dos campos.
+    const fields: readonly { label: string; value: string; span: number }[] = [
+      { label: "Código de sesión", value: session.sessionCode, span: 1 },
+      { label: "Fecha", value: this.formattedDate(session.date), span: 1 },
+      {
+        label: "Estado",
+        value: `${session.status}${session.authorized ? " · Autorizada" : " · Sin autorizar"}`,
+        span: 1,
+      },
+      { label: "Capacitación", value: session.trainingName, span: 2 },
+      { label: "Instructor", value: session.instructor, span: 1 },
     ];
 
-    // Dos columnas: seis campos en tres renglones aprovechan el ancho sin apretar.
-    // El renglón mide 24 puntos porque debe alojar la etiqueta de 6.5 y el valor
-    // de 9 sin que la etiqueta del renglón siguiente se monte sobre el valor.
-    const columnWidth = CONTENT_WIDTH / 2;
-    const rowHeight = 24;
-    fields.forEach(([label, value], index) => {
-      const column = index % 2;
-      const row = Math.floor(index / 2);
+    // El renglón mide 22 puntos, que es lo que necesita la etiqueta de 6.5 sobre
+    // el valor de 9 sin que el renglón siguiente se monte encima.
+    const columnWidth = CONTENT_WIDTH / 3;
+    const rowHeight = 22;
+    let column = 0;
+    let row = 0;
+    for (const field of fields) {
+      if (column + field.span > 3) {
+        column = 0;
+        row += 1;
+      }
       const x = PAGE.margin + column * columnWidth;
       const rowY = cursor + row * rowHeight;
-      page.text(label.toUpperCase(), { x, y: rowY, size: 6.5, color: BRAND.muted });
-      page.text(value || "-", { x, y: rowY + 9, size: 9, bold: true, color: BRAND.ink });
-    });
+      page.text(field.label.toUpperCase(), { x, y: rowY, size: 6.5, color: BRAND.muted });
+      const { lines } = wrapText(field.value || "-", {
+        size: 9,
+        maxWidth: columnWidth * field.span - 10,
+        maxLines: 1,
+      });
+      page.text(lines[0] ?? "-", { x, y: rowY + 9, size: 9, bold: true, color: BRAND.ink });
+      column += field.span;
+    }
+    cursor += (row + 1) * rowHeight;
 
-    cursor += Math.ceil(fields.length / 2) * rowHeight;
+    page.text("RESULTADO DE LA REVISIÓN", {
+      x: PAGE.margin,
+      y: cursor,
+      size: 6.5,
+      color: BRAND.muted,
+    });
+    const resultado = this.findingsLine(findings);
+    const medido = page.paragraph(resultado.texto, {
+      x: PAGE.margin,
+      y: cursor + 9,
+      size: 9,
+      bold: true,
+      width: CONTENT_WIDTH,
+      color: resultado.color,
+      maxLines: 3,
+    });
+    cursor += 9 + medido.height + 4;
+
+    if (comments) {
+      page.text("COMENTARIOS DE LA REVISIÓN", {
+        x: PAGE.margin,
+        y: cursor,
+        size: 6.5,
+        color: BRAND.muted,
+      });
+      const notas = page.paragraph(comments, {
+        x: PAGE.margin,
+        y: cursor + 9,
+        size: 8,
+        width: CONTENT_WIDTH,
+        color: BRAND.ink,
+        maxLines: 4,
+      });
+      cursor += 9 + notas.height + 4;
+    }
+
     return cursor + 12;
   }
 
-  private drawTotals(page: PdfPage, y: number, counters: WorkbenchState["counters"]): number {
-    const cards: readonly [number, string][] = [
-      [counters.expectedExams, "Registrados"],
-      [counters.approvedExams, "Aprobados"],
-      [counters.failedExams, "Reprobados"],
-      [counters.missingExams, "Sin entregar"],
-      [counters.excludedCount, "Excluidos"],
-      [counters.eligibleCount, "A liberar"],
-    ];
-    const gap = 6;
-    const cardWidth = (CONTENT_WIDTH - gap * (cards.length - 1)) / cards.length;
-
-    cards.forEach(([value, label], index) => {
-      const x = PAGE.margin + index * (cardWidth + gap);
-      page.rect(x, y, cardWidth, 42, {
-        fill: null,
-        fillColor: BRAND.surface,
-        stroke: null,
-        strokeColor: BRAND.line,
-        lineWidth: 0.5,
-      });
-      page.text(String(value), {
-        x,
-        y: y + 8,
-        size: 15,
-        bold: true,
-        width: cardWidth,
-        align: "center",
-        color: BRAND.dark,
-      });
-      page.text(label.toUpperCase(), {
-        x,
-        y: y + 28,
-        size: 6,
-        width: cardWidth,
-        align: "center",
-        color: BRAND.muted,
-      });
-    });
-
-    return y + 56;
-  }
-
-  private drawFindings(page: PdfPage, y: number, findings: readonly string[]): number {
-    let cursor = this.drawSectionTitle(page, y, "Hallazgos detectados");
-    for (const code of findings) {
-      const definition = PRERELEASE_FINDINGS[code as FindingCode];
-      page.text(code, { x: PAGE.margin, y: cursor, size: 8, bold: true, color: BRAND.ink });
-      page.text(definition ? definition.label : code, {
-        x: PAGE.margin + 190,
-        y: cursor,
-        size: 8,
-        color: BRAND.alert,
-      });
-      cursor += 13;
+  /** El veredicto en un renglón, con las observaciones por su nombre legible. */
+  private findingsLine(findings: readonly string[]): { texto: string; color: Color } {
+    if (findings.length === 0) {
+      return { texto: "Sin observaciones. La sesión está apta para liberación.", color: BRAND.ok };
     }
-    return cursor + 10;
+    const nombres = findings.map((code) => {
+      const definition = PRERELEASE_FINDINGS[code as FindingCode];
+      return definition ? definition.label : code;
+    });
+    const cuantas =
+      findings.length === 1 ? "1 observación" : `${String(findings.length)} observaciones`;
+    return { texto: `${cuantas}: ${nombres.join("; ")}.`, color: BRAND.alert };
   }
 
+  /**
+   * Detalle de la sesión, un renglón numerado por participante.
+   *
+   * Es lo único que se consulta de verdad cuando alguien busca por qué una
+   * persona no entró a la liberación, y por eso ahora empieza en la primera
+   * hoja: los recuadros que llevaba encima lo empujaban casi siempre a la
+   * segunda.
+   */
   private drawRoster(
     pages: PdfPage[],
     startPage: PdfPage,
@@ -410,17 +482,17 @@ export class PreReleaseReportService {
     roster: readonly RosterRow[],
   ): { page: PdfPage; y: number } {
     let page = startPage;
-    let y = this.drawSectionTitle(page, startY, "Padrón de la sesión");
+    let y = this.drawSectionTitle(page, startY, "Detalle de la sesión");
     y = this.drawRosterHead(page, y);
 
-    // Deja aire abajo para firmas y pie; si no cabe otro renglón, salta de hoja.
-    const bottomLimit = PAGE.height - PAGE.margin - 90;
+    // Deja aire abajo para el pie; si no cabe otro renglón, salta de hoja.
+    const bottomLimit = PAGE.height - PAGE.margin - 30;
 
     roster.forEach((row, index) => {
       if (y + 14 > bottomLimit) {
         page = new PdfPage({ width: PAGE.width, height: PAGE.height });
         pages.push(page);
-        y = this.drawSectionTitle(page, PAGE.margin, "Padrón de la sesión (continúa)");
+        y = this.drawSectionTitle(page, PAGE.margin, "Detalle de la sesión (continúa)");
         y = this.drawRosterHead(page, y);
       }
 
@@ -429,7 +501,14 @@ export class PreReleaseReportService {
       const situacion = rosterSituation(row);
       const state = ROSTER_SITUATION_LABELS[situacion];
       const stateColor = situacion === "A_LIBERAR" ? BRAND.ok : BRAND.alert;
-      const reasons = row.blockingReasons.join(", ") || row.exclusionReason || "-";
+      // Con el nombre que se lee, no con la clave del contrato: quien recibe la
+      // hoja no tiene por qué saber qué es `SESION_NO_AUTORIZADA`.
+      const reasons =
+        row.blockingReasons
+          .map((motivo) => BLOCKING_REASON_LABELS[motivo as BlockingReason] ?? motivo)
+          .join("; ") ||
+        row.exclusionReason ||
+        "-";
 
       const values: Record<string, string> = {
         index: String(index + 1),
@@ -479,12 +558,8 @@ export class PreReleaseReportService {
     return { page, y: y + 10 };
   }
 
+  /** Los rótulos de columna. Una regla los separa del detalle; no hay banda. */
   private drawRosterHead(page: PdfPage, y: number): number {
-    page.rect(PAGE.margin, y - 2, CONTENT_WIDTH, 14, {
-      fill: null,
-      fillColor: BRAND.surface,
-      stroke: null,
-    });
     let x = PAGE.margin;
     for (const column of ROSTER_COLUMNS) {
       page.text(column.label.toUpperCase(), {
@@ -503,44 +578,6 @@ export class PreReleaseReportService {
       lineWidth: 0.7,
     });
     return y + 18;
-  }
-
-  private drawComments(page: PdfPage, y: number, comments: string): number {
-    const cursor = this.drawSectionTitle(page, y, "Comentarios de la revisión");
-    const measured = page.paragraph(comments, {
-      x: PAGE.margin + 10,
-      y: cursor + 4,
-      size: 8,
-      width: CONTENT_WIDTH - 20,
-      color: BRAND.ink,
-      maxLines: 8,
-    });
-    page.rect(PAGE.margin, cursor, 3, measured.height + 8, {
-      fill: null,
-      fillColor: BRAND.primary,
-      stroke: null,
-    });
-    return cursor + measured.height + 18;
-  }
-
-  private drawSignatures(page: PdfPage, y: number): void {
-    const labels = ["Instructor", "Capacitación", "Revisor"];
-    const gap = 16;
-    const width = (CONTENT_WIDTH - gap * (labels.length - 1)) / labels.length;
-    const baseline = Math.min(y + 24, PAGE.height - PAGE.margin - 46);
-
-    labels.forEach((label, index) => {
-      const x = PAGE.margin + index * (width + gap);
-      page.line(x, baseline, x + width, baseline, { color: BRAND.ink, lineWidth: 0.6 });
-      page.text(label.toUpperCase(), {
-        x,
-        y: baseline + 5,
-        size: 6.5,
-        width,
-        align: "center",
-        color: BRAND.muted,
-      });
-    });
   }
 
   private drawFooter(pages: readonly PdfPage[], session: SessionHeader): void {

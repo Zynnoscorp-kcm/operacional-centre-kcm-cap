@@ -24,9 +24,9 @@ import type {
   TablePreview,
   TableSummary,
 } from "../../domain/consola-interna/tipos.ts";
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { InternalConsolePort } from "../../ports/consola-interna.port.ts";
-import { systemClock } from "../reloj-sistema.ts";
+import { systemClock } from "../sistema/reloj-sistema.ts";
 
 export class MemoryInternalConsoleRepository implements InternalConsolePort {
   readonly #clock: Clock;

@@ -4,8 +4,8 @@ import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
 
 import { loadConfig, type AppConfig, type EnvSource } from "../../src/config/environment.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 import { hojaDeEstilos } from "../../src/web/estaticos.ts";
 
@@ -114,12 +114,12 @@ describe("pantalla base", () => {
   });
 
   /**
-   * El menú lateral es la única lista de secciones que queda, y son once: las
+   * El menú lateral es la única lista de secciones que queda, y son doce: las
    * veinte entradas planas de antes se agruparon en secciones con sub-pestañas
    * dentro de cada pantalla. Sin esta prueba, añadir la vigésimo primera entrada
    * al lateral vuelve a ser gratis.
    */
-  it("el lateral lleva once secciones y ninguna función quedó sin puerta", async () => {
+  it("el lateral lleva doce secciones y ninguna función quedó sin puerta", async () => {
     const app = await servidor();
     const cuerpo = (await app.inject({ method: "GET", url: "/" })).body;
 
@@ -129,7 +129,7 @@ describe("pantalla base", () => {
       cuerpo.indexOf('<nav class="lateral-pie"'),
     );
     const entradas = menu.match(/class="lateral-enlace"/gu) ?? [];
-    assert.equal(entradas.length, 11, "el lateral cambió de tamaño");
+    assert.equal(entradas.length, 12, "el lateral cambió de tamaño");
 
     for (const destino of [
       "/",
@@ -140,6 +140,7 @@ describe("pantalla base", () => {
       "/auditoria",
       "/trabajadores",
       "/matriz",
+      "/ocupaciones",
       "/dc3",
       "/excel",
       "/base",
@@ -305,6 +306,30 @@ describe("hoja de estilos", () => {
     assert.match(String(respuesta.headers["content-type"]), /text\/css/u);
     assert.equal(respuesta.headers["cache-control"], "public, max-age=31536000, immutable");
     assert.equal(respuesta.headers["etag"], `"${hojaDeEstilos.hash}"`);
+  });
+
+  /**
+   * Las tipografías viajan con la plataforma: la política declara `font-src
+   * 'self'`, y una familia que no se sirve desde aquí se dibujaba distinta en
+   * cada computadora, según lo que cada una tuviera instalado.
+   */
+  it("sirve sus propias tipografías, bajo su hash y con caché eterna", async () => {
+    const app = await servidor();
+    const hoja = (await app.inject({ method: "GET", url: hojaDeEstilos.ruta })).body;
+
+    const fuentes = [
+      ...hoja.matchAll(/url\("(\/assets\/fuentes\/[a-z-]+-[a-z]{12}\.woff2)"\)/gu),
+    ].map((m) => m[1] ?? "");
+    assert.equal(fuentes.length, 4, "faltan caras tipográficas en la hoja");
+    assert.match(hoja, /font-family: "Manrope"/u);
+    assert.match(hoja, /font-family: "IBM Plex Mono"/u);
+    for (const ruta of fuentes) {
+      const archivo = await app.inject({ method: "GET", url: ruta });
+      assert.equal(archivo.statusCode, 200, ruta);
+      assert.equal(archivo.headers["content-type"], "font/woff2");
+      assert.equal(archivo.headers["cache-control"], "public, max-age=31536000, immutable");
+      assert.equal(archivo.rawPayload.subarray(0, 4).toString("latin1"), "wOF2");
+    }
   });
 
   it("trae los tokens de marca", async () => {

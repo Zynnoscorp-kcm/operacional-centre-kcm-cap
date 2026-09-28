@@ -21,15 +21,17 @@ import type {
   ResultadoDeEscritura,
   RosterRepositoryPort,
 } from "../../ports/padron.port.ts";
+import { DATOS_DEL_PADRON } from "../../ports/padron.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
 /** Se resuelve por clave dentro de cada consulta; nunca por UUID a mano. */
 const INDUCCION =
-  "(SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = 'INDUCCION_EMPRESA')";
+  "(SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = 'INDUCCION_EMPRESA')";
 
 interface FilaTrabajador {
   trabajador_id: string;
   numero_trabajador: string;
+  nombre_completo: string | null;
   curp: string | null;
   fecha_alta: string | null;
   puesto: string | null;
@@ -38,6 +40,15 @@ interface FilaTrabajador {
   planta: string | null;
   clave_ocupacion: string | null;
   activo: boolean;
+  rfc: string | null;
+  nss: string | null;
+  centro_costos_clave: string | null;
+  centro_costos_nombre: string | null;
+  direccion: string | null;
+  codigo_postal: string | null;
+  estado_civil: string | null;
+  sexo: string | null;
+  visto_en_matriz: boolean | null;
 }
 
 export class SupabaseRosterRepository implements RosterRepositoryPort {
@@ -52,16 +63,19 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
       // El área entra en esta consulta —no en una segunda— porque sólo sirve
       // para agrupar la clave de ocupación por `(puesto, área)` en la revisión,
       // y un viaje más por eso no se justifica.
-      `SELECT t.trabajador_id, t.numero_trabajador, t.curp,
+      `SELECT t.trabajador_id, t.numero_trabajador, t.nombre_completo, t.curp,
               t.fecha_alta::text AS fecha_alta, p.nombre AS puesto,
-              a.nombre AS area, t.clave_ocupacion, t.tipo_nomina, t.planta, t.activo
-         FROM kcm.trabajador t
-         LEFT JOIN kcm.puesto p ON p.puesto_id = t.puesto_id
-         LEFT JOIN kcm.area a ON a.area_id = t.area_id;`,
+              a.nombre AS area, t.clave_ocupacion, t.tipo_nomina, t.planta, t.activo,
+              t.rfc, t.nss, t.centro_costos_clave, t.centro_costos_nombre, t.direccion,
+              t.codigo_postal, t.estado_civil, t.sexo, t.visto_en_matriz
+         FROM organizacion.trabajador t
+         LEFT JOIN organizacion.puesto p ON p.puesto_id = t.puesto_id
+         LEFT JOIN organizacion.area a ON a.area_id = t.area_id;`,
     );
     return rows.map((fila) => ({
       trabajadorId: fila.trabajador_id,
       numeroTrabajador: fila.numero_trabajador,
+      nombre: fila.nombre_completo,
       curp: fila.curp,
       fechaAlta: fila.fecha_alta,
       puesto: fila.puesto,
@@ -70,12 +84,21 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
       planta: fila.planta,
       claveOcupacion: fila.clave_ocupacion,
       activo: fila.activo,
+      rfc: fila.rfc,
+      nss: fila.nss,
+      centroCostosClave: fila.centro_costos_clave,
+      centroCostosNombre: fila.centro_costos_nombre,
+      direccion: fila.direccion,
+      codigoPostal: fila.codigo_postal,
+      estadoCivil: fila.estado_civil,
+      sexo: fila.sexo,
+      vistoEnMatriz: fila.visto_en_matriz ?? true,
     }));
   }
 
   async leerPuestos(): Promise<readonly PuestoDelCatalogo[]> {
     const { rows } = await this.#db.query<{ nombre: string; clave_cno: string | null }>(
-      `SELECT nombre, clave_cno FROM kcm.puesto;`,
+      `SELECT nombre, clave_cno FROM organizacion.puesto;`,
     );
     return rows.map((fila) => ({ nombre: fila.nombre, claveCno: fila.clave_cno }));
   }
@@ -95,7 +118,7 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
          SELECT unnest($1::uuid[]) AS trabajador_id, unnest($2::date[]) AS fecha
        ), vigente AS (
          SELECT trabajador_id, fecha_capacitacion
-           FROM kcm.registro_hc
+           FROM operacion.historial_capacitacion
           WHERE capacitacion_id = ${INDUCCION}
             AND estado_registro = 'VIGENTE'
        )
@@ -115,7 +138,7 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
     return this.#db.transaction(async (cliente) => {
       if (escrituras.curp.length) {
         await cliente.query(
-          `UPDATE kcm.trabajador t
+          `UPDATE organizacion.trabajador t
               SET curp = v.curp, actualizado_en = now(), version = t.version + 1
              FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS curp) v
             WHERE t.trabajador_id = v.id;`,
@@ -125,7 +148,7 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
 
       if (escrituras.altas.length) {
         await cliente.query(
-          `UPDATE kcm.trabajador t
+          `UPDATE organizacion.trabajador t
               SET fecha_alta = v.alta, actualizado_en = now(), version = t.version + 1
              FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::date[]) AS alta) v
             WHERE t.trabajador_id = v.id;`,
@@ -142,17 +165,17 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
         // revisión y la decide el departamento, que es lo correcto para un
         // registro que sostiene un documento oficial.
         const { rows } = await cliente.query<{ clave_idempotencia: string }>(
-          `INSERT INTO kcm.registro_hc
+          `INSERT INTO operacion.historial_capacitacion
              (clave_idempotencia, trabajador_id, capacitacion_id, fecha_capacitacion,
               procedencia, estado_registro, version_mapeo)
            SELECT v.clave, v.id, ${INDUCCION}, v.fecha,
-                  'ROSTER_ALTA'::kcm.procedencia_fecha,
-                  'VIGENTE'::kcm.estado_registro_hc,
+                  'ROSTER_ALTA'::comun.procedencia_fecha,
+                  'VIGENTE'::comun.estado_historial,
                   'roster-v1'
              FROM (SELECT unnest($1::text[]) AS clave, unnest($2::uuid[]) AS id,
                           unnest($3::date[]) AS fecha) v
             WHERE NOT EXISTS (
-                    SELECT 1 FROM kcm.registro_hc r
+                    SELECT 1 FROM operacion.historial_capacitacion r
                      WHERE r.trabajador_id = v.id
                        AND r.capacitacion_id = ${INDUCCION}
                        AND r.estado_registro = 'VIGENTE')
@@ -177,7 +200,7 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
       if (escrituras.ocupaciones.length) {
         const aprobador = await resolverActor(cliente, "padron.semanal");
         const { rows } = await cliente.query<{ trabajador_id: string }>(
-          `UPDATE kcm.trabajador t
+          `UPDATE organizacion.trabajador t
               SET clave_ocupacion = v.clave,
                   aprobado_ocupacion_por = $3::uuid,
                   aprobado_ocupacion_en = now(),
@@ -196,11 +219,68 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
         ocupaciones = rows.length;
       }
 
+      // Las columnas personales, una sentencia por columna. El nombre de la
+      // columna sale de una lista cerrada (DATOS_DEL_PADRON), nunca del archivo.
+      const datos = escrituras.datos ?? [];
+      for (const columna of DATOS_DEL_PADRON) {
+        const deEsta = datos.filter(([, campo]) => campo === columna);
+        if (deEsta.length === 0) continue;
+        await cliente.query(
+          `UPDATE organizacion.trabajador t
+              SET ${columna} = v.valor, actualizado_en = now(), version = t.version + 1
+             FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS valor) v
+            WHERE t.trabajador_id = v.id;`,
+          [deEsta.map(([id]) => id), deEsta.map(([, , valor]) => valor)],
+        );
+      }
+
+      const reactivar = escrituras.reactivar ?? [];
+      if (reactivar.length) {
+        await cliente.query(
+          `UPDATE organizacion.trabajador
+              SET activo = true, fecha_baja = NULL
+            WHERE trabajador_id = ANY($1::uuid[]);`,
+          [reactivar],
+        );
+      }
+
+      // Quién estuvo en este padrón, y la baja de quien no está ni aquí ni en
+      // la última matriz (0046).
+      let bajas = 0;
+      if (escrituras.enArchivo) {
+        await cliente.query(
+          `UPDATE organizacion.trabajador
+              SET visto_en_padron = (numero_trabajador = ANY($1::text[]))
+            WHERE visto_en_padron IS DISTINCT FROM (numero_trabajador = ANY($1::text[]));`,
+          [escrituras.enArchivo],
+        );
+        const fechas = escrituras.fechasDeBaja ?? [];
+        if (fechas.length) {
+          await cliente.query(
+            `UPDATE organizacion.trabajador t
+                SET fecha_baja = v.fecha
+               FROM (SELECT unnest($1::text[]) AS numero, unnest($2::date[]) AS fecha) v
+              WHERE t.numero_trabajador = v.numero;`,
+            [fechas.map(([numero]) => numero), fechas.map(([, fecha]) => fecha)],
+          );
+        }
+        const { rows } = await cliente.query<{ trabajador_id: string }>(
+          `UPDATE organizacion.trabajador
+              SET activo = false
+            WHERE activo AND NOT visto_en_padron AND NOT visto_en_matriz
+          RETURNING trabajador_id;`,
+        );
+        bajas = rows.length;
+      }
+
       return {
         curp: escrituras.curp.length,
         altas: escrituras.altas.length,
         inducciones,
         ocupaciones,
+        datos: datos.length,
+        bajas,
+        reactivados: reactivar.length,
       };
     });
   }
@@ -209,7 +289,7 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
 /** Misma resolución que usa el resto del árbol: el actor se crea si no existe. */
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {
   const { rows } = await tx.query<{ actor_id: string }>(
-    `INSERT INTO kcm.actor (identificador, nombre_visible)
+    `INSERT INTO seguridad.actor (identificador, nombre_visible)
      VALUES ($1, $1)
      ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
      RETURNING actor_id;`,

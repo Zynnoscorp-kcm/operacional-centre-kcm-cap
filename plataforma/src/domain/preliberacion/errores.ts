@@ -2,7 +2,7 @@
  * Errores de dominio para Preliberación.
  */
 
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 
 export class PreReleaseNotFoundError extends DomainError {
   constructor(message = "La revisión de preliberación no existe.") {

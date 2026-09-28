@@ -3,7 +3,7 @@
  * Fuente: MODELO_DATOS.md hojas SESIONES, ASISTENCIAS, KIOSK_REGISTROS, AUDITORIA, ACCESOS.
  */
 
-import type { WorkerNumber } from "../numero-trabajador.ts";
+import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 
 export type SessionStatus =
   | "BORRADOR"

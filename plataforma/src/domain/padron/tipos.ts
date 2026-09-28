@@ -1,3 +1,4 @@
+import type { DetalleDeCambios } from "../cargas/detalle.ts";
 /**
  * Formas del padrón semanal dentro de la plataforma.
  *
@@ -21,7 +22,7 @@ export interface EmpleadoDelPadron {
    *
    * Viene por trabajador porque así se captura, pero describe al puesto: es
    * la ocupación específica de ese puesto según el catálogo, no un atributo de
-   * la persona. La base la guarda donde corresponde, en `kcm.puesto.clave_cno`.
+   * la persona. La base la guarda donde corresponde, en `organizacion.puesto.clave_cno`.
    */
   readonly cnoKey: string;
   /**
@@ -36,7 +37,26 @@ export interface EmpleadoDelPadron {
    * matriz. Ver el extractor, que lleva la explicación completa.
    */
   readonly plant: string;
+  /** El resto de las columnas del padrón (0046). Cadena vacía si no viene. */
+  readonly rfc?: string;
+  readonly nss?: string;
+  readonly costCenterKey?: string;
+  readonly costCenterName?: string;
+  readonly address?: string;
+  readonly postalCode?: string;
+  readonly maritalStatus?: string;
+  readonly sex?: string;
+  /** Hoja y renglón del libro de donde salió la fila; los usa quien escribe de vuelta en él. */
+  readonly sourceSheet?: string;
+  readonly sourceRow?: number;
   readonly issues: readonly string[];
+}
+
+/** Una baja declarada en `SND BAJAS` o `EMP BAJAS`. */
+export interface BajaDelPadron {
+  readonly employeeId: string;
+  /** ISO `YYYY-MM-DD`. */
+  readonly terminationDate: string;
 }
 
 /**
@@ -65,6 +85,8 @@ export interface HojaLeida {
 export interface PadronLeido {
   readonly source: { readonly sha256: string; readonly byteSize: number };
   readonly employees: readonly EmpleadoDelPadron[];
+  /** Bajas con fecha, si el libro trae sus hojas. */
+  readonly terminations?: readonly BajaDelPadron[];
   readonly diagnostics: {
     readonly employeeCount: number;
     readonly readyEmployeeCount: number;
@@ -135,6 +157,12 @@ export interface CuadreDePadron {
    * mitad de las constancias con la clave equivocada.
    */
   readonly cnoEnConflicto: number;
+  /** Columnas personales (RFC, IMSS, centro de costos…) que cambian (0046). */
+  readonly datosPorEscribir?: number;
+  /** Ausentes del padrón que tampoco están en la última matriz: se dan de baja. */
+  readonly bajas?: number;
+  /** Inactivos que el padrón vuelve a traer. */
+  readonly reactivados?: number;
 }
 
 /** Un trabajador cuyo puesto en el archivo no es el que la base tiene. */
@@ -181,20 +209,6 @@ export interface OrigenDelPadron {
   readonly actor: string;
 }
 
-/**
- * Orden de barrido del padrón dejada desde la consola.
- *
- * Misma mecánica que la de la matriz y por la misma razón: la plataforma no
- * puede abrir el archivo, que vive en la PC del departamento. El botón encarga
- * y el libro controlador recoge cuando pregunta.
- */
-export interface OrdenDePadron {
-  readonly ordenId: string;
-  readonly solicitadaEn: string;
-  readonly solicitadaPor: string;
-  readonly venceEn: string;
-}
-
 export interface PlanDePadron {
   readonly planId: string;
   readonly nombreArchivo: string;
@@ -205,6 +219,8 @@ export interface PlanDePadron {
   readonly hojas: readonly HojaLeida[];
   readonly cuadre: CuadreDePadron;
   readonly muestras: MuestrasDeCuadre;
+  /** Quién entra, quién ya no viene y quién cambió de puesto, con nombre. */
+  readonly detalle?: DetalleDeCambios;
   /** Verdadero cuando no hay nada que escribir: el archivo ya está aplicado. */
   readonly sinCambios: boolean;
 }

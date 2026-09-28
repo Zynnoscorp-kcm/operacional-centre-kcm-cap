@@ -4,7 +4,7 @@
 > **LA BASE CONTIENE DATOS DE PRUEBA.** Corrida **PILOTO-2026-08-03** abierta
 > desde el 2026-08-03. Debe reconstruirse antes de cargar el padrón real:
 > ver [RESET.md](RESET.md).
-> Compruébalo con `SELECT * FROM kcm_lectura.estado_piloto();`
+> Compruébalo con `SELECT * FROM lectura.estado_piloto();`
 
 Este directorio contiene la definición DDL formal y versionada para la base de datos PostgreSQL de la plataforma KCM en Supabase, construida conforme al encargo de la **EJECUCIÓN {4}** del plan de construcción.
 
@@ -17,31 +17,40 @@ Este directorio contiene la definición DDL formal y versionada para la base de 
 
 ## 1. Arquitectura de Esquemas
 
-El diseño separa estrictamente el almacenamiento de dominio de la superficie de lectura autorizada:
+Desde la migración `0043` cada tabla vive en el esquema de su dominio. Los
+nombres son sustantivos en singular y en español, con la entidad principal
+primero (`liberacion_lote`, `sala_reserva`, `capacitacion_alias`).
 
-```
-┌────────────────────────────────────────────────────────┐
-│                      PostgreSQL                        │
-├────────────────────────────┬───────────────────────────┤
-│        Esquema kcm         │    Esquema kcm_lectura    │
-│  (Dominio y Persistencia)  │  (Superficie de Lectura)  │
-├────────────────────────────┼───────────────────────────┤
-│ • 32 tablas de dominio     │ • Funciones SECURITY      │
-│ • RLS DENY-BY-DEFAULT      │   DEFINER                 │
-│ • Triggers de inmutabilidad│ • Proyección estricta     │
-│ • Acceso directo bloqueado │ • 0 fuga de PII           │
-└────────────────────────────┴───────────────────────────┘
-```
+| Esquema | Qué guarda | Tablas |
+|---|---|---|
+| `organizacion` | Padrón y estructura de la empresa | `patron`, `departamento`, `area`, `puesto`, `trabajador`, `trabajador_atributo`, `atributo_definicion` |
+| `catalogo` | Cursos y salas | `capacitacion`, `capacitacion_alias`, `sala` |
+| `operacion` | El día a día de la capacitación | `sesion`, `asistencia`, `quiosco_registro`, `sesion_evidencia`, `preliberacion_revision`, `sala_reserva`, `historial_capacitacion`, `historial_capacitacion_cambio` |
+| `matriz` | Integración con la matriz de Excel | `importacion`, `importacion_contenido`, `trabajador_desconocido`, `capacitacion_desconocida`, `destino`, `mapeo_columna`, `liberacion_lote`, `liberacion`, `liberacion_acuse` |
+| `dnc` | Detección de necesidades | `regla`, `evaluacion` |
+| `dc3` | Constancias DC-3 | `constancia`, `curso_configuracion`, `area_tematica`, `evento_excel` |
+| `seguridad` | Quién entra y con qué | `actor`, `actor_rol`, `credencial_consola`, `credencial_equipo`, `secreto`, `concesion`, `nonce` |
+| `sistema` | Bitácoras, archivos, revisiones pendientes y envíos en partes | `bitacora_auditoria`, `bitacora_error`, `archivo`, `revision_pendiente`, `envio_parte`, `corrida_piloto` |
+| `comun` | Tipos, dominios y funciones de trigger compartidos (antes `kcm`) | — |
+| `lectura` | Vistas y funciones `SECURITY DEFINER` de consulta (antes `kcm_lectura`) | `cobertura_dnc`, `resumen_dnc_trabajador` y las `obtener_*` |
 
-1. **`kcm` (Dominio):**
-   - Aloja las 32 tablas del modelo operativo, padrón, matriz, agenda, DC-3 y auditoría.
-   - **RLS Deny-by-Default:** El 100% de las tablas tienen `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL SECURITY` activadas sin políticas permisivas para clientes.
-   - El acceso directo está completamente revocado para roles `anon` y `authenticated`.
+Reglas que se mantienen en todos los esquemas de tablas:
 
-2. **`kcm_lectura` (Superficie de Lectura):**
-   - Único punto de entrada para consultas desde la API / UI.
-   - Implementa funciones `SECURITY DEFINER` con `search_path = ''` que proyectan únicamente los campos autorizados para cada caso de uso.
-   - Garantiza que la agenda compartida nunca exponga datos del solicitante y que las consultas de cumplimiento excluyan `DATOS_INSUFICIENTES` del cálculo de porcentajes.
+- **RLS deny-by-default:** todas las tablas tienen `ENABLE` y `FORCE ROW LEVEL
+  SECURITY`, sin políticas permisivas para `anon` ni `authenticated`. La única
+  política es `app_acceso_total` para el rol `kcm_app` (`0029`).
+- **Ledgers de sólo agregado:** `bitacora_auditoria`, `historial_capacitacion_cambio`,
+  `liberacion`, `liberacion_acuse` y `evento_excel` rechazan `UPDATE`,
+  `DELETE` y `TRUNCATE` por trigger.
+- **`lectura`** es la superficie de consulta: funciones `SECURITY DEFINER` con
+  `search_path = ''` que proyectan sólo los campos autorizados. La agenda
+  compartida nunca expone al solicitante y la cobertura excluye
+  `DATOS_INSUFICIENTES` de los porcentajes.
+
+Las migraciones `0001`–`0042` conservan los nombres con los que se escribieron
+(`kcm.registro_hc`, `kcm_lectura`…): son historia y no se reescriben. `0043`
+hace el cambio con `RENAME` y `SET SCHEMA`, así que no mueve datos y se puede
+aplicar sobre la base viva o sobre una reconstruida.
 
 ---
 
@@ -80,7 +89,7 @@ El diseño separa estrictamente el almacenamiento de dominio de la superficie de
 | `0028_journal_liberacion_completo.sql` | Journal de liberación completo. | Fases recuperables. |
 | `0029_rol_aplicacion_sin_bypass_rls.sql` | Rol `kcm_app` sin BYPASSRLS y una política por tabla. | La app deja de conectarse como `postgres`; el acceso queda enumerado y revocable. |
 | `0030_journal_liberacion_marca_firmada.sql` | Marca de tiempo firmada en el journal. | Integridad HMAC en la reanudación. |
-| `0031_permisos_nonce_puente_app.sql` | `INSERT`/`DELETE` sobre `kcm.nonce_puente` para `kcm_app`. | **Sin esto el puente VBA falla con `INTERNAL_ERROR`.** |
+| `0031_permisos_nonce_puente_app.sql` | `INSERT`/`DELETE` sobre `seguridad.nonce` para `kcm_app`. | **Sin esto el puente VBA falla con `INTERNAL_ERROR`.** |
 | `0032_credenciales_excel_sin_vencimiento.sql` | `expira_en` admite `NULL`. | Credencial permanente sin relajar revocación ni nonce. |
 | `0033_almacen_objetos.sql` | Evidencias en `bytea` dentro de la base. | Sobreviven a un alojamiento sin disco persistente. |
 | `0034_unificacion_identidad_dc3.sql` | Metadato legal reapuntado a la identidad de la matriz. | Desbloquea la emisión DC-3. |
@@ -89,13 +98,22 @@ El diseño separa estrictamente el almacenamiento de dominio de la superficie de
 | `0037_reglas_dnc_a_identidad_de_matriz.sql` | Reapunta QMS y BPM; alias `BPM`. | **Reparación de datos ligada al piloto: no es replayable en una base nueva.** |
 | `0038_directorio_consola.sql` | Directorio de acceso a la consola y sus políticas. | Contraseña sólo como derivación scrypt; retiro por revocación. |
 | `0039_correccion_duracion_induccion.sql` | Corrección de la duración de la Inducción. | Cambio auditado. |
+| `0040_nombres_areas_tematicas_dc3.sql` | Nombres de las áreas temáticas DC-3. | — |
+| `0041_clave_ocupacion_por_trabajador.sql` | Clave de ocupación específica por trabajador. | — |
+| `0042_agente_capacitador_por_curso.sql` | Agente capacitador de los cursos DC-3. | — |
+| [`0043_esquemas_por_dominio.sql`](migrations/0043_esquemas_por_dominio.sql) | Reparte las 44 tablas en ocho esquemas por dominio y les da nombres formales; `kcm` pasa a `comun` y `kcm_lectura` a `lectura`. | Sólo `RENAME` y `SET SCHEMA`: ningún dato se copia; RLS, políticas, triggers y privilegios viajan con cada tabla. |
+| [`0044_revision_pendiente_compartida.sql`](migrations/0044_revision_pendiente_compartida.sql) | `sistema.revision_pendiente`: el barrido y el padrón esperan su «Aplicar» en la base. | Una fila por tipo; retiro atómico, de dos instancias sólo una aplica. |
+| [`0045_envio_en_partes.sql`](migrations/0045_envio_en_partes.sql) | `sistema.envio_parte`: las partes de un envío de Excel de más de ~3 MB esperan a la última. | Borrador: vence en una hora y se borra solo; la llave es `cliente_id`, `solicitud_id`, `total_caracteres` y `numero_parte`. |
 
 ## Estado de aplicación
 
-Aplicadas **39 migraciones** en el proyecto Supabase, entre el **2026-08-03** y
-el **2026-08-06**, con autorización del departamento. La aplicación inicial de
+Aplicadas **las 45 migraciones** en el proyecto Supabase, entre el
+**2026-08-03** y el **2026-09-25** (la última, `0045`), con autorización. Al
+2026-09-25 hay 46 tablas en ocho esquemas, todas con RLS forzada, y el asesor
+de seguridad de Supabase no reporta nada. La historia de la aplicación inicial,
+con autorización del departamento: La aplicación inicial de
 0001–0025 verificó 41 tablas, todas con RLS y FORCE RLS, 9 funciones en
-`kcm_lectura`, sin advertencias de seguridad más allá del `rls_enabled_no_policy`
+`lectura`, sin advertencias de seguridad más allá del `rls_enabled_no_policy`
 que el diseño deny-by-default produce a propósito. Hoy `kcm_app` existe sin
 BYPASSRLS y las 43 tablas de dominio tienen su política `app_acceso_total`.
 
@@ -132,10 +150,10 @@ que hasta esta fecha decía reaplicar sólo `0001…0025`.
 
 1. **Traducción fiel de `docs/MODELO_DATOS.md`:** Cada entidad, campo, relación y ciclo de vida fue trasladado con precisión de tipos de PostgreSQL.
 2. **Seguridad por fila cerrada por omisión:** 32 de 32 tablas con RLS y FORCE RLS.
-3. **Separación del núcleo tipado de atributos declarados:** `kcm.trabajador` conserva el núcleo laboral, mientras `kcm.atributo_declarado` gestiona escolaridad (marcada por omisión) y categoría (derivada de puesto) con procedencia y vigencia.
-4. **Admisión de desconocidos desde la primera versión:** Cursos (`kcm.candidato_curso`), trabajadores (`kcm.candidato_trabajador`) y campos (`kcm.campo_declarado`) se reciben como candidatos con origen y resolución auditada.
-5. **Historial de sobrescritura de fechas:** Tabla `kcm.historial_sobrescritura_fecha` registra valor anterior, valor nuevo, actor, motivo, momento y procedencia bajo trigger inmutable.
-6. **Destinos de escritura declarados:** Tablas `kcm.destino_matriz` y `kcm.mapeo_matriz` prohíben escrituras fuera de libros autorizados y garantizan verificación preflight de encabezados.
+3. **Separación del núcleo tipado de atributos declarados:** `organizacion.trabajador` conserva el núcleo laboral, mientras `organizacion.trabajador_atributo` gestiona escolaridad (marcada por omisión) y categoría (derivada de puesto) con procedencia y vigencia.
+4. **Admisión de desconocidos desde la primera versión:** Cursos (`matriz.capacitacion_desconocida`), trabajadores (`matriz.trabajador_desconocido`) y campos (`organizacion.atributo_definicion`) se reciben como candidatos con origen y resolución auditada.
+5. **Historial de sobrescritura de fechas:** Tabla `operacion.historial_capacitacion_cambio` registra valor anterior, valor nuevo, actor, motivo, momento y procedencia bajo trigger inmutable.
+6. **Destinos de escritura declarados:** Tablas `matriz.destino` y `matriz.mapeo_columna` prohíben escrituras fuera de libros autorizados y garantizan verificación preflight de encabezados.
 
 ## Cableado de la aplicación (2026-08-03)
 

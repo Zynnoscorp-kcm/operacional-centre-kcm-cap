@@ -9,7 +9,19 @@
 
 export interface Dc3Legends {
   readonly title: string;
-  readonly [leyenda: string]: string;
+  readonly employerName: string;
+  readonly instructorCaption: string;
+  readonly employerCaption: string;
+  readonly workerCaption: string;
+  /** El RFC del patrón, un carácter por recuadro. */
+  readonly taxId: readonly string[];
+  /** Los nombres al pie que imprime la plantilla cuando la configuración no trae otros. */
+  readonly templateSignatures: Readonly<{
+    instructor: string;
+    employerRepresentative: string;
+    workerRepresentative: string;
+  }>;
+  readonly [leyenda: string]: unknown;
 }
 
 export function extractDc3Legends(templateBuffer: Uint8Array): Dc3Legends;
@@ -37,6 +49,26 @@ export function generateDc3Document(
     readonly logos?: Dc3Logos;
   },
 ): Uint8Array;
+
+/**
+ * La constancia como página suelta, todavía sin archivo alrededor. Sirve para
+ * juntar varias en un solo PDF; `generateDc3Document` es esto mismo envuelto en
+ * un archivo de una página, byte por byte.
+ */
+export function componerConstanciaDc3(
+  data: Record<string, unknown>,
+  options?: {
+    readonly allowBlank?: boolean;
+    readonly editable?: boolean;
+    readonly logos?: Dc3Logos;
+    /** Distingue los recuadros escribibles de cada página en un archivo de varias. */
+    readonly prefijoDeCampos?: string;
+  },
+): {
+  readonly page: import("../../../plataforma/src/web/pdf/escritor.ts").PdfPage;
+  readonly title: string;
+  readonly date: string;
+};
 
 /**
  * Los logotipos del encabezado, ya leídos. El del sindicato sólo se pasa cuando

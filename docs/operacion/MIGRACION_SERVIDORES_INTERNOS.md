@@ -66,9 +66,9 @@ Internet.
 Este punto merece atención porque es donde una migración descuidada pierde la
 garantía principal.
 
-Todas las tablas de `kcm` tienen **RLS forzada y sin políticas permisivas**: la
+Todas las tablas de los esquemas de dominio tienen **RLS forzada y sin políticas permisivas**: la
 lectura no ocurre contra las tablas sino contra funciones `SECURITY DEFINER` del
-esquema `kcm_lectura`, que proyectan sólo las columnas autorizadas. La
+esquema `lectura`, que proyectan sólo las columnas autorizadas. La
 aplicación se conecta con el rol **`kcm_app`, creado `NOBYPASSRLS`**. No es un
 detalle de configuración: si alguien conecta la aplicación con un superusuario
 «mientras se estabiliza», la seguridad por fila deja de existir y nadie lo nota,

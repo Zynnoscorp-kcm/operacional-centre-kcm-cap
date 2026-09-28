@@ -4,7 +4,7 @@ import type { ActorIdentity, AuditEventRecord } from "../quiosco/tipos.ts";
  * Las siete salas.
  *
  * `roomId` es la clave estable —es lo que viaja en formularios, en la
- * disponibilidad pública y en `kcm.sala.clave_sala`— y `name` es sólo lo que se
+ * disponibilidad pública y en `catalogo.sala.clave_sala`— y `name` es sólo lo que se
  * lee en pantalla. Por eso renombrar una sala se hace aquí y en ningún otro
  * lado: la clave no se mueve, así que ninguna reservación existente pierde su
  * vínculo.
@@ -13,7 +13,7 @@ import type { ActorIdentity, AuditEventRecord } from "../quiosco/tipos.ts";
  * «Marli» sin acento, y Gerencia y Dragones sin el prefijo «Sala», que sobraba
  * al ir dentro de una lista que ya se llama salas.
  *
- * Esta constante es la única fuente de los nombres visibles. `kcm.sala`
+ * Esta constante es la única fuente de los nombres visibles. `catalogo.sala`
  * conserva los suyos en `nombre_visible` para lo que se consulte directo contra
  * la base, y donde la plataforma los muestra resuelve por `clave_sala` contra
  * esta lista.

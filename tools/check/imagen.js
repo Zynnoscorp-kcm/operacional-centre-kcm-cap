@@ -16,7 +16,8 @@
  *   2. Que todo módulo alcanzable desde el punto de entrada quede cubierto por
  *      alguno de esos `COPY`.
  *   3. Que los paquetes externos importados en ejecución coincidan con las
- *      `dependencies` del `package.json`, en ambos sentidos.
+ *      `dependencies` del `package.json`, en ambos sentidos. Un par obligatorio
+ *      de un paquete importado cuenta como usado.
  */
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -51,7 +52,10 @@ while (pendientes.length > 0) {
   for (const match of fuente.matchAll(IMPORT)) {
     const especificador = match[1] ?? match[2];
     if (!especificador.startsWith(".")) {
-      if (!especificador.startsWith("node:")) externos.add(especificador.split("/")[0]);
+      // El nombre del paquete: `zod`, o `@alcance/nombre` si es uno con alcance.
+      const partes = especificador.split("/");
+      const nombre = especificador.startsWith("@") ? partes.slice(0, 2).join("/") : partes[0];
+      if (!especificador.startsWith("node:")) externos.add(nombre);
       continue;
     }
     const destino = path.resolve(path.dirname(actual), especificador);
@@ -72,11 +76,27 @@ for (const modulo of [...visitados].sort()) {
 const paquete = JSON.parse(await readFile("package.json", "utf8"));
 const declaradas = new Set(Object.keys(paquete.dependencies ?? {}));
 
+// Un par obligatorio de un paquete importado se declara aunque ningún módulo lo
+// importe: `@langchain/langgraph` no carga sin `@langchain/core`.
+const pares = new Set();
+for (const usado of externos) {
+  const manifiesto = path.join("node_modules", usado, "package.json");
+  if (!existsSync(manifiesto)) continue;
+  const { peerDependencies = {}, peerDependenciesMeta = {} } = JSON.parse(
+    await readFile(manifiesto, "utf8")
+  );
+  for (const par of Object.keys(peerDependencies)) {
+    if (!peerDependenciesMeta[par]?.optional) pares.add(par);
+  }
+}
+
 for (const usado of externos) {
   if (!declaradas.has(usado)) fallos.push(`Importado en ejecución y no declarado: ${usado}`);
 }
 for (const declarada of declaradas) {
-  if (!externos.has(declarada)) fallos.push(`Declarada en dependencies y nunca importada: ${declarada}`);
+  if (!externos.has(declarada) && !pares.has(declarada)) {
+    fallos.push(`Declarada en dependencies y nunca importada: ${declarada}`);
+  }
 }
 
 if (fallos.length > 0) {

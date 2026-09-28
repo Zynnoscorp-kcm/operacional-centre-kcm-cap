@@ -1,5 +1,9 @@
 Attribute VB_Name = "KcmBridgeHttp"
 Option Explicit
+Option Private Module
+
+' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
+' en Herramientas > Macros, donde solo quedan las que se usan a mano.
 
 ' El protocolo del puente, y solo el protocolo.
 '
@@ -25,6 +29,14 @@ Option Explicit
 
 Private Const KCM_HTTP_ATTEMPTS As Long = 3
 
+' Cuanto cabe en una peticion, en caracteres base64 web-safe. La nube corta cada
+' peticion en 4.5 MB; con 3 MB por parte sobra lugar para el resto del cuerpo.
+' Lo que pase de aqui sale en partes (UPLOAD_PART_V1) y la plataforma las junta.
+Private Const KCM_PARTE_MAXIMA As Long = 3000000
+
+' El techo de partes que acepta la plataforma: 64 de 3 MB, casi 200 MB.
+Private Const KCM_PARTES_MAXIMAS As Long = 64
+
 Public Function KcmNewRequestId(ByVal prefix As String) As String
     KcmNewRequestId = prefix & "-" & KcmNewGuidHex()
 End Function
@@ -32,17 +44,27 @@ End Function
 ''' POST idempotente al puente. `stableRequestId` permite que un reintento sea un no-op del lado
 ''' del servidor; el nonce y `sentAt` se renuevan en cada intento porque el servidor rechaza un
 ''' nonce repetido y una marca de tiempo vencida.
+'''
+''' Lo que no cabe en una peticion sale en partes, una tras otra y cada una con sus reintentos,
+''' con el mismo `requestId`. Las intermedias solo confirman que llegaron; la ultima trae la
+''' respuesta del envio completo, la misma que si hubiera salido de una vez. A la respuesta se le
+''' agrega `envioPartes` -1 si salio entera- para que quien envia pueda decir como salio.
+'''
+''' `intentos` alarga la paciencia de una llamada que se puede repetir sin riesgo; cada espera
+''' crece: 2, 8, 18, 32 y 50 segundos. Sin el, son los tres intentos de siempre.
 Public Function KcmHttpPost(ByVal action As String, ByVal payload As String, _
-    Optional ByVal stableRequestId As String = "") As KcmDiccionario
+    Optional ByVal stableRequestId As String = "", _
+    Optional ByVal intentos As Long = 0) As KcmDiccionario
     Dim endpoint As String
     Dim clientId As String
     Dim token As String
     Dim requestId As String
     Dim encodedPayload As String
-    Dim attempt As Long
     Dim response As KcmDiccionario
-    Dim lastMessage As String
-    Dim retryable As Boolean
+    Dim partes As Long
+    Dim parte As Long
+    Dim extra As String
+    Dim barraAnterior As Variant
 
     endpoint = KcmConfigValue("ENDPOINT")
     If Not KcmEndpointPermitido(endpoint) Then Err.Raise vbObjectError + 7213, "KcmHttpPost", _
@@ -56,17 +78,74 @@ Public Function KcmHttpPost(ByVal action As String, ByVal payload As String, _
     ' El cuerpo base64 web-safe ya usa solo caracteres no reservados: se transmite sin recodificar.
     encodedPayload = KcmBase64WebEncode(payload)
 
-    For attempt = 1 To KCM_HTTP_ATTEMPTS
+    If Len(encodedPayload) <= KCM_PARTE_MAXIMA Then
+        Set response = KcmHttpConReintentos(endpoint, action, clientId, requestId, token, _
+            encodedPayload, "", intentos)
+        response.Fijar "envioPartes", "1"
+        Set KcmHttpPost = response
+        Exit Function
+    End If
+
+    partes = (Len(encodedPayload) + KCM_PARTE_MAXIMA - 1) \ KCM_PARTE_MAXIMA
+    If partes > KCM_PARTES_MAXIMAS Then Err.Raise vbObjectError + 7216, "KcmHttpPost", _
+        "El envio pasa de " & CStr(KCM_PARTES_MAXIMAS) & " partes; la plataforma no lo recibe"
+    barraAnterior = Application.StatusBar
+    For parte = 1 To partes
+        Application.StatusBar = "KCM: enviando la parte " & CStr(parte) & " de " & CStr(partes) & "..."
+        extra = "&target=" & KcmUrlEncode(action) & _
+            "&part=" & CStr(parte) & _
+            "&parts=" & CStr(partes) & _
+            "&length=" & CStr(Len(encodedPayload))
+        Set response = KcmHttpConReintentos(endpoint, "UPLOAD_PART_V1", clientId, requestId, token, _
+            Mid$(encodedPayload, (parte - 1) * KCM_PARTE_MAXIMA + 1, KCM_PARTE_MAXIMA), extra, intentos)
+    Next parte
+    Application.StatusBar = barraAnterior
+
+    ' La ultima parte junta el envio. Si la plataforma dice que aun le faltan, algo se perdio en el
+    ' camino y lo seguro es repetir el envio entero, que es idempotente.
+    If UCase$(KcmResponseField(response, "uploadComplete")) <> "TRUE" Then Err.Raise _
+        vbObjectError + 7215, "KcmHttpPost", _
+        "La plataforma no recibio todas las partes del envio; se repite el envio"
+    response.Fijar "envioPartes", CStr(partes)
+    Set KcmHttpPost = response
+End Function
+
+''' Una peticion con sus reintentos. Lanza con el ultimo motivo si ninguno llega.
+Private Function KcmHttpConReintentos(ByVal endpoint As String, ByVal action As String, _
+    ByVal clientId As String, ByVal requestId As String, ByVal token As String, _
+    ByVal encodedPayload As String, ByVal extra As String, ByVal intentos As Long) As KcmDiccionario
+    Dim attempt As Long
+    Dim response As KcmDiccionario
+    Dim lastMessage As String
+    Dim retryable As Boolean
+
+    If intentos < 1 Then intentos = KCM_HTTP_ATTEMPTS
+    For attempt = 1 To intentos
         Set response = KcmHttpAttempt(endpoint, action, clientId, requestId, token, encodedPayload, _
-            lastMessage, retryable)
+            extra, lastMessage, retryable)
         If Not response Is Nothing Then
-            Set KcmHttpPost = response
+            Set KcmHttpConReintentos = response
             Exit Function
         End If
-        If Not retryable Or attempt = KCM_HTTP_ATTEMPTS Then Exit For
-        Application.Wait Now + TimeSerial(0, 0, attempt * 2)
+        If Not retryable Or attempt = intentos Then Exit For
+        ' Con los tres intentos de siempre, 2 y 8 s; los que piden mas paciencia siguen creciendo.
+        Application.Wait Now + TimeSerial(0, 0, attempt * attempt * 2)
     Next attempt
     Err.Raise vbObjectError + 7202, "KcmHttpPost", lastMessage
+End Function
+
+''' Como salio un envio, en palabras: "envio normal" o "envio en N partes".
+Public Function KcmDescribirEnvio(ByVal respuesta As KcmDiccionario) As String
+    Dim partes As Long
+
+    If Not respuesta Is Nothing Then
+        If respuesta.Exists("envioPartes") Then partes = CLng(Val(CStr(respuesta.Item("envioPartes"))))
+    End If
+    If partes > 1 Then
+        KcmDescribirEnvio = "envio en " & CStr(partes) & " partes"
+    Else
+        KcmDescribirEnvio = "envio normal"
+    End If
 End Function
 
 ''' HTTPS siempre, con una sola excepcion: loopback. El token viaja en el cuerpo del POST, asi que
@@ -99,7 +178,8 @@ End Function
 ''' donde se hayan recibido.
 Private Function KcmHttpAttempt(ByVal endpoint As String, ByVal action As String, _
     ByVal clientId As String, ByVal requestId As String, ByVal token As String, _
-    ByVal encodedPayload As String, ByRef message As String, ByRef retryable As Boolean) As KcmDiccionario
+    ByVal encodedPayload As String, ByVal extra As String, ByRef message As String, _
+    ByRef retryable As Boolean) As KcmDiccionario
     Dim body As String
     Dim response As KcmDiccionario
     Dim status As Long
@@ -113,6 +193,7 @@ Private Function KcmHttpAttempt(ByVal endpoint As String, ByVal action As String
         "&sentAt=" & KcmUrlEncode(KcmUtcIsoNow()) & _
         "&nonce=" & KcmUrlEncode(KcmNewRequestId("nonce")) & _
         "&token=" & KcmUrlEncode(token) & _
+        extra & _
         "&payload=" & encodedPayload
 
     If Not KcmTransportePost(endpoint, body, status, texto, fallo) Then
@@ -121,6 +202,12 @@ Private Function KcmHttpAttempt(ByVal endpoint As String, ByVal action As String
         Exit Function
     End If
 
+    If status = 413 Then
+        ' Cada peticion sale por debajo de KCM_PARTE_MAXIMA, asi que esto solo ocurre si la
+        ' plataforma bajo su tope. Repetir no ayuda: se dice y se detiene.
+        message = "La plataforma publicada rechazo el tamano de la peticion (HTTP 413)."
+        Exit Function
+    End If
     If status < 200 Or status >= 300 Then
         message = "El endpoint respondio HTTP " & CStr(status)
         retryable = (status = 408 Or status = 429 Or status >= 500)
@@ -132,6 +219,11 @@ Private Function KcmHttpAttempt(ByVal endpoint As String, ByVal action As String
         Exit Function
     End If
     message = KcmResponseField(response, "code") & ": " & KcmResponseField(response, "message")
+    ' El rechazo casi siempre es un identificador que no es el de la credencial:
+    ' el asistente propone el que ya traia el libro y es facil aceptarlo.
+    If KcmResponseField(response, "code") = "UNAUTHORIZED_EXCEL" Then message = message & _
+        " Este libro se identifica como " & KcmConfigValue("CLIENT_ID", False) & _
+        "; debe ser el mismo identificador con el que se emitio la credencial."
     retryable = (UCase$(KcmResponseField(response, "retryable")) = "TRUE")
 End Function
 

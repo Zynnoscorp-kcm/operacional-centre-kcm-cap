@@ -1,7 +1,24 @@
 Attribute VB_Name = "KcmReleaseSync"
 Option Explicit
+Option Private Module
 
-Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False)
+' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
+' en Herramientas > Macros, donde solo quedan las que se usan a mano.
+
+''' Escribe en la matriz las fechas que la plataforma tenga pendientes.
+'''
+''' `sesiones` acota el trabajo a las sesiones escogidas en el subpanel de
+''' entradas: es una lista de identificadores separados por barra vertical, y
+''' vacia significa todas, que es como se comporto siempre y como sigue
+''' comportandose el boton del panel y el ciclo programado.
+'''
+''' El filtro se aplica sobre lo descargado y no sobre lo pedido. RELEASE_PULL_V1
+''' entrega la carga entera en una lectura; pedirla por sesion habria significado
+''' una llamada por sesion escogida para obtener exactamente los mismos
+''' renglones. Lo que no se puede es partir un lote: la unidad que se aplica todo
+''' o nada es el lote, y una sesion produce lotes enteros.
+Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
+    Optional ByVal sesiones As String = "")
     Dim response As KcmDiccionario
     Dim rows As Collection
     Dim headers As Variant
@@ -10,6 +27,7 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False)
     Dim row As KcmDiccionario
     Dim batchKey As Variant
     Dim master As Workbook
+    Dim escogidas As Long
 
     KcmResetCaches
     Set response = KcmHttpPost("RELEASE_PULL_V1", "")
@@ -19,7 +37,7 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False)
         "destinationHeader", "targetMappingVersion", "overwritePolicy")
     Set rows = KcmParseTsv(KcmDecodeResponsePayload(response), headers)
     If rows.Count = 0 Then
-        If Not silent Then MsgBox "No hay liberaciones pendientes para Excel.", vbInformation
+        If Not silent Then KcmAvisoHecho "Actualizar", "Sin liberaciones pendientes."
         Exit Sub
     End If
 
@@ -27,22 +45,44 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False)
     For Each row In rows
         If Len(CStr(row.Item("batchId"))) = 0 Then Err.Raise vbObjectError + 7400, _
             "KcmApplyPendingReleases", "Una liberacion no conserva batchId"
-        If Not batches.Exists(CStr(row.Item("batchId"))) Then
-            Set batchRows = New Collection
-            batches.AgregarObjeto CStr(row.Item("batchId")), batchRows
+        If KcmSesionEscogida(CStr(row.Item("sessionId")), sesiones) Then
+            If Not batches.Exists(CStr(row.Item("batchId"))) Then
+                Set batchRows = New Collection
+                batches.AgregarObjeto CStr(row.Item("batchId")), batchRows
+            End If
+            Set batchRows = batches.Objeto(CStr(row.Item("batchId")))
+            batchRows.Add row
+            escogidas = escogidas + 1
         End If
-        Set batchRows = batches.Objeto(CStr(row.Item("batchId")))
-        batchRows.Add row
     Next row
+
+    If escogidas = 0 Then
+        If Not silent Then KcmAvisoHecho "Escribir en la matriz", _
+            "Las sesiones seleccionadas no tienen fechas pendientes."
+        Exit Sub
+    End If
 
     Set master = KcmOpenMaster(False)
     For Each batchKey In batches.Keys
         Set batchRows = batches.Objeto(CStr(batchKey))
         KcmApplyReleaseBatch master, batchRows
     Next batchKey
-    If Not silent Then MsgBox CStr(rows.Count) & _
-        " liberaciones fueron revisadas. Consulte los acuses en la plataforma.", vbInformation
+    If Not silent Then KcmAvisoHecho "Actualizar", _
+        KcmPlural(escogidas, "liberacion escrita", "liberaciones escritas") & " en la matriz."
 End Sub
+
+''' Si una liberacion entra en el trabajo de esta corrida.
+'''
+''' La lista se compara con las barras puestas a los dos lados para que un
+''' identificador no case por ser prefijo de otro; sin ellas, marcar una sesion
+''' podria arrastrar a otra cuyo identificador empezara igual.
+Private Function KcmSesionEscogida(ByVal sesion As String, ByVal sesiones As String) As Boolean
+    If Len(sesiones) = 0 Then
+        KcmSesionEscogida = True
+        Exit Function
+    End If
+    KcmSesionEscogida = InStr(1, "|" & sesiones, "|" & sesion & "|", vbBinaryCompare) > 0
+End Function
 
 ''' Un lote es todo o nada. El preflight completo ocurre antes de la primera escritura y cada fila
 ''' recibe un estado propio, de modo que la plataforma siempre reciba un acuse: un conflicto de

@@ -294,7 +294,7 @@ export function registerKioskRoutes(app: FastifyInstance, deps: KioskRouteDeps):
      * La autoridad de la estación es el token: se firmó para `payload.sessionId`
      * después de un vale válido, y es esa misma sesión —y ninguna otra— la que
      * se cierra. El adaptador traduce `KIOSK` a `CAPACITADOR` al escribir la
-     * bitácora, porque el enum `kcm.rol` no tiene un valor propio para la sala,
+     * bitácora, porque el enum `comun.rol` no tiene un valor propio para la sala,
      * así que en la base la fila queda idéntica a como quedaba antes.
      */
     const identidadDeSala = { actor: "SALA_QUIOSCO", role: "KIOSK" } as const;

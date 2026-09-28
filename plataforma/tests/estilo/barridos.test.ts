@@ -247,11 +247,14 @@ describe("Barridos · estilo de la consola", () => {
     }
   });
 
-  it("resume con los mosaicos del sistema y no con un componente propio", () => {
+  it("resume con el panel de cambios compartido, no con uno propio de cada pantalla", () => {
     for (const [nombre, documento] of REVISIONES) {
-      assert.match(documento, /class="kpi-tira"/u, `${nombre} no usa la tira de mosaicos`);
-      assert.match(documento, /class="kpi-etiqueta"/u, `${nombre} no rotula sus mosaicos`);
-      assert.match(documento, /class="kpi-pista"/u, `${nombre} no dice de qué está hecha la cifra`);
+      assert.match(documento, /class="panel-cambios"/u, `${nombre} no usa el panel de cambios`);
+      assert.doesNotMatch(
+        documento,
+        /class="kpi-tira"/u,
+        `${nombre} repite las cifras en mosaicos`,
+      );
     }
   });
 
@@ -279,11 +282,15 @@ describe("Barridos · estilo de la consola", () => {
     }
   });
 
-  it("no publica nombres de trabajador en ninguna de las dos", () => {
+  it("no filtra nombres de campo internos", () => {
     for (const [nombre, documento] of PANTALLAS) {
-      // Las dos fuentes traen nombre completo y ninguna pantalla lo necesita:
-      // la nómina basta para ir a buscar a la persona en el libro.
-      assert.doesNotMatch(documento, /nombre_completo|displayName/u, `${nombre} filtra el nombre`);
+      // El nombre de la persona sí se enseña desde el 2026-09-25; lo que nunca
+      // debe asomar es el nombre de la columna o de la propiedad que lo trae.
+      assert.doesNotMatch(
+        documento,
+        /nombre_completo|displayName/u,
+        `${nombre} filtra un campo interno`,
+      );
     }
   });
 });

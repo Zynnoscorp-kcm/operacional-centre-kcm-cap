@@ -10,6 +10,7 @@
  * que se puede editar desde la pantalla que la muestra no es auditoría.
  */
 
+import { fechaCorta } from "../kit/fechas.ts";
 import type { AppConfig } from "../../config/environment.ts";
 import { InternalAuditService } from "../../domain/consola-interna/auditoria.ts";
 import type {
@@ -18,16 +19,20 @@ import type {
   RoomAuditRow,
   SessionAuditRow,
 } from "../../domain/consola-interna/tipos.ts";
-import { etiquetaDeEstadoDeReservacion, etiquetaDeEstadoDeSesion } from "../kit/etiquetas.ts";
+import {
+  etiquetaDeAuditoria,
+  etiquetaDeEstadoDeReservacion,
+  etiquetaDeEstadoDeSesion,
+} from "../kit/etiquetas.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
 /** Sin base no hay nada que auditar, y decirlo evita leer el vacío como calma. */
-const SIN_BASE = "Sin base de datos conectada no hay registros que auditar.";
+const SIN_BASE = "Sin conexión con la base de datos: no hay registros que consultar.";
 
 function renderVentana(ventana: AuditWindow): Html {
-  return html`<p class="miga-de-pan">
-    Ventana de consulta: ${ventana.days} días, del ${ventana.from} al ${ventana.to}.
+  return html`<p class="texto-nota">
+    Últimos ${ventana.days} días: del ${fechaCorta(ventana.from)} al ${fechaCorta(ventana.to)}.
   </p>`;
 }
 
@@ -40,7 +45,7 @@ function renderVacio(columnas: number, mensaje: string): Html {
 /** Instante ISO recortado a lo que se lee de un vistazo: día y hora local. */
 function momento(iso: string | undefined): string {
   if (iso === undefined) return "—";
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+  return `${fechaCorta(iso.slice(0, 10))} · ${iso.slice(11, 16)}`;
 }
 
 // -----------------------------------------------------------------------------
@@ -317,8 +322,11 @@ function renderLiberacion(fila: ReleaseAuditRow): Html {
     </td>
     <td class="celda-mono">${momento(fila.appliedAt)}</td>
     <td>
-      <span class="insignia">${fila.result}</span><br />
-      <span class="texto-secundario">lote ${fila.batchState} · ${fila.releasedBy || "—"}</span>
+      <span class="insignia">${etiquetaDeAuditoria(fila.result)}</span><br />
+      <span class="texto-secundario"
+        >Liberación ${etiquetaDeAuditoria(fila.batchState).toLocaleLowerCase("es-MX")} ·
+        ${fila.releasedBy || "—"}</span
+      >
     </td>
   </tr>`;
 }

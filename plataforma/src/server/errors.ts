@@ -7,7 +7,7 @@
  * error se convierta en un mapa del sistema.
  */
 
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { EnvironmentName } from "../config/environment.ts";
 
 export type ErrorCode =

@@ -9,11 +9,13 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppConfig } from "../config/environment.ts";
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { WorkbenchService } from "../domain/preliberacion/banco-de-trabajo.ts";
 import type { PreReleaseReportService } from "../domain/preliberacion/reporte.ts";
 import type { ActorIdentity } from "../domain/quiosco/tipos.ts";
 import type { ExamOutcome, SaveReviewInput } from "../domain/preliberacion/tipos.ts";
+import type { ReleaseService } from "../domain/liberacion/servicio.ts";
+import { badRequest } from "../server/errors.ts";
 import {
   renderPreReleaseInboxPage,
   renderPreReleaseWorkbenchPage,
@@ -23,6 +25,11 @@ export interface PreReleaseRouteDeps {
   readonly config: AppConfig;
   readonly workbenchService: WorkbenchService;
   readonly reportService: PreReleaseReportService;
+  /**
+   * Liberación, para el atajo de la sesión limpia. Opcional: sin ella la
+   * pantalla no ofrece el botón y el camino de dos pasos sigue intacto.
+   */
+  readonly releaseService?: ReleaseService;
 }
 
 /**
@@ -37,7 +44,7 @@ interface CuerpoFormulario {
 }
 
 export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseRouteDeps): void {
-  const { config, workbenchService, reportService } = deps;
+  const { config, workbenchService, reportService, releaseService } = deps;
 
   const prefiereHtml = (req: FastifyRequest): boolean => {
     const accept = req.headers.accept;
@@ -181,6 +188,61 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
       redirigirALiberacion,
     ),
   );
+
+  /**
+   * El atajo de la sesión limpia: envía y libera en un solo acto.
+   *
+   * Existe porque la segunda revisión de una sesión sin hallazgos no es un
+   * control, es una ceremonia. Nada en el código exige que preliberación y
+   * liberación las firme gente distinta, así que revisar dos veces lo mismo, la
+   * misma persona, con treinta segundos de diferencia, cuesta dos pantallas y no
+   * compra nada.
+   *
+   * Y sólo sirve para la sesión limpia. En cuanto hay un hallazgo —derivado o
+   * declarado— el atajo desaparece de la pantalla y el camino vuelve a ser el de
+   * dos pasos, que es donde la segunda mirada sí tiene algo que mirar. El
+   * servicio lo vuelve a comprobar aquí y no confía en que el botón no se haya
+   * dibujado: una sesión puede ensuciarse entre que se pinta la pantalla y se
+   * pulsa.
+   */
+  app.post("/api/pre-release/liberar", async (req: FastifyRequest, reply: FastifyReply) => {
+    const body = (req.body ?? {}) as CuerpoFormulario;
+    const sessionId = texto(body["sessionId"]);
+    const esHtml = prefiereHtml(req);
+
+    if (!releaseService) throw badRequest("Esta instalación no tiene liberación conectada.");
+
+    try {
+      const estado = await workbenchService.open(sessionId);
+      if (estado.findings.length > 0 || estado.derivedFindings.length > 0) {
+        throw badRequest(
+          "La sesión tiene hallazgos: se libera desde la pantalla de liberación, no desde aquí.",
+        );
+      }
+
+      await workbenchService.submit(sessionId, IDENTIDAD_REVISION);
+      const resultado = await releaseService.release(
+        { sessionId, requestId: randomUUID() },
+        IDENTIDAD_REVISION,
+      );
+
+      if (!esHtml) return reply.code(resultado.status === "CONFLICTO" ? 409 : 200).send(resultado);
+      if (resultado.status === "CONFLICTO") {
+        // Un conflicto no se resuelve aquí: se manda a la pantalla que sabe
+        // enseñarlo fila por fila.
+        return redirigirALiberacion(
+          reply,
+          sessionId,
+          "La liberación se detuvo por conflicto con la matriz.",
+        );
+      }
+      return redirigirAlBanco(reply, sessionId, "Sesión revisada y liberada.");
+    } catch (error) {
+      if (!esHtml || !(error instanceof DomainError)) throw error;
+      req.log.warn({ codigo: error.code }, "liberación directa rechazada");
+      return redirigirAlBanco(reply, sessionId, error.message);
+    }
+  });
 
   app.post("/api/pre-release/return", async (req: FastifyRequest, reply: FastifyReply) =>
     ejecutarTransicion(req, reply, "La sesión regresó a preliberación.", (sessionId) =>

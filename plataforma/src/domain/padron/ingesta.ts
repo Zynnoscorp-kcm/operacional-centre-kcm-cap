@@ -22,7 +22,8 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
+import type { RevisionesCompartidasPort } from "../../ports/revisiones-compartidas.port.ts";
 import type {
   EscriturasDePadron,
   FilaDePadronBase,
@@ -30,18 +31,46 @@ import type {
 } from "../../ports/padron.port.ts";
 import type { BitacoraDeCargas } from "../cargas/bitacora.ts";
 import type { ComparacionConLaAnterior } from "../cargas/tipos.ts";
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 import type {
   CambioDePuesto,
   CuadreDePadron,
   Divergencia,
+  EmpleadoDelPadron,
   MuestrasDeCuadre,
-  OrdenDePadron,
   OrigenDelPadron,
   PlanDePadron,
   ResultadoDePadron,
   RosterExtractorPort,
 } from "./tipos.ts";
+import { adscripcion, type DetalleDeCambios, type MovimientoDelCambio } from "../cargas/detalle.ts";
+import type { DatoDelPadron } from "../../ports/padron.port.ts";
+
+/**
+ * Las columnas personales del padrón: dónde viven en la base, cómo se rotulan
+ * y de qué campo del archivo salen. Se escriben siempre que el archivo traiga
+ * un valor distinto; una celda vacía no borra lo que ya había.
+ */
+const COLUMNAS_PERSONALES: readonly (readonly [
+  DatoDelPadron,
+  string,
+  (empleado: EmpleadoDelPadron) => string | undefined,
+  (fila: FilaDePadronBase) => string | null | undefined,
+])[] = [
+  ["rfc", "RFC", (e) => e.rfc, (f) => f.rfc],
+  ["nss", "IMSS", (e) => e.nss, (f) => f.nss],
+  ["centro_costos_clave", "Centro de costos", (e) => e.costCenterKey, (f) => f.centroCostosClave],
+  [
+    "centro_costos_nombre",
+    "Nombre del centro de costos",
+    (e) => e.costCenterName,
+    (f) => f.centroCostosNombre,
+  ],
+  ["direccion", "Dirección", (e) => e.address, (f) => f.direccion],
+  ["codigo_postal", "Código postal", (e) => e.postalCode, (f) => f.codigoPostal],
+  ["estado_civil", "Estado civil", (e) => e.maritalStatus, (f) => f.estadoCivil],
+  ["sexo", "Sexo", (e) => e.sex, (f) => f.sexo],
+];
 
 /** Cuántos números se enseñan de cada lista. Lo demás es un conteo. */
 const MUESTRA = 12;
@@ -55,6 +84,12 @@ interface PlanGuardado {
   readonly plan: PlanDePadron;
   readonly escrituras: EscriturasDePadron;
   readonly venceEn: number;
+}
+
+/** Lo que se comparte entre instancias: el plan y su comparación ya resuelta. */
+interface PlanCompartido {
+  readonly guardado: PlanGuardado;
+  readonly comparacion?: ComparacionConLaAnterior;
 }
 
 function clave(texto: string | null | undefined): string {
@@ -93,64 +128,56 @@ export class RosterIngestService {
    * que ninguna petición del navegador la haya producido. La pantalla necesita
    * poder preguntar «¿qué hay?» en vez de recibirla como respuesta a un POST.
    */
-  #orden: OrdenDePadron | undefined;
   #ultimoPlanId: string | undefined;
+  /**
+   * Donde hay base, el plan también espera en `sistema.revision_pendiente`:
+   * publicada con varias instancias, el «Aplicar» puede llegar a una que no
+   * leyó el archivo. Sin él, todo queda en este proceso, como antes.
+   */
+  readonly #revisiones: RevisionesCompartidasPort | undefined;
 
   constructor(input: {
     repository: RosterRepositoryPort;
     extractor: RosterExtractorPort;
     clock: Clock;
     bitacora?: BitacoraDeCargas;
+    revisiones?: RevisionesCompartidasPort;
   }) {
     this.#repository = input.repository;
     this.#extractor = input.extractor;
     this.#clock = input.clock;
     this.#bitacora = input.bitacora;
+    this.#revisiones = input.revisiones;
+  }
+
+  /**
+   * Trae el plan compartido, si lo hay. Las rutas la llaman antes de leer el
+   * estado. El almacén manda: si otra instancia aplicó o descartó, aquí se
+   * olvida la copia local.
+   */
+  async sincronizar(): Promise<void> {
+    if (!this.#revisiones) return;
+    const vigente = await this.#revisiones.vigente("PADRON");
+    if (vigente !== undefined && this.#ultimoPlanId === vigente && this.#planes.has(vigente)) {
+      return;
+    }
+    const guardada = vigente === undefined ? undefined : await this.#revisiones.leer("PADRON");
+    if (!guardada) {
+      this.#planes.clear();
+      this.#ultimoPlanId = undefined;
+      this.#comparacion = undefined;
+      return;
+    }
+    const compartido = guardada.contenido as PlanCompartido;
+    this.#planes.clear();
+    this.#planes.set(guardada.id, compartido.guardado);
+    this.#ultimoPlanId = guardada.id;
+    this.#comparacion = compartido.comparacion;
   }
 
   /** Lo que se sabe de la carga anterior, para la revisión que está en pantalla. */
   comparacion(): ComparacionConLaAnterior | undefined {
     return this.#comparacion;
-  }
-
-  // ------------------------------------------------------------- la orden
-
-  /** Encarga un barrido del padrón. Reencargarlo devuelve la orden viva. */
-  solicitar(actor: string): OrdenDePadron {
-    const vigente = this.ordenVigente();
-    if (vigente) return vigente;
-
-    const ahora = this.#clock.now().getTime();
-    const orden: OrdenDePadron = {
-      ordenId: randomUUID(),
-      solicitadaEn: this.#clock.nowIso(),
-      solicitadaPor: actor,
-      venceEn: new Date(ahora + VIGENCIA_DEL_PLAN_MS).toISOString(),
-    };
-    this.#orden = orden;
-    // Sin `await`: encargar un barrido no debe esperar a la base para devolver
-    // la pantalla, y el asiento es informativo. Si falla, la bitácora lo traga.
-    void this.#bitacora?.registrar({
-      tipo: "PADRON",
-      hecho: "ENCARGADA",
-      actor,
-      archivo: "(pendiente de entrega)",
-      sha256: "",
-      solicitudId: orden.ordenId,
-      resumen: {},
-    });
-    return orden;
-  }
-
-  ordenVigente(): OrdenDePadron | undefined {
-    if (this.#orden && new Date(this.#orden.venceEn).getTime() <= this.#clock.now().getTime()) {
-      this.#orden = undefined;
-    }
-    return this.#orden;
-  }
-
-  cancelar(): void {
-    this.#orden = undefined;
   }
 
   /** La última revisión viva, venga del formulario o del puente. */
@@ -161,9 +188,11 @@ export class RosterIngestService {
       : this.#planes.get(this.#ultimoPlanId)?.plan;
   }
 
-  descartar(): void {
+  /** Olvida la revisión aquí y, si lo hay, en el almacén compartido. */
+  descartar(): Promise<void> {
     if (this.#ultimoPlanId !== undefined) this.#planes.delete(this.#ultimoPlanId);
     this.#ultimoPlanId = undefined;
+    return this.#revisiones?.descartar("PADRON") ?? Promise.resolve();
   }
 
   /**
@@ -242,6 +271,10 @@ export class RosterIngestService {
     const cambiosDePuesto: CambioDePuesto[] = [];
     let reconocidos = 0;
     let altasQueCoinciden = 0;
+    /** Todo lo que le cambia a cada quien, escrito o sólo avisado, con su valor anterior. */
+    const movimientos: MovimientoDelCambio[] = [];
+    const datos: [string, DatoDelPadron, string][] = [];
+    const reactivar: string[] = [];
 
     for (const empleado of leido.employees) {
       enArchivo.add(empleado.employeeId);
@@ -251,6 +284,48 @@ export class RosterIngestService {
         continue;
       }
       reconocidos += 1;
+      const quien = { nomina: empleado.employeeId, nombre: empleado.displayName };
+      if (!actual.activo) {
+        reactivar.push(actual.trabajadorId);
+        movimientos.push({ ...quien, campo: "Estado", antes: "Baja", ahora: "Activo" });
+      }
+      if (empleado.curp && empleado.curp !== actual.curp) {
+        movimientos.push({
+          ...quien,
+          campo: "CURP",
+          antes: actual.curp ?? "",
+          ahora: empleado.curp,
+        });
+      }
+      if (empleado.hireDate && empleado.hireDate !== actual.fechaAlta) {
+        movimientos.push({
+          ...quien,
+          campo: "Fecha de alta",
+          antes: actual.fechaAlta ?? "",
+          ahora: empleado.hireDate,
+        });
+      }
+      // El nombre lo escribe la matriz; aquí sólo se avisa si el padrón lo dice distinto.
+      if (
+        empleado.displayName &&
+        actual.nombre &&
+        clave(empleado.displayName) !== clave(actual.nombre)
+      ) {
+        movimientos.push({
+          ...quien,
+          campo: "Nombre",
+          antes: actual.nombre,
+          ahora: empleado.displayName,
+          soloAviso: true,
+        });
+      }
+      for (const [columna, rotulo, delArchivo, deLaBase] of COLUMNAS_PERSONALES) {
+        const nuevo = (delArchivo(empleado) ?? "").trim();
+        const anterior = (deLaBase(actual) ?? "").trim();
+        if (nuevo === "" || clave(nuevo) === clave(anterior)) continue;
+        datos.push([actual.trabajadorId, columna, nuevo]);
+        movimientos.push({ ...quien, campo: rotulo, antes: anterior, ahora: nuevo });
+      }
 
       if (empleado.curp && empleado.curp !== actual.curp) {
         curp.push([actual.trabajadorId, empleado.curp]);
@@ -313,7 +388,15 @@ export class RosterIngestService {
       // problema y ya tiene su propio aviso.
       if (empleado.cnoKey) {
         if (clave(actual.claveOcupacion) === empleado.cnoKey) ocupacionesQueCoinciden += 1;
-        else ocupaciones.push([actual.trabajadorId, empleado.cnoKey]);
+        else {
+          ocupaciones.push([actual.trabajadorId, empleado.cnoKey]);
+          movimientos.push({
+            ...quien,
+            campo: "Clave de ocupación",
+            antes: actual.claveOcupacion ?? "",
+            ahora: empleado.cnoKey,
+          });
+        }
 
         // El par se arma con el puesto del archivo y el área de la base: el
         // archivo no trae área, y es la matriz la que la sabe.
@@ -335,9 +418,79 @@ export class RosterIngestService {
       );
     }
 
-    const ausentes = base
-      .filter((fila) => fila.activo && !enArchivo.has(fila.numeroTrabajador))
-      .map((fila) => fila.numeroTrabajador);
+    const filasAusentes = base.filter(
+      (fila) => fila.activo && !enArchivo.has(fila.numeroTrabajador),
+    );
+    const ausentes = filasAusentes.map((fila) => fila.numeroTrabajador);
+
+    // Quién es quién, con nombre: los que no están en la base salen del archivo,
+    // los que ya no vienen salen de la base.
+    const conocidos = new Set(desconocidos);
+    const nombreEnArchivo = new Map(
+      leido.employees.map((empleado) => [empleado.employeeId, empleado.displayName]),
+    );
+    // Lo que el padrón informa y no escribe, porque en esos datos manda la matriz.
+    const nombreDe = (nomina: string): string =>
+      nombreEnArchivo.get(nomina) ?? porNumero.get(nomina)?.nombre ?? "";
+    for (const cambio of cambiosDePuesto) {
+      movimientos.push({
+        nomina: cambio.numeroTrabajador,
+        nombre: nombreDe(cambio.numeroTrabajador),
+        campo: "Puesto",
+        antes: cambio.antes,
+        ahora: cambio.ahora,
+        soloAviso: true,
+      });
+    }
+    for (const [campo, lista] of [
+      ["Tipo de nómina", nominasDivergentes],
+      ["Planta", plantasDivergentes],
+    ] as const) {
+      for (const divergencia of lista) {
+        movimientos.push({
+          nomina: divergencia.numeroTrabajador,
+          nombre: nombreDe(divergencia.numeroTrabajador),
+          campo,
+          antes: divergencia.enBase,
+          ahora: divergencia.enPadron,
+          soloAviso: true,
+        });
+      }
+    }
+
+    // La baja: sólo quien tampoco estuvo en la última matriz. Los demás siguen
+    // activos y se avisa que el padrón ya no los trae.
+    const fechaDeBaja = new Map(
+      (leido.terminations ?? []).map((baja) => [baja.employeeId, baja.terminationDate]),
+    );
+    const seDanDeBaja = filasAusentes.filter((fila) => fila.vistoEnMatriz === false);
+
+    const detalle: DetalleDeCambios = {
+      altas: leido.employees
+        .filter((empleado) => conocidos.has(empleado.employeeId))
+        .map((empleado) => ({
+          nomina: empleado.employeeId,
+          nombre: empleado.displayName,
+          adscripcion: adscripcion(empleado.position),
+          nota: "Entra con la matriz",
+          soloAviso: true,
+        })),
+      bajas: filasAusentes.map((fila) => {
+        const baja = fila.vistoEnMatriz === false;
+        const fecha = fechaDeBaja.get(fila.numeroTrabajador);
+        return {
+          nomina: fila.numeroTrabajador,
+          nombre: fila.nombre ?? "",
+          adscripcion: adscripcion(fila.puesto, fila.area),
+          nota: baja ? "Se da de baja" : "Sigue activo: está en la matriz",
+          ...(fecha ? { fechaDeBaja: fecha } : {}),
+          ...(baja ? {} : { soloAviso: true }),
+        };
+      }),
+      movimientos,
+      fechas: [],
+      fechasOmitidas: 0,
+    };
 
     // Sin esto la pantalla anunciaría mil seiscientas inducciones cada semana.
     // Lo que importa es cuántas entrarían de verdad y cuántas chocan con una
@@ -366,6 +519,9 @@ export class RosterIngestService {
       cnoPorEscribir: ocupaciones.length,
       cnoQueCoinciden: ocupacionesQueCoinciden,
       cnoEnConflicto: conflictos.length,
+      datosPorEscribir: datos.length,
+      bajas: seDanDeBaja.length,
+      reactivados: reactivar.length,
     };
 
     const muestras: MuestrasDeCuadre = {
@@ -389,28 +545,51 @@ export class RosterIngestService {
       hojas: leido.diagnostics.sheets ?? [],
       cuadre,
       muestras,
+      detalle,
       sinCambios:
         curp.length === 0 &&
         altas.length === 0 &&
         revisadas.nuevas === 0 &&
-        ocupaciones.length === 0,
+        ocupaciones.length === 0 &&
+        datos.length === 0 &&
+        reactivar.length === 0 &&
+        ausentes.length === 0,
     };
 
     this.#podar(ahora);
-    this.#planes.set(plan.planId, {
+    const guardado: PlanGuardado = {
       plan,
-      escrituras: { curp, altas, inducciones, ocupaciones },
+      escrituras: {
+        curp,
+        altas,
+        inducciones,
+        ocupaciones,
+        datos,
+        enArchivo: [...enArchivo],
+        fechasDeBaja: filasAusentes
+          .map((fila) => [fila.numeroTrabajador, fechaDeBaja.get(fila.numeroTrabajador)] as const)
+          .filter((par): par is readonly [string, string] => par[1] !== undefined),
+        reactivar,
+      },
       venceEn: ahora + VIGENCIA_DEL_PLAN_MS,
-    });
+    };
+    this.#planes.set(plan.planId, guardado);
     this.#ultimoPlanId = plan.planId;
-    // La orden queda atendida por esta lectura, venga del puente o de la subida
-    // manual: en los dos casos lo que se pidió ya está en pantalla.
-    this.#orden = undefined;
 
     // La comparación sí se espera: es parte de la revisión que se devuelve y sin
     // ella la pantalla no puede decir si este archivo ya se aplicó.
     this.#comparacion = await this.#bitacora?.comparar("PADRON", plan.sha256, nombreArchivo);
-    void this.#bitacora?.registrar({
+    // También se espera el guardado: un «Aplicar» rápido en otra instancia debe
+    // encontrarlo.
+    await this.#revisiones?.guardar("PADRON", {
+      id: plan.planId,
+      contenido: {
+        guardado,
+        ...(this.#comparacion ? { comparacion: this.#comparacion } : {}),
+      } satisfies PlanCompartido,
+      venceEn: new Date(guardado.venceEn).toISOString(),
+    });
+    await this.#bitacora?.registrar({
       tipo: "PADRON",
       hecho: "REVISADA",
       actor: origen.actor,
@@ -421,7 +600,10 @@ export class RosterIngestService {
         origen: origen.tipo,
         activosEnArchivo: cuadre.activosEnArchivo,
         desconocidos: cuadre.desconocidos,
+        muestraDesconocidos: plan.muestras.desconocidos.join(", "),
         ausentes: cuadre.ausentes,
+        muestraAusentes: plan.muestras.ausentes.join(", "),
+        puestosCambiados: cuadre.puestosCambiados,
         curpPorEscribir: cuadre.curpPorEscribir,
         altasPorCorregir: cuadre.altasPorCorregir,
         induccionesNuevas: cuadre.induccionesNuevas,
@@ -449,7 +631,7 @@ export class RosterIngestService {
     this.#podar(this.#clock.now().getTime());
     const guardado = this.#planes.get(planId);
     if (!guardado) {
-      void this.#bitacora?.registrar({
+      await this.#bitacora?.registrar({
         tipo: "PADRON",
         hecho: "RECHAZADA",
         actor,
@@ -468,12 +650,20 @@ export class RosterIngestService {
     // resultado que se enseña dejaría de ser cierto.
     this.#planes.delete(planId);
     if (this.#ultimoPlanId === planId) this.#ultimoPlanId = undefined;
+    // Con almacén compartido el retiro es atómico en la base: de dos «Aplicar»
+    // en instancias distintas, sólo uno escribe.
+    if (this.#revisiones && !(await this.#revisiones.retirar("PADRON", planId))) {
+      throw new DomainError(
+        "ROSTER_PLAN_NOT_FOUND",
+        "La revisión ya no está disponible. Vuelva a subir el archivo para confirmar qué cambiaría.",
+      );
+    }
 
     const escrito = await this.#repository.aplicar(guardado.escrituras);
     // Después de escribir, no antes: un asiento de carga aplicada que precede a
     // la escritura mentiría si la transacción abortara. La bitácora describe
     // hechos consumados y ésta es la única línea que fija ese orden.
-    void this.#bitacora?.registrar({
+    await this.#bitacora?.registrar({
       tipo: "PADRON",
       hecho: "APLICADA",
       actor,

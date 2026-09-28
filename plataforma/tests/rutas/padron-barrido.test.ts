@@ -16,7 +16,7 @@ import { describe, it } from "node:test";
 import { buildZip } from "../../../packages/dc3/ooxml.js";
 import { MemoryExcelRepository } from "../../src/adapters/memoria/excel.ts";
 import { MemoryMatrixRepository } from "../../src/adapters/memoria/matriz.ts";
-import { RosterExtractorAdapter } from "../../src/adapters/extractor-padron.ts";
+import { RosterExtractorAdapter } from "../../src/adapters/archivos/extractor-padron.ts";
 import { loadConfig } from "../../src/config/environment.ts";
 import { ExcelIntegrationService } from "../../src/domain/excel/integracion.ts";
 import { RosterIngestService } from "../../src/domain/padron/ingesta.ts";
@@ -27,8 +27,9 @@ import type {
   PuestoDelCatalogo,
   RosterRepositoryPort,
 } from "../../src/ports/padron.port.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
+import { almacenCompartido } from "../apoyo/almacen-compartido.ts";
 import { renderRosterPage } from "../../src/web/pages/padron.ts";
 
 const ENTORNO = {
@@ -425,33 +426,19 @@ describe("Barrido de padrón · columnas detectadas", () => {
   });
 });
 
-// -------------------------------------------------------------- la orden
+// ------------------------------------------------------- la revisión viva
 
-describe("Barrido de padrón · orden", () => {
-  it("dos clics no encargan dos barridos y la orden caduca sola", () => {
-    const reloj = new RelojFalso();
-    const { service } = servicio(reloj);
-
-    const primera = service.solicitar("Maricela0000");
-    assert.equal(service.solicitar("Maricela0000").ordenId, primera.ordenId);
-    assert.equal(service.ordenVigente()?.solicitadaPor, "Maricela0000");
-
-    reloj.avanzarMinutos(31);
-    assert.equal(service.ordenVigente(), undefined);
-  });
-
-  it("recibir el archivo da la orden por atendida y deja la revisión a la vista", async () => {
+describe("Barrido de padrón · revisión", () => {
+  it("leer el archivo deja la revisión a la vista y descartarla la borra", async () => {
     const { service } = servicio();
-    service.solicitar("Maricela0000");
 
     const plan = await service.previsualizar(PADRON, "sem 33 CAP.xlsx", {
       tipo: "PUENTE_VBA",
       actor: "KCM-OFFICE-01",
     });
-    assert.equal(service.ordenVigente(), undefined);
     assert.equal(service.ultimoPlan()?.planId, plan.planId);
 
-    service.descartar();
+    await service.descartar();
     assert.equal(service.ultimoPlan(), undefined);
   });
 });
@@ -519,7 +506,6 @@ describe("Barrido de padrón · ROSTER_SCAN_V1", () => {
 
   it("entrega el archivo tal cual y deja la revisión sin escribir nada", async () => {
     const { service, roster, repositorio, secreto } = await puente();
-    roster.solicitar("Maricela0000");
 
     const respuesta = campos(await llamar(service, secreto, sobre(PADRON), "nonce-1"));
     assert.equal(respuesta.estado, "OK");
@@ -535,7 +521,6 @@ describe("Barrido de padrón · ROSTER_SCAN_V1", () => {
     assert.equal(plan?.nombreArchivo, "sem 33 CAP.xlsx");
     assert.equal(plan?.origen.tipo, "PUENTE_VBA");
     assert.equal(plan?.origen.actor, "KCM-OFFICE-01");
-    assert.equal(roster.ordenVigente(), undefined);
     assert.equal(repositorio.escrituras, 0);
   });
 
@@ -592,7 +577,7 @@ describe("Barrido de padrón · ROSTER_SCAN_V1", () => {
 // ------------------------------------------------------------- la pantalla
 
 describe("Barrido de padrón · pantalla", () => {
-  it("enseña las columnas detectadas y quién cambió de puesto, sin nombres", async () => {
+  it("enseña las columnas plegadas y quién cambió de puesto, con nombre", async () => {
     const { service } = servicio();
     const plan = await service.previsualizar(PADRON, "sem 33 CAP.xlsx", {
       tipo: "PUENTE_VBA",
@@ -601,22 +586,25 @@ describe("Barrido de padrón · pantalla", () => {
 
     const html = renderRosterPage({ entorno: "development", plan });
 
-    assert.match(html, /Columnas detectadas/u);
+    assert.match(html, /Columnas del archivo/u);
     assert.match(html, /FEC ALTA/u);
     assert.match(html, /C\.U\.R\.P\./u);
-    assert.match(html, /Ausente \(opcional\)/u);
-    assert.match(html, /Cambios de puesto/u);
+    assert.match(html, /No viene/u);
+    assert.match(html, /con cambios/u);
     assert.match(html, /00002/u);
-    assert.match(html, /SUPERVISOR/u);
-    assert.match(html, /Barrido por/u);
-    // El padrón sí trae nombres, y esta pantalla no los publica.
-    assert.doesNotMatch(html, /PERSONA SINTETICA/u);
+    assert.match(
+      html,
+      /<del>[^<]*<\/del>\s*<span class="diff-flecha"[^>]*>→<\/span>\s*<ins>SUPERVISOR<\/ins>/u,
+    );
+    // Desde el 2026-09-25 la revisión nombra a la persona. Sigue detrás de sesión.
+    assert.match(html, /PERSONA SINTETICA/u);
   });
 
-  it("sin revisión ofrece las dos puertas: encargar y subir a mano", () => {
+  it("sin revisión remite a Excel y ofrece subir a mano", () => {
     const html = renderRosterPage({ entorno: "development" });
-    assert.match(html, /Solicitar barrido/u);
+    assert.doesNotMatch(html, /Leer no cambia nada/u);
     assert.match(html, /Carga manual del archivo/u);
+    assert.doesNotMatch(html, /Solicitar barrido|Cancelar encargo/u);
   });
 });
 
@@ -643,32 +631,53 @@ describe("Barrido de padrón · rutas", () => {
 
   it("las rutas nuevas también exigen sesión", async () => {
     const app = await servidor();
-    for (const url of ["/padron/barrido", "/padron/cancelar", "/padron/descartar"]) {
+    for (const url of ["/padron/descartar"]) {
       const res = await app.inject({ method: "POST", url });
       assert.equal(res.statusCode, 303);
       assert.equal(res.headers.location, "/acceso?destino=%2Fpadron");
     }
   });
 
-  it("encargar un barrido no escribe y se puede cancelar", async () => {
+  it("las rutas del encargo retirado ya no responden", async () => {
     const app = await servidor();
     const cookie = await sesion(app);
 
-    const encargo = await app.inject({
-      method: "POST",
-      url: "/padron/barrido",
-      headers: { cookie },
+    for (const url of ["/padron/barrido", "/padron/cancelar"]) {
+      const res = await app.inject({ method: "POST", url, headers: { cookie } });
+      assert.equal(res.statusCode, 404);
+    }
+
+    const pantalla = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
+    assert.doesNotMatch(pantalla.body, /Solicitar barrido|Barrido encargado/u);
+  });
+});
+
+describe("Barrido de padrón · varias instancias", () => {
+  it("el plan leído en una instancia se aplica en otra, una sola vez", async () => {
+    const repositorio = baseCargada();
+    const revisiones = almacenCompartido();
+    const reloj = new RelojFalso();
+    const crear = () =>
+      new RosterIngestService({
+        repository: repositorio,
+        extractor: new RosterExtractorAdapter(),
+        clock: reloj,
+        revisiones,
+      });
+    const lee = crear();
+    const aplica = crear();
+
+    const plan = await lee.previsualizar(PADRON, "sem 33 CAP.xlsx", {
+      tipo: "CONSOLA",
+      actor: "Maricela0000",
     });
-    assert.equal(encargo.statusCode, 303);
-    assert.equal(encargo.headers.location, "/padron");
 
-    const conOrden = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
-    assert.match(conOrden.body, /Barrido encargado/u);
-    assert.match(conOrden.body, /Maricela0000/u);
+    await aplica.sincronizar();
+    assert.equal(aplica.ultimoPlan()?.planId, plan.planId);
+    await aplica.aplicar(plan.planId, "Maricela0000");
 
-    await app.inject({ method: "POST", url: "/padron/cancelar", headers: { cookie } });
-    const limpio = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
-    assert.match(limpio.body, /Solicitar barrido/u);
-    assert.doesNotMatch(limpio.body, /Barrido encargado/u);
+    await lee.sincronizar();
+    assert.equal(lee.ultimoPlan(), undefined);
+    await assert.rejects(lee.aplicar(plan.planId, "Pablo0000"), /ya no está disponible/u);
   });
 });

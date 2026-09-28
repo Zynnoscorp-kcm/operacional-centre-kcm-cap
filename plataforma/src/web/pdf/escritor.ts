@@ -408,9 +408,30 @@ export interface BuildPdfInput {
   readonly title?: string;
   readonly date: string;
   readonly producer?: string;
+  /**
+   * Una imagen que aparece en varias páginas se guarda una sola vez.
+   *
+   * Es opcional y no el comportamiento por omisión, a propósito: los documentos
+   * que ya existen —el reporte de preliberación, la constancia de una página—
+   * se archivan por su SHA-256, y guardar distinto sus imágenes cambiaría sus
+   * bytes sin cambiar nada de lo que dicen. Lo pide la tanda de constancias,
+   * donde el logotipo del sindicato pesa doscientos kilobytes y se repetiría en
+   * cada hoja.
+   *
+   * Se reconoce la misma imagen por identidad del objeto, no por contenido: el
+   * servicio que lee los logotipos ya los guarda en caché, así que la misma
+   * imagen es el mismo objeto.
+   */
+  readonly compartirImagenes?: boolean;
 }
 
-export function buildPdf({ pages, title = "", date, producer = "KCM Cap" }: BuildPdfInput): Buffer {
+export function buildPdf({
+  pages,
+  title = "",
+  date,
+  producer = "KCM Cap",
+  compartirImagenes = false,
+}: BuildPdfInput): Buffer {
   if (pages.length === 0) {
     throw new Error("El PDF requiere al menos una página");
   }
@@ -437,6 +458,8 @@ export function buildPdf({ pages, title = "", date, producer = "KCM Cap" }: Buil
   const pageIds: number[] = [];
   /** Widgets de todas las páginas: el catálogo los necesita en una sola lista. */
   const fieldIds: number[] = [];
+  /** Imágenes ya escritas, cuando el documento las comparte entre páginas. */
+  const imagenesEscritas = new Map<ImagenParaPdf, number>();
 
   for (const page of pages) {
     // Las imágenes se emiten antes que la página porque su recurso tiene que
@@ -444,6 +467,11 @@ export function buildPdf({ pages, title = "", date, producer = "KCM Cap" }: Buil
     // transparencia, que es otro objeto y se referencia desde la imagen.
     const recursosDeImagen: string[] = [];
     for (const { nombre, imagen } of page.placedImages) {
+      const escrita = compartirImagenes ? imagenesEscritas.get(imagen) : undefined;
+      if (escrita !== undefined) {
+        recursosDeImagen.push(`/${nombre} ${String(escrita)} 0 R`);
+        continue;
+      }
       let mascara = "";
       if (imagen.alpha) {
         const alfa = deflateSync(imagen.alpha);
@@ -463,6 +491,7 @@ export function buildPdf({ pages, title = "", date, producer = "KCM Cap" }: Buil
           `/BitsPerComponent 8 /Filter /${imagen.filter}${mascara} ` +
           `/Length ${String(cuerpo.length)} >>\nstream\n${cuerpo.toString("latin1")}\nendstream`,
       );
+      if (compartirImagenes) imagenesEscritas.set(imagen, id);
       recursosDeImagen.push(`/${nombre} ${id} 0 R`);
     }
 

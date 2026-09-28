@@ -6,7 +6,7 @@ import {
   isWorkerNumber,
   parseWorkerNumber,
   tryParseWorkerNumber,
-} from "../../src/domain/numero-trabajador.ts";
+} from "../../src/domain/comun/numero-trabajador.ts";
 
 describe("número de trabajador", () => {
   it("acepta exactamente cinco dígitos como texto", () => {

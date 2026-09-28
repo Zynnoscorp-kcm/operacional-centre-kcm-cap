@@ -6,7 +6,7 @@
  *   SQL para operación, reconciliación por procedencia, sobrescritura con historial).
  */
 
-import type { WorkerNumber } from "../numero-trabajador.ts";
+import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 
 export type ImportBatchId = string & { readonly __marca: "ImportBatchId" };
 export type RequestId = string & { readonly __marca: "RequestId" };
@@ -224,6 +224,10 @@ export interface WorkerCatalogEntry {
   area: string | null;
   plant: string | null;
   active: boolean;
+  /** Si el último padrón aplicado lo traía (0046). Ausente se lee como sí. */
+  seenInRoster?: boolean;
+  /** Si la última matriz aplicada lo traía (0046). */
+  seenInMatrix?: boolean;
   sourceHash: string | null;
   updatedAt: string;
 }

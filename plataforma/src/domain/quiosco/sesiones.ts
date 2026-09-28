@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
 import {
   InvalidInputError,
@@ -153,7 +153,7 @@ export class SessionService {
       // Validar si el curso existe y está activo
       const training = await this.repo.getTrainingById(intended.trainingId);
       if (!training || !training.active) {
-        throw new InvalidInputError("La capacitación seleccionada no está disponible o no existe");
+        throw new InvalidInputError("Seleccione un nombre válido de la lista.");
       }
 
       // Comprobar idempotencia por requestId

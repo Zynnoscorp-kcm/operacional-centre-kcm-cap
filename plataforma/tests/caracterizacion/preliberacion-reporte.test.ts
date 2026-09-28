@@ -23,7 +23,7 @@ import type {
   AttendanceRecord,
   SessionRecord,
 } from "../../src/domain/quiosco/tipos.ts";
-import type { WorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type { EmployeeInfo } from "../../src/domain/preliberacion/tipos.ts";
 
 const FIXED_DATE = new Date("2026-08-03T10:00:00.000Z");
@@ -152,7 +152,48 @@ describe("Reporte de preliberación — composición", () => {
     assert.ok(reporte.findings.includes("EXAMENES_FALTANTES"));
     const texto = Buffer.from(reporte.content).toString("latin1");
     assert.match(texto, /Acta de hallazgos de preliberaci\\363n/);
-    assert.match(texto, /EXAMENES_FALTANTES/);
+    // La observación va con el nombre que se lee y no con su código interno:
+    // `EXAMENES_FALTANTES` no significa nada para quien recibe la hoja.
+    assert.match(texto, /Ex\\341menes faltantes/);
+    assert.doesNotMatch(texto, /EXAMENES_FALTANTES/);
+  });
+
+  /**
+   * La plantilla tiene dos bloques y nada más.
+   *
+   * Lo que se congela aquí es lo que se quitó, porque volver a agregarlo es
+   * fácil y nadie lo notaría hasta imprimir: la banda de color con el veredicto,
+   * los seis recuadros de contadores y las tres líneas de firma empujaban el
+   * detalle —lo único que alguien consulta de verdad— a la segunda hoja.
+   */
+  it("no lleva banda, recuadros de contadores ni firmas", async () => {
+    const { service } = setup();
+    const reporte = await service.generate(
+      { sessionId: "ses-001", mode: "VISTA_PREVIA" },
+      IDENTITY,
+    );
+    const texto = Buffer.from(reporte.content).toString("latin1");
+
+    for (const retirado of [
+      /APTA PARA LIBERACI/,
+      /REVISI\\323N REQUERIDA/,
+      /REGISTRADOS/,
+      /APROBADOS/,
+      /SIN ENTREGAR/,
+      /A LIBERAR\)/,
+      // `REVISOR` sólo existía como rótulo de firma; `INSTRUCTOR` no sirve de
+      // señal porque también es un campo de los datos generales.
+      /REVISOR/,
+    ]) {
+      assert.doesNotMatch(texto, retirado, `el reporte conserva ${String(retirado)}`);
+    }
+
+    // Y los dos bloques que sí van, en su orden.
+    const encabezado = texto.indexOf("DATOS GENERALES DE LA SESI");
+    const detalle = texto.indexOf("DETALLE DE LA SESI");
+    assert.ok(encabezado > 0 && detalle > encabezado, "encabezado arriba, detalle abajo");
+    // El detalle empieza en la primera hoja: es lo que se ganó al quitar lo demás.
+    assert.match(texto, /Type \/Pages \/Count 1/);
   });
 
   it("lleva los contadores de la revisión, no un recuento propio", async () => {

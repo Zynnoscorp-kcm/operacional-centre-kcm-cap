@@ -9,7 +9,7 @@
 ## Cómo saber si sigue sucia
 
 ```sql
-SELECT * FROM kcm_lectura.estado_piloto();
+SELECT * FROM lectura.estado_piloto();
 ```
 
 Si `hay_corrida_abierta` es `true`, la base es de prueba. La función devuelve
@@ -18,8 +18,8 @@ acuses y eventos de auditoría hay dentro.
 
 Las otras dos señales, para quien no conozca esa función:
 
-- el comentario del esquema `kcm` lo grita en el panel de Supabase y en `\dn+`;
-- `kcm.corrida_piloto` tiene una fila con `cerrada_en` nulo.
+- el comentario del esquema `comun` (antes `kcm`) lo grita en el panel de Supabase y en `\dn+`;
+- `sistema.corrida_piloto` tiene una fila con `cerrada_en` nulo.
 
 ## Por qué no se borra fila por fila
 
@@ -28,7 +28,7 @@ sobrescritura son **append-only**: sus triggers rechazan `UPDATE`, `DELETE` y
 `TRUNCATE`. Es deliberado —un ledger que se puede editar no es evidencia— y
 significa que no existe un "limpiar las pruebas" selectivo.
 
-El cierre correcto es tirar los dos esquemas y reconstruirlos.
+El cierre correcto es tirar los esquemas y reconstruirlos.
 
 ## Procedimiento de cierre
 
@@ -36,8 +36,8 @@ El cierre correcto es tirar los dos esquemas y reconstruirlos.
 2. Ejecutar:
 
 ```sql
-DROP SCHEMA IF EXISTS kcm_lectura CASCADE;
-DROP SCHEMA IF EXISTS kcm CASCADE;
+DROP SCHEMA IF EXISTS lectura, organizacion, catalogo, operacion, matriz, dnc, dc3, seguridad, sistema, comun,
+                     kcm_lectura, kcm CASCADE;  -- los dos últimos: nombres previos a 0043
 ```
 
 3. Reaplicar **en orden numérico todas** las migraciones de `database/migrations/`,
@@ -68,10 +68,10 @@ DROP SCHEMA IF EXISTS kcm CASCADE;
 4. Verificar que quedó limpio:
 
 ```sql
-SELECT count(*) FROM kcm.trabajador;                    -- 0
-SELECT count(*) FROM kcm.auditoria;                     -- 1 (sólo la semilla)
-SELECT obj_description('kcm'::regnamespace);            -- sin aviso de piloto
-SELECT to_regclass('kcm.corrida_piloto');               -- NULL
+SELECT count(*) FROM organizacion.trabajador;           -- 0
+SELECT count(*) FROM sistema.bitacora_auditoria;        -- 1 (sólo la semilla)
+SELECT obj_description('comun'::regnamespace);          -- sin aviso de piloto
+SELECT to_regclass('sistema.corrida_piloto');           -- NULL
 ```
 
 5. Comprobar que la plataforma y el puente VBA pueden conectar. Estas cuatro
@@ -82,21 +82,23 @@ SELECT to_regclass('kcm.corrida_piloto');               -- NULL
 -- El rol existe y no puede saltarse la RLS.
 SELECT rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = 'kcm_app';   -- t, f
 
--- Ninguna tabla de dominio quedó sin la política de la aplicación.
+-- Ninguna tabla de dominio quedó sin política para la aplicación
+-- (`credencial_consola` tiene dos acotadas en lugar de `app_acceso_total`).
 SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
- WHERE n.nspname = 'kcm' AND c.relkind = 'r'
+ WHERE n.nspname IN ('organizacion','catalogo','operacion','matriz',
+                     'dnc','dc3','seguridad','sistema') AND c.relkind = 'r'
    AND NOT EXISTS (SELECT 1 FROM pg_policies p
-                    WHERE p.schemaname = 'kcm' AND p.tablename = c.relname
-                      AND p.policyname = 'app_acceso_total');               -- 0
+                    WHERE p.schemaname = n.nspname AND p.tablename = c.relname
+                      AND 'kcm_app' = ANY (p.roles));               -- 0
 
 -- El antifraude del puente: sin estos dos privilegios, toda solicitud VBA
 -- falla con INTERNAL_ERROR aunque la credencial sea correcta.
-SELECT has_table_privilege('kcm_app', 'kcm.nonce_puente', 'INSERT'),
-       has_table_privilege('kcm_app', 'kcm.nonce_puente', 'DELETE');        -- t, t
+SELECT has_table_privilege('kcm_app', 'seguridad.nonce', 'INSERT'),
+       has_table_privilege('kcm_app', 'seguridad.nonce', 'DELETE');        -- t, t
 
 -- Las vistas que consume /trabajadores/cobertura.
-SELECT to_regclass('kcm_lectura.cobertura_dnc'),
-       to_regclass('kcm_lectura.resumen_dnc_trabajador');                   -- no NULL
+SELECT to_regclass('lectura.cobertura_dnc'),
+       to_regclass('lectura.resumen_dnc_trabajador');                   -- no NULL
 ```
 
 Tras el paso 3 la configuración real vuelve sola, porque vive en las

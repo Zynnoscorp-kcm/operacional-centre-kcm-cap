@@ -12,6 +12,8 @@
 export interface FilaDePadronBase {
   readonly trabajadorId: string;
   readonly numeroTrabajador: string;
+  /** Para enseñar quién es en la revisión. Opcional: un doble de prueba puede omitirlo. */
+  readonly nombre?: string | null;
   readonly curp: string | null;
   /** Fecha ISO `YYYY-MM-DD`, ya en texto: una fecha de alta es un día, no un instante. */
   readonly fechaAlta: string | null;
@@ -32,7 +34,31 @@ export interface FilaDePadronBase {
   /** La planta registrada hoy. Mismo propósito: contrastar, no escribir. */
   readonly planta: string | null;
   readonly activo: boolean;
+  /** Lo que el padrón guardó la vez anterior (0046). Opcionales para los dobles de prueba. */
+  readonly rfc?: string | null;
+  readonly nss?: string | null;
+  readonly centroCostosClave?: string | null;
+  readonly centroCostosNombre?: string | null;
+  readonly direccion?: string | null;
+  readonly codigoPostal?: string | null;
+  readonly estadoCivil?: string | null;
+  readonly sexo?: string | null;
+  /** Si la última matriz aplicada lo traía. Ausente se lee como sí. */
+  readonly vistoEnMatriz?: boolean;
 }
+
+/** Las columnas personales del padrón, con su nombre en la base. */
+export const DATOS_DEL_PADRON = [
+  "rfc",
+  "nss",
+  "centro_costos_clave",
+  "centro_costos_nombre",
+  "direccion",
+  "codigo_postal",
+  "estado_civil",
+  "sexo",
+] as const;
+export type DatoDelPadron = (typeof DATOS_DEL_PADRON)[number];
 
 export interface InduccionPropuesta {
   readonly trabajadorId: string;
@@ -59,13 +85,21 @@ export interface EscriturasDePadron {
    * `[trabajadorId, claveDeOcupacion]`.
    *
    * Va por trabajador, no por puesto. Hasta la migración `0041` se
-   * consolidaba en `kcm.puesto.clave_cno` porque se creía que la ocupación
+   * consolidaba en `organizacion.puesto.clave_cno` porque se creía que la ocupación
    * describía al puesto; el departamento corrigió esa premisa el 2026-08-12: la
    * clave varía según el puesto y el área de cada quien, así que un mismo
    * puesto en dos áreas trae legítimamente dos claves. Consolidarlas rechazaba
    * las dos.
    */
   readonly ocupaciones: readonly (readonly [string, string])[];
+  /** `[trabajadorId, columna, valor]` de las columnas personales que cambian. */
+  readonly datos?: readonly (readonly [string, DatoDelPadron, string])[];
+  /** Números que trae el archivo: con ellos se anota quién estuvo en el último padrón. */
+  readonly enArchivo?: readonly string[];
+  /** `[numeroTrabajador, fechaDeBaja]` que declaran las hojas de bajas. */
+  readonly fechasDeBaja?: readonly (readonly [string, string])[];
+  /** Trabajadores inactivos que el padrón vuelve a traer. */
+  readonly reactivar?: readonly string[];
 }
 
 export interface ResultadoDeEscritura {
@@ -73,6 +107,9 @@ export interface ResultadoDeEscritura {
   readonly altas: number;
   readonly inducciones: number;
   readonly ocupaciones: number;
+  readonly datos?: number;
+  readonly bajas?: number;
+  readonly reactivados?: number;
 }
 
 export interface RosterRepositoryPort {
@@ -88,7 +125,7 @@ export interface RosterRepositoryPort {
    *
    * Devuelve dos números y ninguna fila: nuevas, las de quien no tiene
    * registro vigente de Inducción, y divergentes, las de quien ya lo tiene
-   * con otra fecha. La distinción no es cosmética. `kcm.registro_hc` lleva un
+   * con otra fecha. La distinción no es cosmética. `operacion.historial_capacitacion` lleva un
    * índice único `(trabajador_id, capacitacion_id) WHERE VIGENTE`: insertar una
    * fecha corregida no se absorbe con `ON CONFLICT (clave_idempotencia)` —esa
    * clave es distinta— sino que revienta la carga entera. Se cuentan aparte

@@ -13,7 +13,7 @@
  * guardar medio megabyte de padrón ni tres de matriz en ningún lado.
  */
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { LoadLogPort } from "../../ports/bitacora-cargas.port.ts";
 import type {
   AsientoDeCarga,
@@ -39,10 +39,24 @@ export class BitacoraDeCargas {
    * Devuelve lo escrito por si quien llama quiere enseñarlo, pero ningún camino
    * del dominio depende de que haya devuelto algo: una carga aplicada sigue
    * estando aplicada aunque su asiento se haya perdido.
+   *
+   * Quien llama la espera. Publicada en un alojamiento sin servidor, lo que
+   * sigue corriendo después de responder puede congelarse con la instancia, y
+   * el asiento se perdería sin que nadie lo notara. Como nunca lanza, esperarla
+   * no pone en riesgo la carga.
    */
   async registrar(asiento: AsientoDeCarga): Promise<CargaRegistrada | undefined> {
     try {
       return await this.#puerto.registrar(asiento);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** La última carga aplicada de esta fuente; nada si nunca hubo o la bitácora no responde. */
+  async ultimaAplicada(tipo: TipoDeCarga): Promise<CargaRegistrada | undefined> {
+    try {
+      return await this.#puerto.ultimaAplicada(tipo);
     } catch {
       return undefined;
     }

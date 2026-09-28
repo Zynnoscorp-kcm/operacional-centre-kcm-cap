@@ -146,6 +146,25 @@ export type BlockingReason =
   | "SESION_NO_AUTORIZADA"
   | "YA_LIBERADO_PREVIAMENTE";
 
+/**
+ * Los motivos, con el nombre que los lee quien recibe el reporte impreso.
+ *
+ * La clave es el contrato entre capas y no cambia; esto es sólo su traducción
+ * para una hoja de papel, donde `SESION_NO_AUTORIZADA` no significa nada para
+ * quien no conoce el sistema.
+ */
+export const BLOCKING_REASON_LABELS: Readonly<Record<BlockingReason, string>> = Object.freeze({
+  IDENTIDAD_INVALIDA: "Identidad no validada",
+  NUMERO_NO_IDENTIFICADO: "Número no identificado",
+  ASISTENCIA_NO_COMPROBADA: "Asistencia no comprobada",
+  EXAMEN_NO_ENCONTRADO: "Examen no entregado",
+  EXAMEN_REPROBADO: "Examen reprobado",
+  EXAMEN_NO_CONFIRMADO: "Examen sin calificar",
+  EXCLUIDO_EN_REVISION: "Excluido en la revisión",
+  SESION_NO_AUTORIZADA: "Sesión no autorizada",
+  YA_LIBERADO_PREVIAMENTE: "Ya liberado antes",
+});
+
 // ---------------------------------------------------------------------------
 // DTOs
 // ---------------------------------------------------------------------------
@@ -305,7 +324,7 @@ export const REPORT_MIME_TYPE = "application/pdf";
 export const MAX_REPORT_BYTES = 5 * 1024 * 1024;
 
 /**
- * Fila de `kcm.evidencia` para un reporte archivado. Sólo describe el archivo:
+ * Fila de `operacion.sesion_evidencia` para un reporte archivado. Sólo describe el archivo:
  * los bytes viven en el almacén de objetos, referenciados por `storagePath`.
  */
 export interface ReportEvidenceRecord {

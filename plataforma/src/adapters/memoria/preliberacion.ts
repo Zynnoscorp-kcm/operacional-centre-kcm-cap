@@ -9,7 +9,7 @@
  * cada retorno en `Promise.resolve`, que dice lo mismo con más ruido. */
 
 import { randomUUID } from "node:crypto";
-import type { WorkerNumber } from "../../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   AuditEventRecord,
   AttendanceRecord,

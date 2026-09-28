@@ -1,5 +1,9 @@
 Attribute VB_Name = "KcmCodec"
 Option Explicit
+Option Private Module
+
+' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
+' en Herramientas > Macros, donde solo quedan las que se usan a mano.
 
 ' Codificaciones del puente, escritas en VBA puro.
 '

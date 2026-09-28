@@ -1,11 +1,23 @@
 /**
- * Perfil de cobertura por curso (Función 8 - Sistema general por trabajador).
+ * Cobertura por curso: cuántos de los trabajadores a los que les aplica cada
+ * curso lo tienen acreditado, por reforzar, programado o pendiente.
+ *
+ * Una barra por curso, ordenadas de menor a mayor avance: lo primero que se ve
+ * es dónde está el rezago. La barra se dibuja en SVG con anchos como atributos
+ * —la política de contenido no deja escribir estilos en línea— y va siempre con
+ * la cuenta escrita al lado: el color acompaña, no es el único que lo dice.
  */
 
 import type { EnvironmentName } from "../../../config/environment.ts";
+import type { CourseCoverageSummaryItem } from "../../../domain/sistema-trabajador/tipos.ts";
 import { html, type Html } from "../../kit/html.ts";
 import { renderLayout } from "../../layout.ts";
-import type { CourseCoverageSummaryItem } from "../../../domain/sistema-trabajador/tipos.ts";
+import {
+  type PartesDeAvance,
+  proporcionAcreditada,
+  renderBarraDeAvance,
+  renderLeyendaDeAvance,
+} from "./avance.ts";
 
 export interface DatosCoberturaCursos {
   readonly courses: readonly CourseCoverageSummaryItem[];
@@ -20,114 +32,112 @@ function sumar(
   return courses.reduce((total, curso) => total + campo(curso), 0);
 }
 
+function avance(curso: CourseCoverageSummaryItem): number {
+  return proporcionAcreditada(partesDelCurso(curso));
+}
+
 export function renderCourseCoveragePage(datos: DatosCoberturaCursos): string {
   const { courses, entorno } = datos;
+  const exigibles = courses
+    .filter((curso) => curso.applicableWorkersCount > 0)
+    .sort(
+      (a, b) =>
+        avance(a) - avance(b) ||
+        b.pendientesCount - a.pendientesCount ||
+        a.canonicalName.localeCompare(b.canonicalName, "es-MX"),
+    );
+  const sinPlantilla = courses.filter((curso) => curso.applicableWorkersCount === 0);
 
-  const exigible = sumar(courses, (c) => c.applicableWorkersCount);
-  const completados = sumar(courses, (c) => c.completadosCount);
-  const reforzar = sumar(courses, (c) => c.reforzarCount);
-  const pendientes = sumar(courses, (c) => c.pendientesCount);
+  const obligaciones = sumar(exigibles, (c) => c.applicableWorkersCount);
+  const acreditados = sumar(exigibles, (c) => c.completadosCount);
+  const reforzar = sumar(exigibles, (c) => c.reforzarCount);
+  const pendientes = sumar(exigibles, (c) => c.pendientesCount);
 
   const contenido = html`
-    <nav class="miga-de-pan" aria-label="Navegación secundaria">
-      <a href="/">Inicio</a> &rsaquo;
-      <a href="/trabajadores">Directorio de trabajadores</a> &rsaquo;
-      <span>Perfil de cobertura por curso</span>
-    </nav>
-
-    <span class="capta-rotulo">Catálogo unificado · Reglas DNC</span>
-    <h2 class="capta-titulo">Cobertura por curso</h2>
-
     <dl class="kpi-tira">
       <div class="kpi">
-        <dt class="kpi-etiqueta">Cursos unificados</dt>
-        <dd class="kpi-dato"><span class="kpi-cifra">${courses.length}</span></dd>
-        <p class="kpi-pista">Evaluados en dos niveles de regla.</p>
-      </div>
-      <div class="kpi">
-        <dt class="kpi-etiqueta">Plantilla exigible</dt>
-        <dd class="kpi-dato">
-          <span class="kpi-cifra">${exigible}</span>
-          <span class="kpi-unidad">obligaciones</span>
-        </dd>
-        <p class="kpi-pista">Suma de trabajadores por curso aplicable.</p>
+        <dt class="kpi-etiqueta">Cursos exigibles</dt>
+        <dd class="kpi-dato"><span class="kpi-cifra">${exigibles.length}</span></dd>
+        <p class="kpi-pista">De ${courses.length} en el catálogo.</p>
       </div>
       <div class="kpi kpi-ok">
-        <dt class="kpi-etiqueta">Completados vigentes</dt>
-        <dd class="kpi-dato"><span class="kpi-cifra">${completados}</span></dd>
-        <p class="kpi-pista">Con vigencia comprobada al corte.</p>
+        <dt class="kpi-etiqueta">Acreditados vigentes</dt>
+        <dd class="kpi-dato"><span class="kpi-cifra">${acreditados}</span></dd>
+        <p class="kpi-pista">De ${obligaciones} obligaciones de la plantilla.</p>
       </div>
       <div class="kpi kpi-aviso">
         <dt class="kpi-etiqueta">Por reforzar</dt>
         <dd class="kpi-dato"><span class="kpi-cifra">${reforzar}</span></dd>
-        <p class="kpi-pista">Vencidos; requieren reprogramación.</p>
+        <p class="kpi-pista">Acreditados con la vigencia vencida.</p>
       </div>
       <div class="kpi kpi-alerta">
         <dt class="kpi-etiqueta">Pendientes</dt>
         <dd class="kpi-dato"><span class="kpi-cifra">${pendientes}</span></dd>
-        <p class="kpi-pista">Sin registro alguno del curso.</p>
+        <p class="kpi-pista">Sin registro del curso.</p>
       </div>
     </dl>
 
     <section class="tarjeta" aria-labelledby="titulo-cursos">
-      <div class="seccion-cabecera">
-        <h2 id="titulo-cursos">Detalle por curso</h2>
-        <p class="seccion-subtitulo">
-          Evaluación contra reglas DNC por departamento y área técnica.
-        </p>
-        <div class="aviso-publicacion">
-          <span class="insignia insignia-aviso">Auditoría DNC</span>
-          <span>Porcentajes en validación. Se reportan conteos de cumplimiento.</span>
+      <div class="seccion-cabecera cabecera-fila">
+        <div>
+          <h3 id="titulo-cursos">Avance por curso</h3>
+          <p>De menor a mayor avance: arriba, los cursos con más rezago.</p>
         </div>
+        ${renderLeyendaDeAvance()}
       </div>
-
-      <div class="tabla-contenedor">
-        <table class="tabla-kcm">
-          <thead>
-            <tr>
-              <th scope="col">Código</th>
-              <th scope="col">Curso</th>
-              <th scope="col">Nivel / regla</th>
-              <th scope="col" class="celda-numero">Plantilla exigible</th>
-              <th scope="col" class="celda-numero">Completados</th>
-              <th scope="col" class="celda-numero">Por reforzar</th>
-              <th scope="col" class="celda-numero">Pendientes</th>
-              <th scope="col" class="celda-numero">Programados</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${courses.map(renderFilaCurso)}
-          </tbody>
-        </table>
-      </div>
+      ${
+        exigibles.length === 0
+          ? html`<p class="texto-vacio">Ningún curso tiene trabajadores a los que aplique.</p>`
+          : html`<ul class="avance-cursos">
+              ${exigibles.map(renderCurso)}
+            </ul>`
+      }
+      ${
+        sinPlantilla.length > 0
+          ? html`<details class="avance-sin-plantilla">
+              <summary>
+                ${sinPlantilla.length}
+                ${sinPlantilla.length === 1 ? "curso del catálogo" : "cursos del catálogo"} sin
+                trabajadores a los que aplique
+              </summary>
+              <p class="texto-nota">
+                ${sinPlantilla.map((curso) => curso.canonicalName).join(" · ")}
+              </p>
+            </details>`
+          : ""
+      }
     </section>
   `;
 
   return renderLayout({
     titulo: "Cobertura por curso",
     rutaActiva: "/trabajadores/cursos",
-    subtitulo: "Catálogo de cursos unificados y reglas DNC",
+    subtitulo: "Avance de la plantilla en cada curso exigible",
     entorno,
     contenido,
-    estado: html`<span class="insignia insignia-curso">${courses.length} cursos</span>`,
   });
 }
 
-function renderFilaCurso(c: CourseCoverageSummaryItem): Html {
-  return html`
-    <tr>
-      <td class="celda-codigo">${c.trainingId}</td>
-      <td class="celda-destacada">${c.canonicalName}</td>
-      <td>
-        <span class="insignia insignia-regla" title="Regla ${c.ruleId} v${c.ruleVersion}">
-          ${c.ruleLevel}
-        </span>
-      </td>
-      <td class="celda-numero"><strong>${c.applicableWorkersCount}</strong></td>
-      <td class="celda-numero celda-completado">${c.completadosCount}</td>
-      <td class="celda-numero celda-reforzar">${c.reforzarCount}</td>
-      <td class="celda-numero celda-pendiente">${c.pendientesCount}</td>
-      <td class="celda-numero celda-programado">${c.programadosCount}</td>
-    </tr>
-  `;
+function renderCurso(curso: CourseCoverageSummaryItem): Html {
+  return html`<li class="avance-curso">
+    <span class="avance-nombre" title="${curso.canonicalName}">${curso.canonicalName}</span>
+    ${renderBarraDeAvance(partesDelCurso(curso))}
+  </li>`;
+}
+
+function partesDelCurso(curso: CourseCoverageSummaryItem): PartesDeAvance {
+  return {
+    acreditados: curso.completadosCount,
+    reforzar: curso.reforzarCount,
+    programados: curso.programadosCount,
+    // Lo que no está acreditado, por reforzar ni programado, está pendiente:
+    // así la barra suma siempre la plantilla exigible del curso.
+    pendientes: Math.max(
+      0,
+      curso.applicableWorkersCount -
+        curso.completadosCount -
+        curso.reforzarCount -
+        curso.programadosCount,
+    ),
+  };
 }

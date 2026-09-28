@@ -11,18 +11,18 @@
  * espera de acuse; el empuje físico lo realiza el cliente.
  */
 
-import type { WorkerNumber } from "../numero-trabajador.ts";
+import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 import type { DateProvenance } from "../importacion-matriz/tipos.ts";
 
 // ---------------------------------------------------------------------------
 // Fases y estados — se alinean con los enums de `database/migrations/0001_fundamentos.sql`
 // ---------------------------------------------------------------------------
 
-/** `kcm.fase_lote_liberacion` más el terminal de conflicto. */
+/** `comun.fase_liberacion` más el terminal de conflicto. */
 export type ReleasePhase =
   "PENDIENTE" | "MATRIZ_APLICADA" | "DOMINIO_APLICADO" | "COMPLETADO" | "CONFLICTO";
 
-/** `kcm.estado_lote_liberacion`. */
+/** `comun.estado_liberacion`. */
 export type ReleaseBatchStatus = "PENDIENTE" | "COMPLETADO" | "CONFLICTO";
 
 /** Fases de las que ya no se sale: reabrirlas produciría un segundo efecto. */
@@ -36,7 +36,7 @@ export function isTerminalPhase(phase: ReleasePhase): boolean {
 export type SessionReleaseOutcome = "LIBERADA_TOTAL" | "LIBERADA_PARCIAL";
 
 // ---------------------------------------------------------------------------
-// Política de sobrescritura — `kcm.politica_sobrescritura`
+// Política de sobrescritura — `comun.politica_sobrescritura`
 // ---------------------------------------------------------------------------
 
 /**
@@ -104,7 +104,7 @@ export function isConflict(status: MatrixWriteStatus): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Acuse del cliente VBA — `kcm.estado_acuse_vba`
+// Acuse del cliente VBA — `comun.estado_acuse`
 // ---------------------------------------------------------------------------
 
 /**

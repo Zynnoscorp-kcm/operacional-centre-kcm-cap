@@ -3,7 +3,7 @@
  * Útil para desarrollo local, pruebas unitarias y entornos sintéticos sin dependencias externas.
  */
 
-import { parseWorkerNumber, type WorkerNumber } from "../../domain/numero-trabajador.ts";
+import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   WorkerSystemRepositoryPort,
   WorkerFilter,

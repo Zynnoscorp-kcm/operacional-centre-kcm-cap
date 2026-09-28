@@ -16,7 +16,7 @@ import type { SqlExecutor } from "../../src/adapters/postgres/matriz.ts";
 import { InvalidInputError, KioskAuthError } from "../../src/domain/quiosco/errores.ts";
 import { KioskAuthService } from "../../src/domain/quiosco/autenticacion.ts";
 import { SessionService } from "../../src/domain/quiosco/sesiones.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import { deriveCategoryFromPosition } from "../../src/domain/sistema-trabajador/reglas-de-categoria.ts";
 
 const AHORA = new Date("2026-08-19T10:00:00.000Z");

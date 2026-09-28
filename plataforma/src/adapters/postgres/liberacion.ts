@@ -3,7 +3,7 @@
  *
  * Implementa los dos puertos: el journal durable y el destino. Es la pieza que
  * hace que liberar en la plataforma aparezca en `RELEASE_PULL_V1`, porque el
- * efecto queda en `kcm.liberacion` y el pull lo lee desde ahí.
+ * efecto queda en `matriz.liberacion` y el pull lo lee desde ahí.
  *
  * Tres invariantes que aquí no son estilo sino contrato:
  *
@@ -20,8 +20,8 @@
 
 import { createHash, randomUUID } from "node:crypto";
 
-import type { WorkerNumber } from "../../domain/numero-trabajador.ts";
-import { parseWorkerNumber } from "../../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type { HcRecord } from "../../domain/importacion-matriz/tipos.ts";
 import type {
   AttendanceRecord,
@@ -66,7 +66,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
 
   async #actorId(identificador: string): Promise<string> {
     const { rows } = await this.#db.query<{ actor_id: string }>(
-      `INSERT INTO kcm.actor (identificador, nombre_visible)
+      `INSERT INTO seguridad.actor (identificador, nombre_visible)
        VALUES ($1, $1)
        ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
        RETURNING actor_id;`,
@@ -123,7 +123,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
         if (campos.length === 0) continue;
         valores.push();
         await tx.query(
-          `UPDATE kcm.asistencia SET ${campos.join(", ")}, version = version + 1
+          `UPDATE operacion.asistencia SET ${campos.join(", ")}, version = version + 1
             WHERE asistencia_id = $1;`,
           valores,
         );
@@ -147,9 +147,9 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     }>(
       `SELECT c.clave_curso, d.nombre_destino, m.hoja, m.columna, m.encabezado_esperado,
               m.fila_encabezado, m.version_mapeo, m.politica_sobrescritura, d.activo
-         FROM kcm.mapeo_matriz m
-         JOIN kcm.capacitacion c ON c.capacitacion_id = m.capacitacion_id
-         JOIN kcm.destino_matriz d ON d.destino_id = m.destino_id
+         FROM matriz.mapeo_columna m
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = m.capacitacion_id
+         JOIN matriz.destino d ON d.destino_id = m.destino_id
         WHERE c.clave_curso = $1 AND m.vigente_hasta IS NULL AND d.activo = true;`,
       [trainingId],
     );
@@ -177,7 +177,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
       mappingVersion: texto(r["version_mapeo"]),
       planHash: texto(r["sha256_plan"]),
       plan: resultados?.plan ?? "",
-      journalMac: texto(r["journal_mac"]),
+      journalMac: texto(r["firma_hmac"]),
       results: resultados?.results ?? "",
       phase: r["fase"] as ReleaseBatch["phase"],
       status: r["estado"] as ReleaseBatch["status"],
@@ -196,8 +196,8 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
 
   readonly #seleccionLote = `
     SELECT l.*, a.identificador AS creador
-      FROM kcm.lote_liberacion l
-      LEFT JOIN kcm.actor a ON a.actor_id = l.creado_por`;
+      FROM matriz.liberacion_lote l
+      LEFT JOIN seguridad.actor a ON a.actor_id = l.creado_por`;
 
   async findBatchByRequestId(requestId: string): Promise<ReleaseBatch | null> {
     const { rows } = await this.#db.query<Record<string, unknown>>(
@@ -227,13 +227,13 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
    * `plan` y `results` son documentos del dominio y viajan juntos en la columna
    * `resultados`. Separarlos en columnas propias obligaría a migrar el esquema
    * cada vez que el plan gane un campo, y el journal ya está autenticado por
-   * `journal_mac`: lo que protege su contenido es el HMAC, no la forma.
+   * `firma_hmac`: lo que protege su contenido es el HMAC, no la forma.
    */
   async insertBatch(batch: ReleaseBatch): Promise<ReleaseBatch> {
     const creador = await this.#actorId(batch.createdBy);
     await this.#db.query(
-      `INSERT INTO kcm.lote_liberacion (
-         lote_id, sesion_id, solicitud_id, version_mapeo, sha256_plan, journal_mac,
+      `INSERT INTO matriz.liberacion_lote (
+         lote_id, sesion_id, solicitud_id, version_mapeo, sha256_plan, firma_hmac,
          fase, estado, total_candidatos, total_escritos, total_conflictos,
          resultados, creado_por, creado_en, actualizado_en, completado_en,
          resultado_sesion, motivo_sobrescritura, contrato_version
@@ -265,8 +265,8 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
 
   async replaceBatch(batch: ReleaseBatch): Promise<ReleaseBatch> {
     const { rows } = await this.#db.query<{ lote_id: string }>(
-      `UPDATE kcm.lote_liberacion
-          SET version_mapeo = $2, sha256_plan = $3, journal_mac = $4,
+      `UPDATE matriz.liberacion_lote
+          SET version_mapeo = $2, sha256_plan = $3, firma_hmac = $4,
               fase = $5, estado = $6, total_candidatos = $7, total_escritos = $8,
               total_conflictos = $9, resultados = $10, actualizado_en = $11,
               completado_en = $12, resultado_sesion = $13,
@@ -318,23 +318,23 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
   }
 
   /**
-   * El acuse del puente no vive en `kcm.liberacion` —es un ledger append-only—
+   * El acuse del puente no vive en `matriz.liberacion` —es un ledger append-only—
    * sino en `acuse_liberacion_vba`. El estado se deriva al leer: si hay acuse
    * efectivo, ése manda; si no, el efecto sigue pendiente de Excel.
    */
   readonly #seleccionEfecto = `
     SELECT l.*, t.numero_trabajador, c.clave_curso, lote.solicitud_id AS solicitud_lote,
            COALESCE(
-             (SELECT a.estado::text FROM kcm.acuse_liberacion_vba a
+             (SELECT a.estado::text FROM matriz.liberacion_acuse a
                WHERE a.clave_idempotencia = l.clave_idempotencia
                  AND a.estado IN ('APPLIED','RECOVERED')
                LIMIT 1),
              'PENDIENTE_ACUSE'
            ) AS estado_acuse
-      FROM kcm.liberacion l
-      JOIN kcm.trabajador t ON t.trabajador_id = l.trabajador_id
-      JOIN kcm.capacitacion c ON c.capacitacion_id = l.capacitacion_id
-      JOIN kcm.lote_liberacion lote ON lote.lote_id = l.lote_id`;
+      FROM matriz.liberacion l
+      JOIN organizacion.trabajador t ON t.trabajador_id = l.trabajador_id
+      JOIN catalogo.capacitacion c ON c.capacitacion_id = l.capacitacion_id
+      JOIN matriz.liberacion_lote lote ON lote.lote_id = l.lote_id`;
 
   async findEffectByIdempotencyKey(idempotencyKey: string): Promise<ReleaseEffect | null> {
     const { rows } = await this.#db.query<Record<string, unknown>>(
@@ -349,14 +349,14 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     await this.#db.transaction(async (tx) => {
       for (const e of effects) {
         await tx.query(
-          `INSERT INTO kcm.liberacion (
+          `INSERT INTO matriz.liberacion (
              liberacion_id, clave_idempotencia, lote_id, sesion_id,
              trabajador_id, capacitacion_id, fecha_efectiva, version_mapeo,
              resultado, marcador, creada_en, asistencia_id
            ) VALUES (
              $1, $2, $3, $4,
-             (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $5),
-             (SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = $6),
+             (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $5),
+             (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $6),
              $7, $8, $9, $10, $11, $12
            );`,
           [
@@ -406,9 +406,9 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
   async getHcRecord(workerNumber: WorkerNumber, trainingId: string): Promise<HcRecord | null> {
     const { rows } = await this.#db.query<Record<string, unknown>>(
       `SELECT r.*, t.numero_trabajador, c.clave_curso
-         FROM kcm.registro_hc r
-         JOIN kcm.trabajador t ON t.trabajador_id = r.trabajador_id
-         JOIN kcm.capacitacion c ON c.capacitacion_id = r.capacitacion_id
+         FROM operacion.historial_capacitacion r
+         JOIN organizacion.trabajador t ON t.trabajador_id = r.trabajador_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = r.capacitacion_id
         WHERE t.numero_trabajador = $1 AND c.clave_curso = $2
           AND r.estado_registro = 'VIGENTE';`,
       [String(workerNumber), trainingId],
@@ -438,7 +438,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
 
   async workerExists(workerNumber: WorkerNumber): Promise<boolean> {
     const { rows } = await this.#db.query<{ existe: boolean }>(
-      `SELECT true AS existe FROM kcm.trabajador WHERE numero_trabajador = $1 LIMIT 1;`,
+      `SELECT true AS existe FROM organizacion.trabajador WHERE numero_trabajador = $1 LIMIT 1;`,
       [String(workerNumber)],
     );
     return rows.length > 0;
@@ -446,7 +446,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
 
   async trainingExists(trainingId: string): Promise<boolean> {
     const { rows } = await this.#db.query<{ existe: boolean }>(
-      `SELECT true AS existe FROM kcm.capacitacion WHERE clave_curso = $1 LIMIT 1;`,
+      `SELECT true AS existe FROM catalogo.capacitacion WHERE clave_curso = $1 LIMIT 1;`,
       [trainingId],
     );
     return rows.length > 0;
@@ -465,14 +465,14 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
         if (op.history) {
           const actor = await this.#actorId(op.history.actorId);
           await tx.query(
-            `INSERT INTO kcm.historial_sobrescritura_fecha (
+            `INSERT INTO operacion.historial_capacitacion_cambio (
                historial_id, registro_id, trabajador_id, capacitacion_id,
                tipo_cambio, fecha_anterior, fecha_nueva, estado_anterior,
                estado_nuevo, procedencia, actor_id, motivo, solicitud_id, registrado_en
              ) VALUES (
                $1, $2,
-               (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3),
-               (SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = $4),
+               (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
+               (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
                'SOBRESCRITA', $5, $6, 'VIGENTE', 'VIGENTE', 'SESSION_RELEASE',
                $7, $8, $9, $10
              );`,
@@ -491,7 +491,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
           );
 
           await tx.query(
-            `UPDATE kcm.registro_hc
+            `UPDATE operacion.historial_capacitacion
                 SET estado_registro = 'RETIRADO'
               WHERE registro_id = $1 AND estado_registro = 'VIGENTE';`,
             [op.history.recordId],
@@ -500,15 +500,15 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
 
         const rec = op.record;
         await tx.query(
-          `INSERT INTO kcm.registro_hc (
+          `INSERT INTO operacion.historial_capacitacion (
              registro_id, clave_idempotencia, trabajador_id, capacitacion_id,
              fecha_capacitacion, procedencia, estado_registro, sesion_id,
              liberacion_id, version_mapeo, lote_id, marcador, solicitud_id,
              creado_en, actualizado_en, version
            ) VALUES (
              $1, $2,
-             (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3),
-             (SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = $4),
+             (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
+             (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
              $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
            )
            ON CONFLICT (clave_idempotencia) DO UPDATE
@@ -516,7 +516,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
                  estado_registro = EXCLUDED.estado_registro,
                  marcador = EXCLUDED.marcador,
                  actualizado_en = EXCLUDED.actualizado_en,
-                 version = kcm.registro_hc.version + 1;`,
+                 version = operacion.historial_capacitacion.version + 1;`,
           [
             rec.recordId,
             rec.idempotencyKey,
@@ -546,10 +546,10 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
   ): Promise<readonly OverwriteHistoryEntry[]> {
     const { rows } = await this.#db.query<Record<string, unknown>>(
       `SELECT h.*, t.numero_trabajador, c.clave_curso, a.identificador AS actor
-         FROM kcm.historial_sobrescritura_fecha h
-         JOIN kcm.trabajador t ON t.trabajador_id = h.trabajador_id
-         JOIN kcm.capacitacion c ON c.capacitacion_id = h.capacitacion_id
-         LEFT JOIN kcm.actor a ON a.actor_id = h.actor_id
+         FROM operacion.historial_capacitacion_cambio h
+         JOIN organizacion.trabajador t ON t.trabajador_id = h.trabajador_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = h.capacitacion_id
+         LEFT JOIN seguridad.actor a ON a.actor_id = h.actor_id
         WHERE t.numero_trabajador = $1 AND c.clave_curso = $2
         ORDER BY h.secuencia DESC;`,
       [String(workerNumber), trainingId],

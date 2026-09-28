@@ -15,7 +15,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import type { Clock } from "../ports/reloj.ts";
+import type { Clock } from "../ports/reloj.port.ts";
 
 export interface Comprobacion {
   readonly nombre: string;

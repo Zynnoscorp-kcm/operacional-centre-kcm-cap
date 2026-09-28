@@ -13,7 +13,7 @@
  * ahora es la hoja de la consola y un guion propio de sesenta líneas servido
  * desde `/assets`, así que la política puede volver a ser `'self'` y nada más.
  *
- * Detrás hay un directorio real —`kcm.credencial_consola`, migración 0038— con
+ * Detrás hay un directorio real —`seguridad.credencial_consola`, migración 0038— con
  * una cuenta por persona y la contraseña sólo como derivación scrypt. Lo que
  * sigue sin cambiar es que entrar no cierra ninguna pantalla: la consola
  * responde igual con sesión y sin ella.
@@ -83,7 +83,7 @@ export function renderAccessPage(props: AccessPageProps): string {
           </div>
           <h1 class="puerta-titulo">Plataforma KCM</h1>
           <p class="puerta-lede">Administración de capacitación y DNC.</p>
-          <p class="puerta-sello">Ecatepec · America/Mexico_City</p>
+          <p class="puerta-sello">Ecatepec · hora del centro de México</p>
         </section>
 
         <section class="puerta-hoja puerta-forma">

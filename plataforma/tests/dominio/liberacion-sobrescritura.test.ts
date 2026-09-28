@@ -17,7 +17,7 @@ import { describe, it } from "node:test";
 import { MemoryReleaseRepository } from "../../src/adapters/memoria/liberacion.ts";
 import { MatrixGateway } from "../../src/domain/liberacion/pasarela-matriz.ts";
 import { ReleaseService } from "../../src/domain/liberacion/servicio.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import {
   CAPACITACION,
   SECRET,

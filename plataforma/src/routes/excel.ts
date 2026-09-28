@@ -5,7 +5,7 @@ import type { AppConfig } from "../config/environment.ts";
 import type { ExcelIntegrationService } from "../domain/excel/integracion.ts";
 import type { BridgeAction, ExcelCredentialScope } from "../domain/excel/tipos.ts";
 import type { MatrixSnapshot } from "../domain/importacion-matriz/tipos.ts";
-import type { Clock } from "../ports/reloj.ts";
+import type { Clock } from "../ports/reloj.port.ts";
 import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { renderExcelPage, type DatosDeExcel } from "../web/pages/excel.ts";
 
@@ -16,6 +16,19 @@ function bearer(request: FastifyRequest): string {
   const value = text(request.headers.authorization);
   return value.startsWith("Bearer ") ? value.slice(7) : "";
 }
+
+/**
+ * Tope del puente en la nube: por debajo de los 4.5 MB en que corta el
+ * alojamiento, para que un envío demasiado grande se rechace con explicación y
+ * no a media lectura.
+ *
+ * Medido el 2026-09-24 con la matriz real (1 684 trabajadores, 27 cursos): el
+ * barrido completo viaja en ~2.0 MB ya codificado y el padrón semanal en
+ * ~0.7 MB. Lo que pase de ~3 MB, Excel lo manda solo en partes
+ * (`UPLOAD_PART_V1`) y la plataforma las junta: este tope ya no limita el
+ * tamaño de un envío, sólo el de cada petición.
+ */
+const TOPE_DEL_PUENTE_EN_LA_NUBE = 4_194_304;
 
 export function registerExcelRoutes(
   app: FastifyInstance,
@@ -89,7 +102,7 @@ export function registerExcelRoutes(
       if (!expiresRaw || !Number.isFinite(parsed.getTime())) {
         return reply.code(400).send({
           code: "INVALID_EXCEL_CREDENTIAL",
-          message: "Indique una fecha futura o seleccione Sin vencimiento.",
+          message: "La fecha de vencimiento tiene que ser futura, o quedar sin vencimiento.",
         });
       }
       expiresAt = expiresRaw.endsWith("Z") ? expiresRaw : parsed.toISOString();
@@ -108,7 +121,7 @@ export function registerExcelRoutes(
       scope: result.credential.scope,
       expiresAt: result.credential.expiresAt,
       credential: result.secret,
-      warning: "Copie la credencial ahora; no vuelve a mostrarse.",
+      warning: "La credencial se muestra aquí una sola vez.",
     });
   });
 
@@ -123,19 +136,48 @@ export function registerExcelRoutes(
     return reply.code(204).send();
   });
 
-  app.post("/api/v1/vba-bridge", { bodyLimit: 25_165_824 }, async (request, reply) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
-    const result = await deps.service.handleBridge({
-      action: text(body.action) as BridgeAction,
-      clientId: text(body.clientId),
-      requestId: text(body.requestId),
-      sentAt: text(body.sentAt),
-      nonce: text(body.nonce),
-      credential: text(body.token),
-      payload: text(body.payload),
-    });
-    return reply.type("text/plain; charset=utf-8").send(result);
-  });
+  app.post(
+    "/api/v1/vba-bridge",
+    {
+      // Veinticuatro mebibytes en el equipo del departamento; cuatro en la
+      // nube. Todas las acciones pasan en los dos papeles: lo que decide es el
+      // tamaño, no el nombre de la acción.
+      bodyLimit: deps.config.role === "nube" ? TOPE_DEL_PUENTE_EN_LA_NUBE : 25_165_824,
+      // El cliente VBA lee `clave=valor`, no JSON: un envío que excede el tope
+      // se contesta en su idioma. Sólo le pasa a un libro con módulos
+      // anteriores al envío en partes, y eso es lo que se le dice.
+      errorHandler: (error, _request, reply) => {
+        if (error.statusCode !== 413) throw error;
+        void reply
+          .type("text/plain; charset=utf-8")
+          .code(413)
+          .send(
+            `status=RECHAZADA\nreason=CARGA_EXCEDE_NUBE\n` +
+              `message=El envío supera los 4 MB que acepta la plataforma publicada. ` +
+              `Los módulos de Excel actualizados lo mandan en partes.\n`,
+          );
+      },
+    },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const accion = text(body.action) as BridgeAction;
+
+      const result = await deps.service.handleBridge({
+        action: accion,
+        clientId: text(body.clientId),
+        requestId: text(body.requestId),
+        sentAt: text(body.sentAt),
+        nonce: text(body.nonce),
+        credential: text(body.token),
+        payload: text(body.payload),
+        target: text(body.target),
+        part: text(body.part),
+        parts: text(body.parts),
+        length: text(body.length),
+      });
+      return reply.type("text/plain; charset=utf-8").send(result);
+    },
+  );
 
   app.get("/api/excel/power-query/workers.csv", async (request, reply) => {
     const clientId = text(request.headers["x-kcm-client-id"]);

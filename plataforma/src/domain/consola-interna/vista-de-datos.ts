@@ -25,7 +25,7 @@
  */
 
 import type { DataPreviewPort } from "../../ports/consola-interna.port.ts";
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 import {
   LIMITE_MAXIMO_DE_FILAS,
   LIMITE_POR_OMISION,

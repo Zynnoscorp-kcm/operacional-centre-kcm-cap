@@ -6,7 +6,7 @@
  * la clase de falla que debe distinguirse de una entrada mal formada.
  */
 
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 
 /** El lote no puede continuar sin que alguien resuelva la discrepancia. */
 export class ReleaseConflictError extends DomainError {

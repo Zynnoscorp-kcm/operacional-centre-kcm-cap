@@ -17,26 +17,10 @@
  */
 
 import type { ImportBatchCounts, MatrixSnapshot } from "../importacion-matriz/tipos.ts";
+import type { DetalleDeCambios } from "../cargas/detalle.ts";
 
 /** Cuántos números o nombres se enseñan de cada lista. Lo demás es un conteo. */
 export const MUESTRA_DE_BARRIDO = 12;
-
-/**
- * Orden de barrido dejada desde la consola.
- *
- * La plataforma no puede abrir Excel: el XLSB vive en la PC de la matriz y sólo
- * el cliente VBA lo lee. Así que el botón de la pantalla no ejecuta el barrido,
- * lo encarga; el libro controlador lo recoge en cuanto pregunta. Es la misma
- * dirección que ya tiene el puente —el cliente llama, el servidor contesta— y no
- * exige abrirle un puerto a la máquina de nadie.
- */
-export interface OrdenDeBarrido {
-  readonly ordenId: string;
-  readonly solicitadaEn: string;
-  /** Quién apretó el botón, tal como lo firma la sesión de consola. */
-  readonly solicitadaPor: string;
-  readonly venceEn: string;
-}
 
 /**
  * Estado de una columna de la matriz frente al catálogo de SQL.
@@ -126,6 +110,11 @@ export interface InformeDeBarrido {
   readonly columnas: readonly ColumnaDetectada[];
   readonly cuadre: CuadreDeBarrido;
   readonly muestras: MuestrasDeBarrido;
+  /**
+   * Quién entra, quién ya no está, quién se movió y qué fechas cambian, con
+   * nombre. Opcional: una revisión guardada antes de que existiera no lo trae.
+   */
+  readonly detalle?: DetalleDeCambios;
   /** El barrido no cambiaría nada: ni fechas, ni columnas, ni adscripciones. */
   readonly sinCambios: boolean;
   /** Con conflictos la carga se rechaza: aplicar dejaría de ser una opción. */

@@ -34,7 +34,6 @@ clients/          # el cliente VBA se importa a mano en el libro de Excel
 tools/            # herramientas de línea de comandos
 database/         # las migraciones se aplican desde fuera del contenedor
 infra/            # el propio material de despliegue
-config/
 
 # --- De `packages/` entra casi todo, que es el punto de que exista -----------
 # Se niegan el banco de pruebas, la máquina de estados y el núcleo de
@@ -51,3 +50,8 @@ eslint.config.js
 .prettierrc.json
 .prettierignore
 .github/
+
+# --- Skills de agentes: apoyo local, no forman parte de la imagen -----------
+.agents/
+.claude/
+skills-lock.json

@@ -5,8 +5,8 @@ import type { FastifyInstance } from "fastify";
 import { MemoryExcelRepository } from "../../src/adapters/memoria/excel.ts";
 import { loadConfig } from "../../src/config/environment.ts";
 import type { MatrixSnapshot } from "../../src/domain/importacion-matriz/tipos.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 
 const now = "2026-08-03T12:00:00.000Z";
@@ -31,7 +31,6 @@ async function server(): Promise<FastifyInstance> {
         },
       ],
     }),
-    dc3Runner: () => ({ detected: 0, ready: 0, blocked: 0, execution: { mode: "PLAN_ONLY" } }),
   });
   open.push(app);
   return app;

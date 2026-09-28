@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 import { extractDc3Legends, generateDc3Document } from "../../dc3/pdf/dc3-document.js";
 import { LEYENDAS_DC3 } from "../../dc3/pdf/leyendas-oficiales.js";
-import { planDc3Documents } from "../../dc3/planner.js";
+import { sumarDiasIso } from "../../dc3/fechas.js";
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BORRADOR = resolve(
@@ -22,7 +22,7 @@ test("las leyendas horneadas cubren todos los campos que el formato imprime", ()
   assert.equal(LEYENDAS_DC3.formId, "DC-3");
   // Trece recuadros: el RFC moral son doce caracteres y el borrador imprime un guion antes de la
   // homoclave. Se fija aqui porque es un dato del patron que sale en todas las constancias, no una
-  // etiqueta, y un cambio silencioso ahi invalidaria el lote entero.
+  // etiqueta, y un cambio silencioso ahi invalidaria todas las constancias.
   assert.deepEqual([...LEYENDAS_DC3.taxId], [..."KCM810226-DEA"]);
 });
 
@@ -78,58 +78,13 @@ test("la constancia no arrastra el reverso de consulta del formato", () => {
 });
 
 // La induccion son doce horas repartidas en tres jornadas: la constancia declara un periodo de tres
-// dias, no un dia suelto. El resto de los cursos empieza y termina el mismo dia.
+// dias, no un dia suelto. El resto de los cursos empieza y termina el mismo dia. La consola calcula
+// el termino con esta misma funcion y los dias del periodo que declara cada curso.
 test("el periodo de la induccion cierra dos dias despues del alta", () => {
-  const config = {
-    schemaVersion: "DC3_CONFIG_V1",
-    cutoffDate: "2026-01-01",
-    courses: [
-      {
-        courseId: "INDUCCION_EMPRESA",
-        source: { kind: "ACTIVE_HIRE_DATE" },
-        dc3Name: "INDUCCIÓN A LA EMPRESA",
-        durationHours: 12,
-        thematicArea: "3132-Recursos humanos",
-        trainingAgent: "AGENTE DE PRUEBA",
-        endDateOffsetDays: 2
-      },
-      {
-        courseId: "QMS",
-        source: { kind: "HC_COURSE", normalizedNames: ["QMS"] },
-        dc3Name: "QMS",
-        durationHours: 1,
-        thematicArea: "3131-Apoyo a la calidad",
-        trainingAgent: "AGENTE DE PRUEBA"
-      }
-    ]
-  };
-  const snapshot = {
-    schemaVersion: "HC_SNAPSHOT_V1",
-    employees: [{ employeeId: "1001", displayName: "PERSONA UNO", hireDate: "2026-08-23" }],
-    courses: [{ sourceKey: "hc-course:qms", normalizedName: "QMS", displayName: "QMS" }],
-    completions: [{ employeeId: "1001", sourceKey: "hc-course:qms", completionDate: "2026-08-23" }]
-  };
-  const roster = {
-    schemaVersion: "DC3_ACTIVE_ROSTER_V1",
-    source: { sha256: "0".repeat(64) },
-    employees: [{
-      employeeId: "1001",
-      displayName: "PERSONA UNO",
-      curp: "XEXX010101HNEXXXA4",
-      position: "PUESTO",
-      hireDate: "2026-08-23",
-      issues: []
-    }],
-    diagnostics: { readyEmployeeCount: 1, issues: {} }
-  };
-
-  const plan = planDc3Documents({ snapshot, roster, config });
-  const induccion = plan.documents.find((d) => d.courseId === "INDUCCION_EMPRESA");
-  const qms = plan.documents.find((d) => d.courseId === "QMS");
-
-  assert.equal(induccion.data.startDate, "2026-08-23");
-  assert.equal(induccion.data.endDate, "2026-08-25");
+  assert.equal(sumarDiasIso("2026-08-23", 2), "2026-08-25");
+  assert.equal(sumarDiasIso("2026-12-31", 2), "2027-01-02");
   // Sin desplazamiento declarado, inicio y fin son el mismo dia.
-  assert.equal(qms.data.startDate, "2026-08-23");
-  assert.equal(qms.data.endDate, "2026-08-23");
+  assert.equal(sumarDiasIso("2026-08-23", 0), "2026-08-23");
+  // Lo que no es una fecha se devuelve tal cual: el recuadro sale como vino.
+  assert.equal(sumarDiasIso("", 2), "");
 });

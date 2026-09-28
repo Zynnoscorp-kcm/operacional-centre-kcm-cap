@@ -38,7 +38,7 @@ function soloHora(valor: string): string {
 interface FilaReserva {
   reserva_id: string;
   solicitud_id: string;
-  sha256_payload: string;
+  sha256_solicitud: string;
   clave_sala: string;
   fecha: string | Date;
   hora_inicio: string;
@@ -72,7 +72,7 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
     return {
       reservationId: r.reserva_id,
       requestId: r.solicitud_id,
-      payloadHash: r.sha256_payload,
+      payloadHash: r.sha256_solicitud,
       roomId: r.clave_sala as RoomId,
       date: soloFecha(r.fecha),
       startTime: soloHora(r.hora_inicio),
@@ -97,14 +97,14 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
   }
 
   readonly #seleccion = `
-    SELECT r.reserva_id, r.solicitud_id, r.sha256_payload, s.clave_sala, r.fecha,
+    SELECT r.reserva_id, r.solicitud_id, r.sha256_solicitud, s.clave_sala, r.fecha,
            r.hora_inicio::text, r.hora_fin::text, r.solicitante_nombre, r.solicitante_puesto,
            r.solicitante_area, r.solicitante_contacto, r.solicitante_numero_trabajador,
            r.motivo, r.asistentes_estimados, r.origen, r.estado, r.creada_en,
            r.cancelada_en, a.identificador AS cancelador, r.motivo_cancelacion, r.version
-      FROM kcm.reserva_sala r
-      JOIN kcm.sala s ON s.sala_id = r.sala_id
-      LEFT JOIN kcm.actor a ON a.actor_id = r.cancelada_por`;
+      FROM operacion.sala_reserva r
+      JOIN catalogo.sala s ON s.sala_id = r.sala_id
+      LEFT JOIN seguridad.actor a ON a.actor_id = r.cancelada_por`;
 
   async withRoomDateLock<T>(roomId: RoomId, date: string, work: () => Promise<T>): Promise<T> {
     const digest = createHash("sha256").update(`${roomId}|${date}`).digest();
@@ -158,15 +158,15 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
    */
   async insert(reservation: RoomReservation): Promise<void> {
     await this.#db.query(
-      `INSERT INTO kcm.reserva_sala (
+      `INSERT INTO operacion.sala_reserva (
          reserva_id, sala_id, fecha, hora_inicio, hora_fin, horario,
          solicitante_nombre, solicitante_puesto, solicitante_area,
          solicitante_contacto, solicitante_numero_trabajador,
          motivo, asistentes_estimados, estado, origen, solicitud_id,
-         sha256_payload, creada_en, version
+         sha256_solicitud, creada_en, version
        ) VALUES (
          $1,
-         (SELECT sala_id FROM kcm.sala WHERE clave_sala = $2),
+         (SELECT sala_id FROM catalogo.sala WHERE clave_sala = $2),
          $3::date, $4::time, $5::time,
          tstzrange(($3::date + $4::time), ($3::date + $5::time), '[)'),
          $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
@@ -202,7 +202,7 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
     const cancelador = reservation.cancelledBy
       ? (
           await this.#db.query<{ actor_id: string }>(
-            `INSERT INTO kcm.actor (identificador, nombre_visible)
+            `INSERT INTO seguridad.actor (identificador, nombre_visible)
              VALUES ($1, $1)
              ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
              RETURNING actor_id;`,
@@ -212,7 +212,7 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
       : null;
 
     await this.#db.query(
-      `UPDATE kcm.reserva_sala
+      `UPDATE operacion.sala_reserva
           SET estado = $2, cancelada_en = $3, cancelada_por = $4,
               motivo_cancelacion = $5, version = $6
         WHERE reserva_id = $1;`,

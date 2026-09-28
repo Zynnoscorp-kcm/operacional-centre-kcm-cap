@@ -15,7 +15,9 @@ import type {
   ReleasePreview,
 } from "../../domain/liberacion/tipos.ts";
 import type { SessionHeader } from "../../domain/preliberacion/tipos.ts";
-import { html, type Html } from "../kit/html.ts";
+import type { MatrixDelivery } from "../../ports/entregas-matriz.port.ts";
+import { fechaCorta } from "../kit/fechas.ts";
+import { html, type Html, rawHtml } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
 export interface ReleasePageProps {
@@ -25,6 +27,14 @@ export interface ReleasePageProps {
   readonly requestId?: string;
   /** Sesiones que superaron preliberación y esperan la confirmación de liberar. */
   readonly sessions?: readonly SessionHeader[];
+  /**
+   * Lo ya liberado y su acuse de Excel. Ausente significa que no hay base
+   * conectada: entonces el tablero lo dice en vez de enseñar una bandeja vacía,
+   * que se leería como «no hay nada esperando».
+   */
+  readonly deliveries?: readonly MatrixDelivery[];
+  /** El tablero viene desplegado. Lo pide la dirección para sobrevivir al refresco. */
+  readonly entregasAbiertas?: boolean;
   readonly aviso?: string;
   readonly mensaje?: string;
 }
@@ -36,13 +46,13 @@ const ETIQUETAS_DE_ESTADO: Readonly<Record<string, string>> = {
   OVERWRITTEN: "Sobrescrita",
   ALREADY_APPLIED: "Ya aplicada",
   RECOVERED: "Recuperada",
-  ATOMIC_BATCH_ABORTED: "No intentada (lote abortado)",
+  ATOMIC_BATCH_ABORTED: "No intentada: la liberación se detuvo",
   EMPLOYEE_NOT_FOUND: "Trabajador ausente de la matriz",
   COURSE_NOT_FOUND: "Curso ausente del catálogo",
   EXISTING_VALUE_CONFLICT: "La celda ya tiene un valor",
   OVERWRITE_NOT_ALLOWED: "El destino no admite sobrescritura",
   OVERWRITE_REASON_REQUIRED: "Motivo no declarado",
-  IDEMPOTENCY_CONFLICT: "Conflicto de clave idempotente",
+  IDEMPOTENCY_CONFLICT: "Ya se había liberado con otros datos",
 };
 
 function etiqueta(estado: string): string {
@@ -52,7 +62,8 @@ function etiqueta(estado: string): string {
 export function renderReleasePage(props: ReleasePageProps): string {
   const contenido = props.preview
     ? renderPreview(props.preview, props.requestId)
-    : renderBandeja(props.sessions ?? [], props.mensaje, props.aviso);
+    : html`${renderBandeja(props.sessions ?? [], props.mensaje, props.aviso)}
+      ${renderTableroDeEntregas(props)}`;
 
   return renderLayout({
     titulo: "Liberación a la matriz",
@@ -130,15 +141,20 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
     <section class="tarjeta" aria-labelledby="preflight-titulo">
       <div class="seccion-cabecera">
         <div>
-          <h2 id="preflight-titulo">Validación previa · sesión ${preview.sessionId}</h2>
+          <h2 id="preflight-titulo">Validación previa</h2>
           <p class="texto-secundario">
-            Fecha a escribir: ${preview.completionDate} · Destino
+            Fecha a escribir: ${fechaCorta(preview.completionDate)} · Destino
             ${preview.mapping.destinationName}, hoja ${preview.mapping.destinationSheet}, columna
-            ${preview.mapping.destinationColumn} · Versión de mapeo
-            ${preview.mapping.mappingVersion}
+            ${preview.mapping.destinationColumn}
           </p>
         </div>
-        <span class="insignia">${preview.mapping.overwritePolicy}</span>
+        <span class="insignia"
+          >${
+            preview.mapping.overwritePolicy === "NO_OVERWRITE"
+              ? "No sobrescribe fechas"
+              : "Sobrescribe con historial"
+          }</span
+        >
       </div>
 
       <dl class="contadores">
@@ -163,7 +179,7 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
       ${
         preview.overwriteRequiresReason
           ? html`<p class="aviso aviso-error">
-              El lote sobrescribiría ${sobrescrituras} fecha(s) ya registradas. El motivo es
+              La liberación sobrescribiría ${sobrescrituras} fecha(s) ya registradas. El motivo es
               obligatorio y queda en el historial con el valor anterior.
             </p>`
           : ""
@@ -171,8 +187,8 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
       ${
         !preview.atomicBatchReady && !preview.overwriteRequiresReason
           ? html`<p class="aviso aviso-error">
-              El lote no puede aplicarse: hay conflictos pendientes. La liberación es atómica y no
-              escribe ninguna fila.
+              La liberación no puede aplicarse: hay conflictos pendientes. Se aplica completa o no
+              se aplica, así que no se escribió ninguna fecha.
             </p>`
           : ""
       }
@@ -213,7 +229,7 @@ function renderTablaIncluidos(filas: readonly MatrixWriteResult[]): Html {
     <div class="tabla-contenedor">
       <table>
         <caption>
-          Registros que entran al lote
+          Registros que se liberan
         </caption>
         <thead>
           <tr>
@@ -246,7 +262,7 @@ function renderTablaExcluidos(filas: readonly ExcludedEntry[]): Html {
     <div class="tabla-contenedor">
       <table>
         <caption>
-          Registros fuera del lote
+          Registros que no se liberan
         </caption>
         <thead>
           <tr>
@@ -267,3 +283,163 @@ function renderTablaExcluidos(filas: readonly ExcludedEntry[]): Html {
     </div>
   `;
 }
+
+// -----------------------------------------------------------------------------
+// Tablero de entregas a la matriz
+// -----------------------------------------------------------------------------
+
+/**
+ * Lo que pasa después de pulsar «Liberar».
+ *
+ * Liberar aquí no escribe en el XLSB: deja la fecha lista para que el cliente de
+ * Excel la escriba en la PC donde vive el libro. Ese intervalo no se veía en
+ * ninguna parte —la sesión salía de la lista de pendientes y no volvía a
+ * aparecer—, así que la única forma de saber si la fecha ya estaba era abrir la
+ * matriz a mirar.
+ *
+ * El tablero llena ese hueco y nada más: un renglón por lote liberado, con un
+ * foco rojo mientras Excel no ha acusado y verde cuando ya lo hizo. Va plegado
+ * porque no es lo primero que se hace en esta pantalla; se despliega y entonces
+ * la dirección lo recuerda, para que el botón de actualizar no lo vuelva a
+ * cerrar en cada consulta.
+ *
+ * Se actualiza pulsando y no solo: un reloj preguntando cada minuto son mil
+ * cuatrocientas lecturas al día contra una base con presupuesto, y la respuesta
+ * casi siempre sería la misma.
+ */
+function renderTableroDeEntregas(props: ReleasePageProps): Html {
+  const entregas = props.deliveries;
+  const esperando = (entregas ?? []).filter((fila) => fila.state !== "ENTREGADA").length;
+
+  return html`
+    <details class="tarjeta tablero-entregas" id="entregas" ${props.entregasAbiertas ? "open" : ""}>
+      <summary class="tablero-resumen">
+        <span class="tablero-titulo">Entregas a la matriz</span>
+        ${
+          entregas === undefined
+            ? ""
+            : esperando > 0
+              ? html`<span class="insignia insignia-pendiente"
+                  >${esperando} esperando a Excel</span
+                >`
+              : html`<span class="insignia insignia-completado">Todo entregado</span>`
+        }
+      </summary>
+
+      <p class="texto-secundario">
+        Las fechas liberadas se escriben en la matriz con la siguiente actualización de Excel.
+      </p>
+
+      ${
+        entregas === undefined
+          ? html`<p class="texto-vacio">
+              Sin conexión con la base de datos: no hay entregas que seguir.
+            </p>`
+          : html`
+              <p class="acciones-fila">
+                <a class="boton-secundario" href="/liberacion?entregas=1#entregas">Actualizar</a>
+              </p>
+              ${renderTablaDeEntregas(entregas)}
+            `
+      }
+    </details>
+  `;
+}
+
+function renderTablaDeEntregas(entregas: readonly MatrixDelivery[]): Html {
+  if (entregas.length === 0) {
+    return html`<p class="texto-vacio">
+      Nada liberado sin entregar. Lo entregado y quitado del tablero sigue en
+      <a href="/auditoria/liberaciones">auditoría</a>.
+    </p>`;
+  }
+
+  return html`
+    <div class="tabla-contenedor">
+      <table class="tabla-kcm">
+        <thead>
+          <tr>
+            <th scope="col" class="columna-angosta">Acuse</th>
+            <th scope="col">Código</th>
+            <th scope="col">Curso</th>
+            <th scope="col">Fecha</th>
+            <th scope="col">Escritas</th>
+            <th scope="col">Liberada</th>
+            <th scope="col">Quitar</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entregas.map(renderEntrega)}
+        </tbody>
+      </table>
+    </div>
+    <p class="texto-nota">
+      Quitar una entrega confirmada no borra nada: la liberación y su acuse permanecen en
+      <a href="/auditoria/liberaciones">auditoría</a>.
+    </p>
+  `;
+}
+
+/**
+ * Los tres focos.
+ *
+ * El color no va solo: el título y el texto para lectores de pantalla dicen lo
+ * mismo, porque un punto de color no lo lee quien no distingue los dos tonos ni
+ * quien navega con lector.
+ */
+const FOCOS: Readonly<Record<MatrixDelivery["state"], { clase: string; texto: string }>> = {
+  PENDIENTE: { clase: "foco-rojo", texto: "Pendiente de escritura en Excel" },
+  CON_CONFLICTO: { clase: "foco-ambar", texto: "Excel no pudo escribirla" },
+  ENTREGADA: { clase: "foco-verde", texto: "Escrita en la matriz" },
+};
+
+function renderEntrega(entrega: MatrixDelivery): Html {
+  const foco = FOCOS[entrega.state];
+  const entregada = entrega.state === "ENTREGADA";
+
+  return html`<tr>
+    <td class="columna-angosta">
+      <span class="foco ${foco.clase}" title="${foco.texto}"></span>
+      <span class="solo-lectores">${foco.texto}</span>
+    </td>
+    <td class="celda-codigo">${entrega.sessionCode}</td>
+    <td>${entrega.courseName || "—"}</td>
+    <td class="celda-mono">${entrega.sessionDate || "—"}</td>
+    <td class="celda-numero">
+      ${entrega.delivered} de ${entrega.total}
+      ${
+        entrega.rejected > 0
+          ? html`<br /><span class="texto-secundario">${entrega.rejected} con conflicto</span>`
+          : ""
+      }
+    </td>
+    <td class="celda-mono">${entrega.releasedAt.slice(0, 16).replace("T", " ")}</td>
+    <td>
+      ${
+        entregada
+          ? html`<form
+              method="post"
+              action="/liberacion/entregas/${entrega.batchId}/ocultar"
+              class="formulario-en-linea"
+            >
+              <button
+                type="submit"
+                class="boton-pequeno boton-icono"
+                title="Quitar del tablero. Sigue en auditoría."
+                aria-label="Quitar del tablero la entrega ${entrega.sessionCode}"
+              >
+                ${ICONO_EQUIS}
+              </button>
+            </form>`
+          : html`<span class="texto-atenuado" title="Todavía no la confirma Excel.">—</span>`
+      }
+    </td>
+  </tr>`;
+}
+
+/** La equis, en línea: la política de contenido no admite iconos por CDN. */
+const ICONO_EQUIS = rawHtml(
+  '<svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">' +
+    '<path d="M5.5 5.5 14.5 14.5M14.5 5.5 5.5 14.5"/></svg>',
+);

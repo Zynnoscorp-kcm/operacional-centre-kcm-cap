@@ -42,7 +42,7 @@ Public Sub KcmAutoprueba()
 
     On Error GoTo PruebaError
     KcmResetCaches
-    KcmPanelAbrir "Autoprueba del cliente KCM (no escribe nada)"
+    KcmPanelAbrir "Autoprueba del cliente, sin enviar datos"
 
     KcmPanelPaso "1. Entorno", KCM_PANEL_OK, KcmEntorno() & ". Transporte: " & KcmTransporteNombre()
 
@@ -55,15 +55,11 @@ Public Sub KcmAutoprueba()
     KcmApConexion
 
     If mFallos > 0 Then
-        KcmPanelCerrar "La autoprueba encontro " & CStr(mFallos) & " fallo(s). Copie esta hoja " & _
-            "completa y enviela a quien entrego el libro: dice exactamente en que etapa se " & _
-            "detuvo y por que.", False
+        KcmPanelCerrar "La autoprueba encontro " & KcmPlural(mFallos, "fallo", "fallos") & ".", False
     ElseIf mAvisos > 0 Then
-        KcmPanelCerrar "El equipo funciona. Quedan " & CStr(mAvisos) & " aviso(s), que no " & _
-            "impiden operar pero conviene leer.", True
+        KcmPanelCerrar "El equipo funciona, con " & KcmPlural(mAvisos, "aviso", "avisos") & ".", True
     Else
-        KcmPanelCerrar "Las ocho etapas salieron correctas. Este equipo puede operar el puente.", _
-            True
+        KcmPanelCerrar "Autoprueba correcta. El equipo esta listo.", True
     End If
     Application.StatusBar = False
     Exit Sub
@@ -73,7 +69,7 @@ PruebaError:
     descripcion = Err.Description
     On Error Resume Next
     KcmPanelPaso "Interrumpida", KCM_PANEL_FALLO, descripcion
-    KcmPanelCerrar "La autoprueba se detuvo. El renglon anterior dice donde.", False
+    KcmPanelCerrar "La autoprueba se detuvo. La etapa anterior indica donde.", False
     Application.StatusBar = False
     Err.Clear
     On Error GoTo 0
@@ -277,8 +273,8 @@ Private Sub KcmApConexion()
     Err.Clear
     On Error GoTo 0
     If Len(endpoint) = 0 Then
-        KcmApAviso "8. Conexion", "Sin ENDPOINT configurado no hay a quien preguntar. Ejecute " & _
-            "Conectar este equipo y repita la autoprueba"
+        KcmApAviso "8. Conexion", "Sin ENDPOINT configurado no hay a quien preguntar. Lo deja " & _
+            "Conectar este equipo, y la autoprueba se repite despues"
         Exit Sub
     End If
     If Len(KcmCredencialLeer()) = 0 Then
@@ -286,7 +282,7 @@ Private Sub KcmApConexion()
         Exit Sub
     End If
 
-    Application.StatusBar = "KCM: consultando el estado del servidor"
+    Application.StatusBar = "KCM: conectando con la plataforma..."
     On Error GoTo FalloConexion
     Set respuesta = KcmHttpPost("STATUS_V1", "")
     On Error GoTo 0

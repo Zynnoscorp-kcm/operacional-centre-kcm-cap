@@ -20,25 +20,24 @@
  * buscarlo en la matriz.
  */
 
-import type { EnvironmentName } from "../../config/environment.ts";
+import type { DeploymentRole, EnvironmentName } from "../../config/environment.ts";
 import type {
-  CambioDeAdscripcion,
   ColumnaDetectada,
   InformeDeBarrido,
-  OrdenDeBarrido,
   ResultadoDeBarrido,
 } from "../../domain/barrido-matriz/tipos.ts";
 import type { ComparacionConLaAnterior } from "../../domain/cargas/tipos.ts";
-import { renderComparacionDeCarga } from "../kit/comparacion-de-carga.ts";
+import { personasConCambios, renderPanelDeCambios } from "../kit/panel-de-cambios.ts";
+import { momento } from "../kit/fechas.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
 export interface DatosDeBarrido {
   readonly entorno: EnvironmentName;
+  /** Dónde está parada la persona. Decide si se explica dónde mandar el barrido. */
+  readonly papel?: DeploymentRole;
   /** Rechazo ya redactado: revisión vencida, conflictos, snapshot inválido. */
   readonly error?: string | undefined;
-  /** Orden encargada y todavía sin atender. */
-  readonly orden?: OrdenDeBarrido | undefined;
   /** Revisión pendiente de confirmar. */
   readonly informe?: InformeDeBarrido | undefined;
   /** Acuse de la última aplicación. */
@@ -51,12 +50,6 @@ export interface DatosDeBarrido {
   /** Sin base la pantalla explica y no ofrece encargar nada. */
   readonly sinBase?: boolean;
 }
-
-const ETIQUETA_DE_CAMPO: Readonly<Record<CambioDeAdscripcion["campo"], string>> = {
-  PUESTO: "Puesto",
-  AREA: "Área",
-  DEPARTAMENTO: "Departamento",
-};
 
 /**
  * Un mosaico del resumen. Es el mismo componente que usan la consola interna, la
@@ -81,105 +74,8 @@ function renderKpi(
   </div>`;
 }
 
-/** Doce números y el resto como cifra. Vacío cuando no hay nada que enseñar. */
-function renderMuestraDeNominas(valores: readonly string[], total: number): Html {
-  if (total === 0) return html`<span class="texto-atenuado">—</span>`;
-  const restantes = total - valores.length;
-  return html`<span class="celda-mono">${valores.join(", ")}</span>${
-      restantes > 0 ? html` <span class="texto-atenuado">y ${restantes} más</span>` : ""
-    }`;
-}
-
-/**
- * Una fila de «cuántos y qué significa».
- *
- * Las dos tablas de cambios están hechas así a propósito: la cifra sola obliga a
- * recordar la regla —¿retirar una fecha borra algo?, ¿un ausente se da de baja?—
- * y esa regla es justo lo que hay que tener presente para decidir si se aplica.
- */
-function renderFilaDeEfecto(input: {
-  readonly concepto: string;
-  readonly cuantos: number;
-  readonly significa: string;
-  readonly muestra?: Html | undefined;
-  readonly alerta?: boolean | undefined;
-}): Html {
-  const destacar = input.alerta === true && input.cuantos > 0;
-  return html`<tr>
-    <td>${input.concepto}</td>
-    <td class="celda-numero ${destacar ? "celda-alerta celda-destacada" : ""}">${input.cuantos}</td>
-    <td>${input.muestra ?? html`<span class="texto-atenuado">—</span>`}</td>
-    <td class="texto-secundario">${input.significa}</td>
-  </tr>`;
-}
-
-/** Concuerda el sustantivo con la cifra: «1 columnas nuevas» se lee mal. */
-function cuenta(cantidad: number, uno: string, varios: string): string {
-  return `${String(cantidad)} ${cantidad === 1 ? uno : varios}`;
-}
-
 function hora(iso: string): string {
-  // Se muestra tal cual llega. Convertirla aquí exigiría una zona, y la única
-  // válida —America/Mexico_City— ya la fija el pie de la plataforma.
-  return iso.replace("T", " ").replace(/\.\d+Z$/u, " UTC");
-}
-
-/**
- * El veredicto. Son dos frases separadas porque contestan dos preguntas
- * distintas: si el libro cuadra con el catálogo de SQL, y qué escribiría. Un
- * barrido puede cuadrar perfectamente y no tener nada que aplicar, o traer una
- * columna nueva y aun así no mover una sola fecha.
- */
-function renderVeredicto(informe: InformeDeBarrido): Html {
-  const c = informe.cuadre;
-  const desalineadas = c.columnasNuevas + c.columnasRenombradas + c.columnasRetiradas;
-
-  const correspondencia =
-    desalineadas === 0
-      ? html`<p class="texto-nota">
-          <strong>Las columnas cuadran con la base.</strong> Las ${c.columnasEnMatriz} columnas del
-          libro corresponden con cursos ya registrados.
-        </p>`
-      : html`<p class="texto-nota">
-          <strong
-            >Hay ${cuenta(desalineadas, "una columna", "columnas")} que no
-            cuadra${desalineadas === 1 ? "" : "n"} con la base:</strong
-          >
-          ${cuenta(c.columnasNuevas, "nueva", "nuevas")},
-          ${cuenta(c.columnasRenombradas, "con otro nombre", "con otro nombre")} y
-          ${cuenta(c.columnasRetiradas, "que la base conoce", "que la base conoce")} y este barrido
-          ya no trae. Aplicar da de alta las nuevas; ninguna se elimina.
-        </p>`;
-
-  if (informe.bloqueado) {
-    return html`${correspondencia}
-      <p class="aviso-error" role="alert">
-        Este barrido <strong>no puede aplicarse</strong>: contradice
-        ${cuenta(c.conflictos, "una fecha", "fechas")} liberadas en sesión. Corrija esas celdas en
-        el libro y repita el barrido.
-      </p>`;
-  }
-
-  const pendiente = informe.sinCambios
-    ? html`<p class="texto-nota">
-        <strong>Sin cambios que escribir:</strong> trabajadores, columnas y fechas coinciden con la
-        matriz.
-      </p>`
-    : html`<p class="texto-nota">
-        <strong>Por escribir:</strong>
-        ${cuenta(c.trabajadoresNuevos, "trabajador nuevo", "trabajadores nuevos")},
-        ${cuenta(
-          c.cambiosDePuesto + c.cambiosDeArea + c.cambiosDeDepartamento,
-          "cambio de adscripción",
-          "cambios de adscripción",
-        )},
-        ${cuenta(c.columnasNuevas, "columna nueva", "columnas nuevas")} y
-        ${cuenta(c.fechasNuevas, "fecha de capacitación", "fechas de capacitación")}${
-          c.fechasCorregidas > 0 ? html`, más ${c.fechasCorregidas} corregidas` : ""
-        }${c.fechasRetiradas > 0 ? html` y ${c.fechasRetiradas} retiradas` : ""}.
-      </p>`;
-
-  return html`${correspondencia}${pendiente}`;
+  return momento(iso);
 }
 
 function insigniaDeColumna(columna: ColumnaDetectada): Html {
@@ -193,38 +89,36 @@ function insigniaDeColumna(columna: ColumnaDetectada): Html {
 }
 
 /**
- * Las columnas detectadas, todas. Es la lista que contesta «qué trae el libro»
- * y por eso no se recorta: treinta y tantos renglones caben en una pantalla y
- * el barrido existe, entre otras cosas, para poder leerlos.
+ * Los cursos del libro contra los de la base, plegados: casi siempre coinciden
+ * todos y la lista es larga. El resumen de la cabecera dice si hay algo que
+ * abrir.
  */
 function renderColumnas(informe: InformeDeBarrido): Html {
+  const c = informe.cuadre;
+  const coinciden = c.columnasEnMatriz - c.columnasNuevas - c.columnasRenombradas;
   return html`
-    <section class="tarjeta">
-      <div class="seccion-cabecera">
-        <h2>Columnas detectadas</h2>
-        <p class="seccion-subtitulo">
-          ${informe.cuadre.columnasEnMatriz} columnas de curso en la hoja
-          <code>${informe.fuente.hoja}</code>, contra ${informe.cuadre.columnasEnBase} cursos
-          activos en la base.
-        </p>
-      </div>
+    <details class="tarjeta plegable">
+      <summary>
+        Cursos · ${coinciden}
+        coinciden${c.columnasNuevas > 0 ? ` · ${String(c.columnasNuevas)} ${c.columnasNuevas === 1 ? "nuevo" : "nuevos"}` : ""}${
+          c.columnasRenombradas > 0 ? ` · ${String(c.columnasRenombradas)} con otro nombre` : ""
+        }${c.columnasRetiradas > 0 ? ` · ${String(c.columnasRetiradas)} ya no ${c.columnasRetiradas === 1 ? "viene" : "vienen"}` : ""}
+      </summary>
       <div class="tabla-contenedor">
         <table class="tabla-kcm">
           <thead>
             <tr>
               <th scope="col">Col.</th>
-              <th scope="col">Nombre en la matriz</th>
+              <th scope="col">Curso en la matriz</th>
               <th scope="col">Fechas</th>
-              <th scope="col">Estado en la base</th>
+              <th scope="col">En la base</th>
             </tr>
           </thead>
           <tbody>
             ${
               informe.columnas.length === 0
                 ? html`<tr>
-                    <td colspan="4" class="texto-vacio">
-                      Sin columnas de curso en el rango declarado.
-                    </td>
+                    <td colspan="4" class="texto-vacio">Sin columnas de curso.</td>
                   </tr>`
                 : informe.columnas.map(
                     (columna) => html`
@@ -246,256 +140,74 @@ function renderColumnas(informe: InformeDeBarrido): Html {
                     `,
                   )
             }
+            ${informe.muestras.columnasRetiradas.map(
+              (nombre) => html`
+                <tr>
+                  <td class="celda-mono">—</td>
+                  <td><span class="celda-destacada">${nombre}</span></td>
+                  <td class="celda-numero">—</td>
+                  <td><span class="diff-dato diff-dato-baja">Ya no viene en la matriz</span></td>
+                </tr>
+              `,
+            )}
           </tbody>
         </table>
       </div>
-      <p class="texto-nota">
-        Una columna <strong>nueva</strong> da de alta un curso al aplicar; una con
-        <strong>otro nombre</strong> conserva el curso y guarda el nombre anterior como alias.
-      </p>
-    </section>
+    </details>
   `;
 }
 
-/** Los cuatro números que se leen primero, cada uno con de qué está hecho. */
-function renderResumen(informe: InformeDeBarrido): Html {
+function renderRevision(informe: InformeDeBarrido): Html {
   const c = informe.cuadre;
-  const adscripciones = c.cambiosDePuesto + c.cambiosDeArea + c.cambiosDeDepartamento;
-  const porEscribir = c.fechasNuevas + c.fechasCorregidas + c.fechasReactivadas;
-  const columnasDesalineadas = c.columnasNuevas + c.columnasRenombradas + c.columnasRetiradas;
-
-  return html`<div class="kpi-tira">
-    ${renderKpi(
-      "Trabajadores en la matriz",
-      c.trabajadoresEnMatriz,
-      `${String(c.trabajadoresNuevos)} nuevos · ${String(c.trabajadoresAusentes)} que la matriz ya no trae · ${String(adscripciones)} cambios de adscripción`,
-      c.trabajadoresNuevos + c.trabajadoresAusentes + adscripciones > 0 ? "aviso" : "ok",
-    )}
-    ${renderKpi(
-      "Columnas de curso",
-      c.columnasEnMatriz,
-      `${String(c.columnasNuevas)} nuevas · ${String(c.columnasRenombradas)} con otro nombre · ${String(c.columnasRetiradas)} que ya no vienen`,
-      columnasDesalineadas > 0 ? "aviso" : "ok",
-    )}
-    ${renderKpi(
-      "Fechas por escribir",
-      porEscribir,
-      `${String(c.fechasNuevas)} altas · ${String(c.fechasCorregidas)} corregidas · ${String(c.fechasReactivadas)} reactivadas · de ${String(c.fechasEnMatriz)} en el libro`,
-    )}
-    ${renderKpi(
-      "Fechas que se retirarían",
-      c.fechasRetiradas,
-      c.conflictos > 0
-        ? `Quitan información. ${String(c.conflictos)} conflictos con sesiones liberadas bloquean el barrido.`
-        : c.fechasRetiradas > 0
-          ? "Quitan información. Quedan en el historial y pueden reaparecer."
-          : "Sin fechas retiradas ni conflictos.",
-      c.conflictos > 0 ? "alerta" : c.fechasRetiradas > 0 ? "aviso" : "ok",
-    )}
-  </div>`;
-}
-
-/**
- * Los cambios, en dos tablas y no en un muro de mosaicos.
- *
- * Antes eran dieciséis fichas seguidas y la lista de números debajo, en prosa.
- * El problema no era el espacio sino que cada cifra exigía recordar su regla:
- * un ausente no se da de baja, una columna que ya no viene no se desactiva, una
- * fecha retirada sí quita información. Esa regla vive ahora en la misma fila que
- * el número, que es donde hace falta al decidir si se aplica.
- */
-function renderCambios(informe: InformeDeBarrido): Html {
-  const c = informe.cuadre;
-  const m = informe.muestras;
-  const adscripciones = c.cambiosDePuesto + c.cambiosDeArea + c.cambiosDeDepartamento;
-
+  // Sin detalle (una revisión guardada antes de 0046) no se sabe quién sigue en
+  // el padrón: se cuenta a todos como ausentes, sin anunciar bajas.
+  const bajasReales = informe.detalle
+    ? informe.detalle.bajas.filter((persona) => persona.soloAviso !== true).length
+    : 0;
   return html`
-    <section class="tarjeta">
-      <div class="seccion-cabecera">
-        <h2>Cambios contra la matriz anterior</h2>
-        <p class="seccion-subtitulo">
-          Sólo lo que este barrido movería. Lo que ya coincide no aparece.
-        </p>
-      </div>
-
-      <h3>Trabajadores y columnas</h3>
-      <div class="tabla-contenedor">
-        <table class="tabla-kcm">
-          <thead>
-            <tr>
-              <th scope="col">Concepto</th>
-              <th scope="col">Cantidad</th>
-              <th scope="col">Detalle</th>
-              <th scope="col">Efecto al aplicar</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${renderFilaDeEfecto({
-              concepto: "Trabajadores nuevos",
-              cuantos: c.trabajadoresNuevos,
-              muestra: renderMuestraDeNominas(m.trabajadoresNuevos, c.trabajadoresNuevos),
-              significa: "Se dan de alta en la base con sus datos laborales.",
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "En la base y no en la matriz",
-              cuantos: c.trabajadoresAusentes,
-              muestra: renderMuestraDeNominas(m.trabajadoresAusentes, c.trabajadoresAusentes),
-              significa: "Ninguno: la ausencia en un extracto no es baja laboral.",
-              alerta: true,
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Cambios de adscripción",
-              cuantos: adscripciones,
-              significa: `Se actualizan puesto, área y departamento. ${String(c.cambiosDePuesto)} de puesto, ${String(c.cambiosDeArea)} de área y ${String(c.cambiosDeDepartamento)} de departamento.`,
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Columnas nuevas",
-              cuantos: c.columnasNuevas,
-              muestra: c.columnasNuevas === 0 ? undefined : html`${m.columnasNuevas.join(", ")}`,
-              significa: "Cada una da de alta un curso en el catálogo.",
-              alerta: true,
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Columnas con otro nombre",
-              cuantos: c.columnasRenombradas,
-              significa: "Conservan su curso y guardan el nombre anterior como alias.",
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Columnas que ya no vienen",
-              cuantos: c.columnasRetiradas,
-              muestra:
-                c.columnasRetiradas === 0 ? undefined : html`${m.columnasRetiradas.join(", ")}`,
-              significa: "Ninguno: no se desactivan. Suele ser un rango de cursos recortado.",
-              alerta: true,
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      ${adscripciones > 0 ? renderAdscripciones(informe, adscripciones) : ""}
-
-      <h3>Fechas de capacitación</h3>
-      <div class="tabla-contenedor">
-        <table class="tabla-kcm">
-          <thead>
-            <tr>
-              <th scope="col">Concepto</th>
-              <th scope="col">Cantidad</th>
-              <th scope="col">Detalle</th>
-              <th scope="col">Efecto al aplicar</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${renderFilaDeEfecto({
-              concepto: "Altas",
-              cuantos: c.fechasNuevas,
-              significa: "Fechas del maestro que la base todavía no tenía.",
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Corregidas",
-              cuantos: c.fechasCorregidas,
-              significa:
-                "El maestro trae otra fecha para un registro propio. El valor anterior queda en el historial.",
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Retiradas",
-              cuantos: c.fechasRetiradas,
-              significa:
-                "La celda quedó vacía en el maestro. Queda en el historial y puede reaparecer.",
-              alerta: true,
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Reactivadas",
-              cuantos: c.fechasReactivadas,
-              significa: "Una fecha retirada antes vuelve a aparecer en el maestro.",
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Conflictos con liberaciones",
-              cuantos: c.conflictos,
-              muestra:
-                c.conflictos === 0
-                  ? undefined
-                  : html`${m.conflictos.map((texto) => html`${texto}<br />`)}`,
-              significa: "El maestro contradice una sesión liberada. Bloquea el barrido completo.",
-              alerta: true,
-            })}
-            ${renderFilaDeEfecto({
-              concepto: "Liberado y aún no en el maestro",
-              cuantos: c.pendientesEnMaestro,
-              significa: "Liberadas en la plataforma y aún sin escribir en el XLSB. No se retiran.",
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      ${
-        informe.incidencias.length > 0
-          ? html`<p class="texto-nota">
-              <strong>Incidencias al leer la hoja:</strong>
-              ${informe.incidencias
-                .map((incidencia) => `${incidencia.codigo} (${String(incidencia.cuenta)})`)
-                .join(" · ")}.
-            </p>`
-          : ""
-      }
-    </section>
-  `;
-}
-
-/** Quién se movió, con nómina y valor antes y después. */
-function renderAdscripciones(informe: InformeDeBarrido, total: number): Html {
-  const muestra = informe.muestras.cambiosDeAdscripcion;
-  const restantes = total - muestra.length;
-  return html`
-    <div class="tabla-contenedor">
-      <table class="tabla-kcm">
-        <thead>
-          <tr>
-            <th scope="col">Nómina</th>
-            <th scope="col">Campo</th>
-            <th scope="col">Antes</th>
-            <th scope="col">Ahora</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${muestra.map(
-            (cambio) => html`
-              <tr>
-                <td class="celda-mono">${cambio.numeroTrabajador}</td>
-                <td>${ETIQUETA_DE_CAMPO[cambio.campo]}</td>
-                <td class="texto-atenuado">${cambio.antes}</td>
-                <td class="celda-destacada">${cambio.ahora}</td>
-              </tr>
-            `,
-          )}
-        </tbody>
-      </table>
-    </div>
+    ${renderPanelDeCambios({
+      titulo: `${informe.fuente.nombreArchivo} · ${hora(informe.recibidoEn)}`,
+      rotuloAltas: "Entran",
+      rotuloBajas: "No vienen en la matriz",
+      detalle: informe.detalle,
+      cifras: [
+        { valor: c.trabajadoresNuevos, rotulo: "entran", tono: "alta" },
+        {
+          valor: bajasReales,
+          rotulo: "se dan de baja",
+          tono: "baja",
+        },
+        {
+          valor: c.trabajadoresAusentes - bajasReales,
+          rotulo: "no vienen en la matriz",
+          tono: "aviso",
+        },
+        {
+          valor: informe.detalle
+            ? personasConCambios(informe.detalle)
+            : c.cambiosDePuesto + c.cambiosDeArea + c.cambiosDeDepartamento,
+          rotulo: "con cambios",
+          tono: "cambio",
+        },
+        { valor: c.fechasNuevas, rotulo: "fechas nuevas", tono: "alta" },
+        {
+          valor: c.fechasCorregidas + c.fechasReactivadas,
+          rotulo: "fechas cambian",
+          tono: "cambio",
+        },
+        { valor: c.fechasRetiradas, rotulo: "fechas se quitan", tono: "baja" },
+        { valor: c.columnasNuevas, rotulo: "cursos nuevos", tono: "alta" },
+      ],
+    })}
     ${
-      restantes > 0
-        ? html`<p class="texto-nota">
-            Y ${restantes} cambios de adscripción más. Se muestran doce.
+      informe.bloqueado
+        ? html`<p class="aviso aviso-error">
+            ${c.conflictos} fechas contradicen sesiones ya liberadas. Se corrigen en la matriz y se
+            vuelve a enviar.
           </p>`
         : ""
     }
-  `;
-}
-
-function renderRevision(
-  informe: InformeDeBarrido,
-  comparacion: ComparacionConLaAnterior | undefined,
-): Html {
-  return html`
-    <section class="tarjeta">
-      <h2>Revisión de ${informe.fuente.nombreArchivo}</h2>
-      <p class="texto-nota">
-        Barrido por <code>${informe.fuente.cliente}</code> y recibido el
-        ${hora(informe.recibidoEn)}. Huella SHA-256
-        <code>${informe.fuente.sha256.slice(0, 16)}…</code>. Sin escrituras en la base.
-      </p>
-
-      ${renderComparacionDeCarga(comparacion)} ${renderVeredicto(informe)} ${renderResumen(informe)}
-
+    <div class="acciones-formulario">
       <form method="POST" action="/matriz/aplicar" class="formulario">
         <input type="hidden" name="barridoId" value="${informe.barridoId}" />
         <button type="submit" ${informe.sinCambios || informe.bloqueado ? "disabled" : ""}>
@@ -504,18 +216,15 @@ function renderRevision(
               ? "Bloqueado por conflictos"
               : informe.sinCambios
                 ? "No hay nada que aplicar"
-                : "Aplicar a la base"
+                : "Aplicar los cambios"
           }
         </button>
       </form>
       <form method="POST" action="/matriz/descartar" class="formulario">
-        <button type="submit" class="boton-secundario">Descartar y barrer de nuevo</button>
+        <button type="submit" class="boton-secundario">Descartar</button>
       </form>
-      <p class="texto-nota">
-        La revisión caduca a los 30 minutos. Al caducar se repite el barrido.
-      </p>
-    </section>
-    ${renderColumnas(informe)} ${renderCambios(informe)}
+    </div>
+    ${renderColumnas(informe)}
   `;
 }
 
@@ -551,14 +260,32 @@ function renderResultado(resultado: ResultadoDeBarrido): Html {
   `;
 }
 
+/**
+ * Dónde se manda el barrido completo.
+ *
+ * Vive aparte y se dibuja en las dos ramas de `renderEncargo` a propósito: el
+ * papel es una propiedad del proceso y no de sus conexiones, así que esconderlo
+ * detrás de «hay base o no hay base» dejaría a quien abre la pantalla sin base
+ * creyendo que el problema es la conexión, cuando además está en la máquina
+ * equivocada. Es la misma regla que sigue la carga del padrón.
+ */
+function avisoDePapel(datos: DatosDeBarrido): Html {
+  if (datos.papel !== "nube") return html``;
+  return html`<p class="texto-nota">
+    Una matriz de más de 3 MB sale de Excel en partes y aquí llega completa.
+  </p>`;
+}
+
 function renderEncargo(datos: DatosDeBarrido): Html {
   if (datos.sinBase === true) {
     return html`
       <section class="tarjeta">
         <h2>Barrer la matriz</h2>
         <p class="aviso-error" role="alert">
-          Sin base de datos conectada no hay contra qué comparar la matriz ni a dónde aplicarla.
+          Sin conexión con la base de datos: no hay contra qué comparar la matriz ni dónde
+          aplicarla.
         </p>
+        ${avisoDePapel(datos)}
       </section>
     `;
   }
@@ -567,35 +294,15 @@ function renderEncargo(datos: DatosDeBarrido): Html {
     <section class="tarjeta">
       <h2>Barrer la matriz</h2>
       <p class="texto-nota">
-        El barrido lee el XLSB maestro por el puente VBA y devuelve columnas, trabajadores y
-        diferencias contra la base. <strong>La lectura no escribe.</strong>
+        El barrido lee la matriz de capacitación y enseña las diferencias con lo registrado en la
+        plataforma. <strong>Leer no cambia nada.</strong>
       </p>
-
-      ${
-        datos.orden
-          ? html`
-              <p class="aviso" role="status">
-                <strong>Barrido encargado</strong> el ${hora(datos.orden.solicitadaEn)} por
-                ${datos.orden.solicitadaPor}. El libro controlador lo recoge en su próxima consulta.
-                La orden caduca a los 30 minutos.
-              </p>
-              <form method="POST" action="/matriz/cancelar" class="formulario">
-                <button type="submit" class="boton-secundario">Cancelar encargo</button>
-              </form>
-            `
-          : html`
-              <form method="POST" action="/matriz/barrido" class="formulario">
-                <button type="submit">Solicitar barrido</button>
-              </form>
-            `
-      }
 
       <p class="texto-nota">
-        El botón encarga el barrido; lo ejecuta el libro controlador en la PC de la matriz. Con la
-        vigilancia activa (<code>KcmIniciarVigilancia</code>) esa PC consulta cada pocos minutos;
-        sin ella, el barrido corre al pulsar <strong>Barrer matriz</strong> en
-        <code>KCM_CONFIG</code>.
+        Se envía desde Excel con <strong>Actualización completa</strong>. La revisión aparece aquí y
+        espera aprobación.
       </p>
+      ${avisoDePapel(datos)}
     </section>
   `;
 }
@@ -604,33 +311,18 @@ export function renderMatrixScanPage(datos: DatosDeBarrido): string {
   const contenido = html`
     ${datos.error ? html`<p class="aviso-error" role="alert">${datos.error}</p>` : ""}
     ${datos.resultado ? renderResultado(datos.resultado) : ""}
-    ${datos.informe ? renderRevision(datos.informe, datos.comparacion) : renderEncargo(datos)}
-    ${
-      datos.informe
-        ? ""
-        : html`
-            <section class="tarjeta">
-              <h2>Barrido y ciclo programado</h2>
-              <p class="texto-nota">
-                El ciclo programado transmite y aplica la matriz en la misma llamada. El barrido
-                separa la lectura de la escritura y muestra la lista antes de aplicar, con el mismo
-                motor de reconciliación.
-              </p>
-            </section>
-          `
-    }
+    ${datos.informe ? renderRevision(datos.informe) : renderEncargo(datos)}
   `;
 
   return renderLayout({
     titulo: "Barrido de matriz",
     rutaActiva: "/matriz",
-    subtitulo: "Lectura del XLSB maestro y cuadre contra la base",
+    subtitulo: "Lectura de la matriz de capacitación y cuadre con la plataforma",
     entorno: datos.entorno,
+    ...(datos.papel ? { papel: datos.papel } : {}),
     contenido,
     ...(datos.informe
       ? { estado: html`<span class="insignia insignia-aviso">Revisión sin aplicar</span>` }
-      : datos.orden
-        ? { estado: html`<span class="insignia insignia-pendiente">Barrido encargado</span>` }
-        : {}),
+      : {}),
   });
 }

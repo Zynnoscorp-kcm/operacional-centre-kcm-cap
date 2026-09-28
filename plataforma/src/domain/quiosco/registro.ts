@@ -7,9 +7,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
-import { parseWorkerNumber } from "../numero-trabajador.ts";
+import { parseWorkerNumber } from "../comun/numero-trabajador.ts";
 import { InvalidInputError, InvalidSessionStateError, SessionNotFoundError } from "./errores.ts";
 import type { KioskAuthService } from "./autenticacion.ts";
 import {

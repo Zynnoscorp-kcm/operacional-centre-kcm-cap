@@ -35,8 +35,7 @@ jobs:
           set -e
           fugas=$(git ls-files \
             'referencias/*' \
-            '*.xlsb' '*.xlsm' \
-            'config/dc3-generator.local.json')
+            '*.xlsb' '*.xlsm')
           if [ -n "$fugas" ]; then
             echo "Hay fuentes privadas rastreadas en Git:"
             echo "$fugas"

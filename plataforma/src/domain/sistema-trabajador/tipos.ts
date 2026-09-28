@@ -2,7 +2,7 @@
  * Tipos de dominio para el Sistema General por Trabajador (Función 8).
  */
 
-import type { WorkerNumber } from "../numero-trabajador.ts";
+import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 
 export type DncStatus =
   "COMPLETADO" | "REFORZAR" | "PENDIENTE" | "PROGRAMADO" | "NO_APLICA" | "DATOS_INSUFICIENTES";
@@ -104,6 +104,18 @@ export interface Dc3WorkerLogEntry {
   readonly blockingReasons: readonly string[];
 }
 
+/**
+ * Cuántos trabajadores del área de una persona tienen vigente cada curso que les
+ * aplica. Es la referencia contra la que la ficha dibuja a la persona: sin ella,
+ * una telaraña con casi todo pendiente no dice si eso es lo normal del área o
+ * un rezago propio.
+ */
+export interface AreaCourseCompletion {
+  readonly trainingId: string;
+  readonly applicable: number;
+  readonly completed: number;
+}
+
 export interface DerivedWorkerProfile {
   readonly worker: WorkerRecord;
   readonly seniority: SeniorityCalculation;
@@ -114,6 +126,8 @@ export interface DerivedWorkerProfile {
   readonly metrics: WorkerEvaluationMetrics;
   readonly trajectory: readonly CourseTrajectoryEntry[];
   readonly dc3Log: readonly Dc3WorkerLogEntry[];
+  /** Ausente si el área no se pudo medir: la ficha se dibuja igual, sin la referencia. */
+  readonly areaComparison?: readonly AreaCourseCompletion[];
 }
 
 export interface DepartmentSummaryItem {

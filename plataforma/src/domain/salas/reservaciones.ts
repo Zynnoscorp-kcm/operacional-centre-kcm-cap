@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { Clock } from "../../ports/reloj.ts";
-import { DomainError } from "../errores.ts";
-import { isWorkerNumber } from "../numero-trabajador.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
+import { DomainError } from "../comun/errores.ts";
+import { isWorkerNumber } from "../comun/numero-trabajador.ts";
 import type {
   CancelReservationInput,
   CreateReservationInput,

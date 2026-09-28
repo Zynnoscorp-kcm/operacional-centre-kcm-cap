@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppConfig } from "../config/environment.ts";
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { KioskService } from "../domain/quiosco/registro.ts";
 import type { SessionService } from "../domain/quiosco/sesiones.ts";
 import type { RoomReservationService } from "../domain/salas/reservaciones.ts";
@@ -335,7 +335,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: SessionRouteDe
       const pin = typeof body.pin === "string" ? body.pin.trim() : "";
       if (!accesoAbierto) {
         // El secreto de operación de la base manda. Es el mecanismo definitivo:
-        // vive en `kcm.secreto_operacion` con alcance APERTURA_SESION, guardado
+        // vive en `seguridad.secreto` con alcance APERTURA_SESION, guardado
         // como hash, rotable y auditable. El PIN del piloto queda sólo como
         // respaldo para las corridas de prueba, donde no hay base que consultar.
         const aceptadoPorLaBase = pin

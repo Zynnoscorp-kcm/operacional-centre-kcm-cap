@@ -16,14 +16,14 @@ La consola era un **panel de vidrio esmerilado centrado sobre un fondo de haces
 diagonales**, con un rail plano de veinte entradas en seis grupos y una portada
 que repetía ese menú en forma de recuadros. Hoy es un **tablero claro**: fondo
 gris azulado, tarjetas blancas de esquina redonda, sombra baja, un menú lateral
-de once secciones y el azul `#224C9F` reservado para lo que significa algo.
+de doce secciones y el azul `#224C9F` reservado para lo que significa algo.
 
 Lo que se retiró, y por qué:
 
 | Se fue | Motivo |
 |---|---|
 | `barras.css` y los seis haces del fondo | Se leían por detrás de tablas de ocho y nueve columnas y obligaban a subir la opacidad de cada tarjeta |
-| El vidrio del panel (`--panel-*`, `backdrop-filter`) | Mismo motivo: contraste comprado con opacidad. Sobrevive en **una sola pieza**: la telaraña del avance DNC |
+| El vidrio del panel (`--panel-*`, `backdrop-filter`) | Mismo motivo: contraste comprado con opacidad. La última pieza de vidrio —la telaraña del DNC— se retiró el 2026-09-24 |
 | La retícula de funciones de la portada | Era el menú dibujado dos veces, con estados de proyecto en lugar de trabajo del día |
 | Las quince entradas sueltas del rail | Las vistas hermanas pasaron a sub-pestañas dentro de su sección |
 | `renderEscena()` | Nadie la llamaba; era la envoltura de la puerta anterior |
@@ -79,11 +79,11 @@ Los grupos de variables son estos:
   azul y no en gris, porque sobre blanco un gris neutro ensucia
 - **Degradados** de marca, éxito y aviso
 - **Ritmo**: `--kcm-space-1` a `--kcm-space-5`
-- **Tipografía**: `--kcm-font`, `--kcm-font-mono`, `--kcm-font-display`
+- **Tipografía**: `--kcm-font` (Manrope), `--kcm-font-mono` (IBM Plex Mono),
+  `--kcm-font-display` (sólo el quiosco y la agenda). Las dos primeras viajan
+  con la plataforma: ver «Cómo se sirve»
 - **Densidad CAPTA**: `--capta-rotulo`, `--capta-texto`, `--capta-cifra`
 - **Bento**: fondos de tarjeta, mosaico, bordes, capas y chips
-- **Vidrio líquido** (`--vidrio-*`): fondo, borde, sombra, desenfoque y las dos
-  manchas de color del reverso. Los usa **sólo** la telaraña del avance DNC
 
 ### Los dos temas
 
@@ -124,7 +124,8 @@ auxiliares.
 
 **Pantallas propias**: adaptación a pantallas angostas · agenda pública de salas
 —incluido el color de marca de cada sala— · la puerta de `/acceso` · fichas de
-conteo · gráfica de telaraña del avance DNC · el tablero de inicio.
+conteo · la ficha del trabajador y su telaraña · la barra de avance · el
+tablero de inicio.
 
 ### El armazón, en dos piezas
 
@@ -147,20 +148,29 @@ deja de ser columna y pasa a ser una tira horizontal desplazable.
 sin él la rejilla lo estira hasta la altura de la fila y no le queda recorrido
 dentro del cual pegarse.
 
-### La telaraña, que es la excepción
+### La ficha del trabajador
 
-Es la única superficie de vidrio que queda: un disco translúcido con su reflejo
-sobre dos manchas de color difuminadas. Se conserva porque ahí no hay una tabla
-que leer por detrás sino una figura, y el relieve la ayuda en vez de estorbarla.
+Sigue la referencia CAPTA: arriba, la persona con sus cuatro cifras
+—acreditados, por reforzar, programados, pendientes— y un anillo con la cuenta
+de acreditados sobre exigibles; debajo, dos columnas. A la izquierda, la
+telaraña contra la media del área y la trayectoria como línea de tiempo
+vertical, de lo más reciente al ingreso; a la derecha, los cursos del puesto
+—una fila por curso con una marca de color, su detalle en monoespaciada y su
+estado en palabras, lo que pide acción arriba— y las constancias DC-3.
 
-Su `viewBox` es ancho y **lleva los rótulos dentro**. Era cuadrado, con
-`overflow: visible` y los nombres de curso colgando fuera del `<svg>`: los de la
-izquierda se pintaban encima del menú lateral. Con diecisiete o dieciocho ejes
-—lo normal en un técnico— los rótulos vecinos quedan a veinte grados, así que a
-partir de nueve se alternan en dos anillos para no encimarse.
+La telaraña es plana: anillos tenues, la persona en azul con relleno diluido y
+la media del área punteada. Los rótulos llevan el color del estado de la
+persona en ese curso y se colocan evitando encimarse: si un rótulo choca con
+uno ya puesto, se aleja del centro. No publica porcentajes de cumplimiento; el
+globo de cada vértice dice «en su área, 12 de 40 lo tienen vigente».
 
-Los degradados se declaran en `<defs>` con `class` y sin un solo color escrito:
-los tonos los pone `base.css` con `stop-color: var(--…)`.
+### La barra de avance
+
+`sistema-trabajador/avance.ts` dibuja acreditados, por reforzar, programados y
+pendientes apilados sobre el total, en un SVG con los anchos como atributos
+—`style-src` no admite estilos en línea— que se estira a su celda. Siempre va
+con la cuenta escrita al lado y con una leyenda. La usan la cobertura por curso
+y la vista de departamentos, ordenadas de menor a mayor avance.
 
 ---
 
@@ -171,7 +181,7 @@ los tonos los pone `base.css` con `stop-color: var(--…)`.
 `viewport`, el menú lateral, la barra de título, la tira de sub-pestañas y el
 contenido.
 
-Ahí vive también la constante `MENU`: **once secciones en cuatro grupos**. Lo
+Ahí vive también la constante `MENU`: **doce secciones en cuatro grupos**. Lo
 que antes eran entradas hermanas del rail —las cinco vistas de trabajadores, las
 dos cargas, las cuatro auditorías, las dos de base de datos— son hoy
 `subpestanas` dentro de su sección. Una pantalla no las declara: pasa su
@@ -264,6 +274,12 @@ El símbolo de marca viaja por el mismo camino, con su propio hash. No se enlaza
 desde Drive: `img-src 'self' data:` no lo permitiría, y la pantalla no debe
 depender de que un tercero siga en línea.
 
+Las tipografías también: `web/assets/fuentes/` guarda Manrope (variable, del
+200 al 800) e IBM Plex Mono (400, 500 y 600), subconjunto latino, con su
+licencia OFL al lado. `estaticos.ts` publica cada archivo bajo su hash y
+antepone a la hoja las reglas `@font-face` con esas direcciones, así que la
+misma pantalla se dibuja igual en cualquier computadora.
+
 Todo lo demás se sirve con `cache-control: no-store`. Con datos personales de
 por medio, una caché es una copia que nadie declaró.
 
@@ -313,6 +329,33 @@ documento, un tablero— basta con esto:
 > volver a declarar el `charset` o vuelve el mojibake.
 
 ---
+
+## 9. Patrones sin guiones, desde el módulo DC-3
+
+El módulo DC-3 necesitó cosas que en otra aplicación haría JavaScript. Se
+resolvieron con lo que el navegador ya trae, y quedan disponibles para cualquier
+sección:
+
+| Patrón | Cómo | Dónde |
+|---|---|---|
+| **Barra de módulo** | `renderLayout({ modulo })` sustituye la tira genérica de sub-pestañas; la sección declara `prefijo` en `MENU` para que el lateral siga encendido | `.modulo`, `web/pages/dc3/kit.ts` |
+| **Advertencia sobre la lista** | Elemento `popover` declarativo con `popovertarget`. Se cierra con Esc o con un clic fuera. Un navegador que no lo entiende ve un enlace a la pantalla de confirmación (`@supports not selector(:popover-open)`) | `.confirmacion`, `.solo-con-popover`, `.sin-popover` |
+| **Barra de selección** | Aparece con `:has(.casilla-kcm:checked)` y cuenta lo marcado con un contador de CSS; «Quitar las marcas» es un `<button type="reset">` | `.barra-seleccion` |
+| **Volver y descargar** | El `POST` responde `303` a la misma lista con el acuse, y `renderLayout({ descarga })` pone un `<meta refresh>` hacia una respuesta adjunta: el archivo baja y la página se queda | `.acuse` |
+| **Filtros con cifra** | Enlaces con `aria-current="true"` y la cuenta al lado; cada grupo cuenta sin su propio filtro | `.facetas`, `.faceta-opcion` |
+| **Buscar junto a la acción principal** | Un formulario de búsqueda que comparte pantalla con la acción principal lleva `.formulario-secundario`: su envío sale en el estilo secundario y la pantalla conserva un solo botón azul | `.formulario-secundario`, `web/pages/ocupaciones.ts` |
+| **Comparar sin perder el resultado** | El resultado de un `POST` no se guarda y volver atrás lo repetiría; lo que sirve para compararlo se abre con `target="_blank"` | `web/pages/ocupaciones.ts` |
+
+Dos cuidados que costaron un defecto cada uno:
+
+- **Una celda de tabla no se vuelve caja flexible.** Con `display: flex` en el
+  `<td>`, la línea inferior de la celda se dibujaba a otra altura que la del
+  renglón. Las acciones van en una caja propia dentro de la celda
+  (`.acciones-renglon`, `.celda-cobertura` dentro del `<td>`).
+- **Un `type="submit"` sin más es la acción principal.** `:where(button)[type="submit"]`
+  lo pinta de azul lleno. Filtrar o buscar no son la acción de la pantalla: los
+  envíos de `.facetas`, `.historial-formulario` y `.modulo-busqueda` van en el
+  estilo secundario.
 
 ## Resumen de rutas
 

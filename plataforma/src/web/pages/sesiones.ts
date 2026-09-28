@@ -4,12 +4,10 @@
  */
 
 import type { EnvironmentName } from "../../config/environment.ts";
-import type {
-  OperativeSessionSummary,
-  TrainingCatalogItem,
-} from "../../domain/quiosco/tipos.ts";
+import type { OperativeSessionSummary, TrainingCatalogItem } from "../../domain/quiosco/tipos.ts";
 import { ROOMS } from "../../domain/salas/tipos.ts";
 import { etiquetaDeEstadoDeSesion } from "../kit/etiquetas.ts";
+import { fechaCorta } from "../kit/fechas.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 import { horasDeLaJornada } from "../kit/horarios.ts";
@@ -39,7 +37,9 @@ export function renderSessionsPage(props: SessionsPageProps): string {
       <div class="seccion-cabecera cabecera-fila">
         <div>
           <h2 id="sesiones-titulo">Sesiones operativas</h2>
-          <p class="texto-secundario">Activas y cerradas desde ${props.cutoffDate}</p>
+          <p class="texto-secundario">
+            Activas y cerradas desde el ${fechaCorta(props.cutoffDate)}
+          </p>
         </div>
         <div>
           <a href="#crear-sesion" class="boton boton-primario">Nueva sesión</a>
@@ -59,7 +59,7 @@ export function renderSessionsPage(props: SessionsPageProps): string {
               <th>Duración</th>
               <th>Asistencias</th>
               <th>Estado</th>
-              <th class="columna-angosta" title="Autorizada">Aut.</th>
+              <th class="columna-angosta">Autorizada</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -82,7 +82,9 @@ export function renderSessionsPage(props: SessionsPageProps): string {
 
     <section id="crear-sesion" class="tarjeta" aria-labelledby="crear-titulo">
       <h3 id="crear-titulo">Nueva sesión</h3>
-      <p class="texto-secundario">La sesión se registra en estado BORRADOR.</p>
+      <p class="texto-secundario">
+        La sesión se crea como borrador y se abre cuando empieza el registro de asistencia.
+      </p>
 
       <form method="POST" action="/api/sessions" class="formulario-sesion">
         <div class="grupo-campo">
@@ -226,7 +228,7 @@ function renderFilaSesion(s: OperativeSessionSummary, pidePin: boolean): Html {
       <td><strong>${s.sessionCode}</strong></td>
       <td>${s.trainingName}</td>
       <td>${s.instructor}</td>
-      <td>${s.date}</td>
+      <td class="celda-fecha">${fechaCorta(s.date)}</td>
       <td class="celda-mono">${s.startTime || "—"}</td>
       <td>${s.durationMinutes} min</td>
       <td><strong>${s.totalAttendances}</strong> / 40</td>

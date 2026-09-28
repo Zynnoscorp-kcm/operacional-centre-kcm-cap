@@ -6,11 +6,11 @@
  * cinco dígitos no corresponden a ninguna persona.
  */
 
-import { parseWorkerNumber, type WorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber, type WorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type { HcRecord } from "../../src/domain/importacion-matriz/tipos.ts";
 import type { AttendanceRecord, SessionRecord } from "../../src/domain/quiosco/tipos.ts";
 import type { MatrixMapping, OverwritePolicy } from "../../src/domain/liberacion/tipos.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 
 export const SESSION_ID = "SES-0001";
 export const TRAINING_ID = "CAP-SINT-001";

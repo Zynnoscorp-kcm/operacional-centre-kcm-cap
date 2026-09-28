@@ -6,10 +6,10 @@
  * siempre y un cambio de estilo invalida solo, sin `@fastify/static` ni una
  * dependencia más.
  *
- * El símbolo de Kimberly-Clark viaja por el mismo camino. La política de
- * contenido declara `img-src 'self' data:`, así que la imagen se sirve desde
- * este árbol, con su propio hash, y la pantalla no depende de que un tercero
- * siga en línea.
+ * El símbolo de Kimberly-Clark y las tipografías viajan por el mismo camino.
+ * La política de contenido declara `img-src 'self' data:` y `font-src 'self'`,
+ * así que la imagen y las fuentes se sirven desde este árbol, cada una con su
+ * propio hash, y la pantalla no depende de que un tercero siga en línea.
  */
 
 import { createHash } from "node:crypto";
@@ -57,10 +57,11 @@ export interface ImagenEstatica {
   readonly tipo: string;
 }
 
-function construirHoja(): HojaDeEstilos {
-  const contenido = HOJAS.map((nombre) =>
-    readFileSync(join(DIRECTORIO_ESTATICOS, nombre), "utf8"),
-  ).join("\n");
+function construirHoja(caras: string): HojaDeEstilos {
+  const contenido = [
+    caras,
+    ...HOJAS.map((nombre) => readFileSync(join(DIRECTORIO_ESTATICOS, nombre), "utf8")),
+  ].join("\n");
   const hash = huella(contenido);
   return {
     ruta: `/assets/kcm-${hash}.css`,
@@ -79,10 +80,59 @@ function construirImagen(nombre: string, tipo: string): ImagenEstatica {
 }
 
 /**
+ * Las tipografías de la consola, con su licencia OFL junto a los archivos.
+ *
+ * Manrope para el texto y los títulos; IBM Plex Mono para lo que se lee como
+ * dato —nóminas, fechas, claves—. Antes la hoja nombraba una familia que no
+ * viajaba con la plataforma, y cada equipo dibujaba la que tuviera instalada:
+ * la misma pantalla se veía distinta en cada computadora. Son cuatro archivos
+ * del subconjunto latino —el español entero, con signos y comillas— que suman
+ * setenta kilobytes y se cachean para siempre.
+ */
+interface CaraTipografica {
+  readonly familia: string;
+  readonly peso: string;
+  readonly archivo: ImagenEstatica;
+}
+
+const CARAS: readonly CaraTipografica[] = [
+  {
+    familia: "Manrope",
+    peso: "200 800",
+    archivo: construirImagen("fuentes/manrope.woff2", "font/woff2"),
+  },
+  {
+    familia: "IBM Plex Mono",
+    peso: "400",
+    archivo: construirImagen("fuentes/plex-mono-regular.woff2", "font/woff2"),
+  },
+  {
+    familia: "IBM Plex Mono",
+    peso: "500",
+    archivo: construirImagen("fuentes/plex-mono-medium.woff2", "font/woff2"),
+  },
+  {
+    familia: "IBM Plex Mono",
+    peso: "600",
+    archivo: construirImagen("fuentes/plex-mono-semibold.woff2", "font/woff2"),
+  },
+];
+
+/** Las reglas `@font-face`, con la dirección de cada archivo ya con su hash. */
+function reglasDeCaras(): string {
+  return CARAS.map(
+    (cara) =>
+      `@font-face {\n  font-family: "${cara.familia}";\n  font-style: normal;\n` +
+      `  font-weight: ${cara.peso};\n  font-display: swap;\n` +
+      `  src: url("${cara.archivo.ruta}") format("woff2");\n}`,
+  ).join("\n");
+}
+
+/**
  * Se resuelve al importar el módulo, no en cada petición: si una hoja falta, el
  * proceso no arranca en vez de servir una pantalla sin estilo.
  */
-export const hojaDeEstilos: HojaDeEstilos = construirHoja();
+export const hojaDeEstilos: HojaDeEstilos = construirHoja(reglasDeCaras());
 
 /** Símbolo de marca, el mismo archivo que el departamento publicó en Drive. */
 export const simboloKcm: ImagenEstatica = construirImagen("simbolo-kcm.png", "image/png");
@@ -124,5 +174,8 @@ function construirGuion(nombre: string): HojaDeEstilos {
   };
 }
 
-/** Todo lo binario que la capa web publica bajo `/assets`. */
-export const imagenes: readonly ImagenEstatica[] = [simboloKcm];
+/** Todo lo binario que la capa web publica bajo `/assets`: el símbolo y las fuentes. */
+export const imagenes: readonly ImagenEstatica[] = [
+  simboloKcm,
+  ...CARAS.map((cara) => cara.archivo),
+];

@@ -3,13 +3,17 @@
  */
 
 import { DncEngine, UNIFIED_COURSES, resolveCourse } from "../../../../packages/dnc/index.js";
-import type { WorkerNumber } from "../numero-trabajador.ts";
-import type { WorkerSystemRepositoryPort, WorkerFilter } from "../../ports/sistema-trabajador.port.ts";
+import type { WorkerNumber } from "../comun/numero-trabajador.ts";
+import type {
+  WorkerSystemRepositoryPort,
+  WorkerFilter,
+} from "../../ports/sistema-trabajador.port.ts";
 import { calculateSeniority } from "./antiguedad.ts";
 import { deriveCategoryFromPosition } from "./reglas-de-categoria.ts";
 import { deriveSchooling } from "./escolaridad.ts";
 import { generatePhotoPlaceholder } from "./foto.ts";
 import type {
+  AreaCourseCompletion,
   DerivedWorkerProfile,
   WorkerRecord,
   WorkerCourseEvaluation,
@@ -188,6 +192,8 @@ export class WorkerSystemService {
      * Un plan de capacitación se aprueba y se firma. Cuando exista, va a ser una
      * tabla con su propio ciclo de vida, no un derivado de esta consulta.
      */
+    const areaComparison = await this.#comparacionDeArea(worker, asOfDate);
+
     return {
       worker,
       seniority,
@@ -198,7 +204,81 @@ export class WorkerSystemService {
       metrics,
       trajectory,
       dc3Log,
+      ...(areaComparison ? { areaComparison } : {}),
     };
+  }
+
+  /**
+   * Cuántos compañeros de área tienen vigente cada curso que les aplica.
+   *
+   * Donde hay base la suma la base, en una consulta. En memoria se evalúa con
+   * el motor a los compañeros del área, que son pocos. Si algo falla, la ficha
+   * se dibuja sin la referencia: es un contexto para leer la telaraña, no un
+   * dato por el que valga la pena dejar a alguien sin su ficha.
+   */
+  async #comparacionDeArea(
+    worker: WorkerRecord,
+    asOfDate: Date | string,
+  ): Promise<readonly AreaCourseCompletion[] | undefined> {
+    try {
+      if (this.repository.getAreaCourseCompletion) {
+        const filas = await this.repository.getAreaCourseCompletion(worker.employeeId);
+        return filas.flatMap((fila) => {
+          const curso = resolveCourse(fila.courseKey) ?? resolveCourse(fila.courseName);
+          return curso
+            ? [
+                {
+                  trainingId: curso.trainingId,
+                  applicable: fila.applicable,
+                  completed: fila.completed,
+                },
+              ]
+            : [];
+        });
+      }
+
+      if (!worker.area) return undefined;
+      const [companeros, historialPorTrabajador, sesionesPorTrabajador] = await Promise.all([
+        this.repository.listWorkers({ area: worker.area, activeOnly: true }),
+        this.repository.getLatestTrainingByWorker(),
+        this.repository.getScheduledSessionsByWorker(),
+      ]);
+
+      const cuentas = new Map<string, { applicable: number; completed: number }>();
+      for (const companero of companeros) {
+        if (companero.area !== worker.area) continue;
+        const historial: Record<string, string> = {};
+        for (const [curso, fecha] of Object.entries(
+          historialPorTrabajador.get(String(companero.employeeId)) ?? {},
+        )) {
+          for (const clave of clavesDeHistorial(curso, curso)) {
+            const actual = historial[clave];
+            if (!actual || fecha > actual) historial[clave] = fecha;
+          }
+        }
+        const evaluaciones = this.dncEngine.evaluateAllCoursesForEmployee({
+          employee: {
+            employeeId: companero.employeeId,
+            department: companero.department,
+            area: companero.area,
+            active: companero.active,
+          },
+          history: historial,
+          scheduledSessions: sesionesPorTrabajador.get(String(companero.employeeId)) ?? {},
+          asOfDate,
+        });
+        for (const evaluacion of evaluaciones) {
+          if (!evaluacion.isApplicable) continue;
+          const cuenta = cuentas.get(evaluacion.trainingId) ?? { applicable: 0, completed: 0 };
+          cuenta.applicable += 1;
+          if (evaluacion.status === "COMPLETADO") cuenta.completed += 1;
+          cuentas.set(evaluacion.trainingId, cuenta);
+        }
+      }
+      return [...cuentas].map(([trainingId, cuenta]) => ({ trainingId, ...cuenta }));
+    } catch {
+      return undefined;
+    }
   }
 
   /**

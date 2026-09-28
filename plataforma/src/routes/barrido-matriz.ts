@@ -15,9 +15,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { MatrixScanService } from "../domain/barrido-matriz/servicio.ts";
-import type { Clock } from "../ports/reloj.ts";
+import type { Clock } from "../ports/reloj.port.ts";
 import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { renderMatrixScanPage, type DatosDeBarrido } from "../web/pages/barrido-matriz.ts";
 
@@ -43,6 +43,7 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
       .send(
         renderMatrixScanPage({
           entorno: config.environment,
+          papel: config.role,
           sinBase: service === undefined,
           ...datos,
         }),
@@ -51,7 +52,6 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
   /** Lo que hay ahora mismo, para no repetirlo en cada respuesta. */
   const estado = (): Omit<DatosDeBarrido, "entorno" | "sinBase"> => {
     if (!service) return {};
-    const orden = service.ordenVigente();
     const informe = service.ultimoBarrido();
     const resultado = service.ultimoResultado();
     // Resuelta al recibir el barrido: la pantalla se dibuja en cada recarga y en
@@ -59,7 +59,6 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
     // consulta por visita contra un enlace medido en kilobytes por segundo.
     const comparacion = service.comparacion();
     return {
-      ...(orden ? { orden } : {}),
       ...(informe ? { informe } : {}),
       ...(resultado ? { resultado } : {}),
       ...(comparacion ? { comparacion } : {}),
@@ -80,37 +79,19 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
 
   const sinBase = (respuesta: FastifyReply): FastifyReply =>
     pantalla(respuesta, 503, {
-      error: "Sin base de datos conectada no hay contra qué comparar la matriz.",
+      error: "Sin conexión con la base de datos: no hay contra qué comparar la matriz.",
     });
 
-  app.get("/matriz", (peticion: FastifyRequest, respuesta: FastifyReply) => {
+  app.get("/matriz", async (peticion: FastifyRequest, respuesta: FastifyReply) => {
     if (!conSesion(peticion, respuesta)) return respuesta;
+    await service?.sincronizar();
     return pantalla(respuesta, 200, estado());
   });
 
-  app.post("/matriz/barrido", (peticion: FastifyRequest, respuesta: FastifyReply) => {
+  app.post("/matriz/descartar", async (peticion: FastifyRequest, respuesta: FastifyReply) => {
     if (!conSesion(peticion, respuesta)) return respuesta;
     if (!service) return sinBase(respuesta);
-
-    const orden = service.solicitar(actor(peticion));
-    peticion.log.info({ ordenId: orden.ordenId }, "barrido de matriz encargado");
-    // Se responde con redirección para que recargar la pantalla no vuelva a
-    // encargar: el `POST` deja de estar en el historial del navegador.
-    return respuesta.redirect("/matriz", 303);
-  });
-
-  app.post("/matriz/cancelar", (peticion: FastifyRequest, respuesta: FastifyReply) => {
-    if (!conSesion(peticion, respuesta)) return respuesta;
-    if (!service) return sinBase(respuesta);
-    service.cancelar();
-    peticion.log.info("encargo de barrido cancelado");
-    return respuesta.redirect("/matriz", 303);
-  });
-
-  app.post("/matriz/descartar", (peticion: FastifyRequest, respuesta: FastifyReply) => {
-    if (!conSesion(peticion, respuesta)) return respuesta;
-    if (!service) return sinBase(respuesta);
-    service.descartar();
+    await service.descartar();
     peticion.log.info("revisión de barrido descartada");
     return respuesta.redirect("/matriz", 303);
   });
@@ -123,6 +104,8 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
     const barridoId = typeof cuerpo.barridoId === "string" ? cuerpo.barridoId : "";
 
     try {
+      // La revisión pudo llegar a otra instancia: se trae antes de aplicarla.
+      await service.sincronizar();
       const resultado = await service.aplicar(barridoId, actor(peticion));
       peticion.log.info(
         {

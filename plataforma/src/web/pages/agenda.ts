@@ -130,7 +130,7 @@ export function renderAgendaPage(datos: DatosAgenda): string {
           ${renderFormulario(datos)}
         </main>
 
-        <footer class="agenda-pie">Horario 07:00–20:00 · America/Mexico_City</footer>
+        <footer class="agenda-pie">Horario de 07:00 a 20:00 · hora del centro de México</footer>
       </div>
 
       <!-- El mismo guion que dibuja los haces del quiosco, sin una constante distinta. -->
@@ -282,10 +282,7 @@ function renderFormulario(datos: DatosAgenda): Html {
     aria-labelledby="titulo-reserva"
   >
     <h2 id="titulo-reserva">Reservar una sala</h2>
-    <p>
-      Seleccione el bloque inicial y el final; ambos quedan incluidos. Un solo bloque reserva 30
-      minutos.
-    </p>
+    <p>El bloque inicial y el final quedan incluidos. Un solo bloque reserva 30 minutos.</p>
 
     ${datos.aviso ? html`<p class="agenda-mensaje exito" role="status">${datos.aviso}</p>` : ""}
     ${datos.error ? html`<p class="agenda-mensaje error" role="alert">${datos.error}</p>` : ""}

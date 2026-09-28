@@ -1,5 +1,5 @@
 /**
- * Bitácora de cargas sobre `kcm.auditoria`.
+ * Bitácora de cargas sobre `sistema.bitacora_auditoria`.
  *
  * No hay tabla nueva y es deliberado. La auditoría ya es el ledger append-only
  * del sistema —con trigger que aborta cualquier `UPDATE` o `DELETE`— y una carga
@@ -54,7 +54,7 @@ const TIPO_POR_ENTIDAD: Readonly<Record<string, TipoDeCarga>> = {
   CARGA_PADRON: "PADRON",
 };
 
-const HECHOS: readonly HechoDeCarga[] = ["ENCARGADA", "REVISADA", "APLICADA", "RECHAZADA"];
+const HECHOS: readonly HechoDeCarga[] = ["REVISADA", "APLICADA", "RECHAZADA"];
 
 interface FilaDeAsiento {
   evento_id: string;
@@ -71,7 +71,7 @@ interface FilaDeAsiento {
 const CLAVE_ARCHIVO = "archivo";
 
 /**
- * El dominio `kcm.identificador_solicitud` del esquema, copiado aquí.
+ * El dominio `comun.identificador_solicitud` del esquema, copiado aquí.
  *
  * No es paranoia: el asiento de rechazo lleva el identificador que vino del
  * formulario, y ése es el único de todos que un navegador puede fabricar. Un
@@ -129,7 +129,7 @@ export class SupabaseLoadLog implements LoadLogPort {
     const resumen: ResumenDeCarga = { ...asiento.resumen, [CLAVE_ARCHIVO]: asiento.archivo };
     try {
       const res = await this.#db.query<FilaDeAsiento>(
-        `INSERT INTO kcm.auditoria (
+        `INSERT INTO sistema.bitacora_auditoria (
            actor, rol, entidad_tipo, entidad_id, accion,
            estado_nuevo, solicitud_id, procedencia
          ) VALUES ($1, 'CAPACITACION', $2, $3, $4, $5, $6, $7)
@@ -163,7 +163,7 @@ export class SupabaseLoadLog implements LoadLogPort {
     const res = await this.#db.query<FilaDeAsiento>(
       `SELECT evento_id, ocurrido_en, actor, entidad_tipo, entidad_id,
               accion, estado_nuevo, solicitud_id
-         FROM kcm.auditoria
+         FROM sistema.bitacora_auditoria
         WHERE entidad_tipo IN ('CARGA_MATRIZ', 'CARGA_PADRON')
         ORDER BY secuencia DESC
         LIMIT $1;`,
@@ -176,7 +176,7 @@ export class SupabaseLoadLog implements LoadLogPort {
     const res = await this.#db.query<FilaDeAsiento>(
       `SELECT evento_id, ocurrido_en, actor, entidad_tipo, entidad_id,
               accion, estado_nuevo, solicitud_id
-         FROM kcm.auditoria
+         FROM sistema.bitacora_auditoria
         WHERE entidad_tipo = $1 AND accion = 'APLICADA'
         ORDER BY secuencia DESC
         LIMIT 1;`,

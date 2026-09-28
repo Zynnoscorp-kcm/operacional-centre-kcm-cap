@@ -2,7 +2,7 @@
  * Errores de dominio para Quiosco y Sesiones.
  */
 
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 
 export class SessionNotFoundError extends DomainError {
   constructor(message = "La sesión no existe o no está disponible.") {

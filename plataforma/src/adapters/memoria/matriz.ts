@@ -13,7 +13,10 @@ import type {
   ImportBatch,
   WorkerCatalogEntry,
 } from "../../domain/importacion-matriz/tipos.ts";
-import type { AtomicBatchOperations, MatrixRepositoryPort } from "../../ports/importacion-matriz.port.ts";
+import type {
+  AtomicBatchOperations,
+  MatrixRepositoryPort,
+} from "../../ports/importacion-matriz.port.ts";
 
 export interface MemoryDatabaseState {
   batches: ImportBatch[];
@@ -146,6 +149,16 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
     // 6. Insertar historial append-only
     for (const h of ops.historyEntriesToInsert) {
       this.history.push({ ...h });
+    }
+
+    // 7. Quién estuvo en esta matriz y la baja de quien falta en las dos fuentes.
+    if (ops.workersSeen) {
+      const vistos = new Set(ops.workersSeen);
+      this.workers.forEach((w, i) => {
+        const seenInMatrix = vistos.has(w.workerNumber);
+        const baja = !seenInMatrix && w.seenInRoster === false;
+        this.workers[i] = { ...w, seenInMatrix, active: baja ? false : w.active };
+      });
     }
 
     return Promise.resolve();

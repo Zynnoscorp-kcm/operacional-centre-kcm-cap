@@ -21,15 +21,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { RosterIngestService } from "../domain/padron/ingesta.ts";
-import type { Clock } from "../ports/reloj.ts";
+import type { Clock } from "../ports/reloj.port.ts";
 import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { MultipartError, parseMultipart } from "../server/multipart.ts";
 import { renderRosterPage, type DatosDePadron } from "../web/pages/padron.ts";
 
 /** Un `sem NN CAP.xlsx` pesa medio mega; el margen es para que nadie lo ajuste al hueso. */
 const MAXIMO_DEL_ARCHIVO = 8 * 1024 * 1024;
+const MAXIMO_EN_LA_NUBE = 4 * 1024 * 1024;
 
 export interface RosterRouteDeps {
   readonly config: AppConfig;
@@ -53,21 +54,20 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
       .send(
         renderRosterPage({
           entorno: config.environment,
+          papel: config.role,
           sinBase: service === undefined,
           ...datos,
         }),
       );
 
-  /** Lo que hay ahora mismo: la orden viva y la revisión pendiente, si las hay. */
+  /** Lo que hay ahora mismo: la revisión pendiente, si la hay. */
   const estado = (): Omit<DatosDePadron, "entorno" | "sinBase"> => {
     if (!service) return {};
-    const orden = service.ordenVigente();
     const plan = service.ultimoPlan();
     // La comparación se resolvió al leer el archivo y aquí sólo se recoge: la
     // pantalla se dibuja en cada recarga y no puede consultar la base cada vez.
     const comparacion = service.comparacion();
     return {
-      ...(orden ? { orden } : {}),
       ...(plan ? { plan } : {}),
       ...(comparacion ? { comparacion } : {}),
     };
@@ -87,46 +87,42 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
   const actor = (peticion: FastifyRequest): string =>
     sessions.leer(peticion.headers.cookie, clock.now())?.usuario ?? "acceso-abierto";
 
-  app.get("/padron", (peticion: FastifyRequest, respuesta: FastifyReply) => {
+  app.get("/padron", async (peticion: FastifyRequest, respuesta: FastifyReply) => {
     if (!conSesion(peticion, respuesta)) return respuesta;
+    await service?.sincronizar();
     return pantalla(respuesta, 200, estado());
   });
 
-  app.post("/padron/barrido", (peticion: FastifyRequest, respuesta: FastifyReply) => {
+  app.post("/padron/descartar", async (peticion: FastifyRequest, respuesta: FastifyReply) => {
     if (!conSesion(peticion, respuesta)) return respuesta;
-    if (!service) {
-      return pantalla(respuesta, 503, {
-        error: "Sin base de datos conectada el padrón no tiene a dónde aplicarse.",
-      });
-    }
-    const orden = service.solicitar(actor(peticion));
-    peticion.log.info({ ordenId: orden.ordenId }, "barrido de padrón encargado");
-    // Redirección para que recargar la pantalla no vuelva a encargar.
-    return respuesta.redirect("/padron", 303);
-  });
-
-  app.post("/padron/cancelar", (peticion: FastifyRequest, respuesta: FastifyReply) => {
-    if (!conSesion(peticion, respuesta)) return respuesta;
-    if (service) service.cancelar();
-    peticion.log.info("encargo de barrido de padrón cancelado");
-    return respuesta.redirect("/padron", 303);
-  });
-
-  app.post("/padron/descartar", (peticion: FastifyRequest, respuesta: FastifyReply) => {
-    if (!conSesion(peticion, respuesta)) return respuesta;
-    if (service) service.descartar();
+    if (service) await service.descartar();
     peticion.log.info("revisión de padrón descartada");
     return respuesta.redirect("/padron", 303);
   });
 
   app.post(
     "/padron",
-    { bodyLimit: MAXIMO_DEL_ARCHIVO },
+    {
+      // En la nube el tope baja a cuatro mebibytes, por debajo de los 4.5 MB en
+      // que corta el alojamiento. El padrón real ronda medio megabyte (medido
+      // el 2026-09-24 con `sem 29 CAP.xlsx`): cabe desde cualquier equipo.
+      bodyLimit: config.role === "nube" ? MAXIMO_EN_LA_NUBE : MAXIMO_DEL_ARCHIVO,
+      // Si alguna vez no cupiera, se dice por dónde sí cabe en vez de dejar que
+      // el corte parezca un archivo dañado: Excel lo manda en partes.
+      errorHandler: (error, _peticion, respuesta) => {
+        if (error.statusCode !== 413) throw error;
+        void pantalla(respuesta, 413, {
+          error:
+            "El archivo supera los 4 MB que acepta la plataforma publicada desde el navegador. " +
+            "Se envía desde Excel con Padrón de la semana, que lo manda en partes.",
+        });
+      },
+    },
     async (peticion: FastifyRequest, respuesta: FastifyReply) => {
       if (!conSesion(peticion, respuesta)) return respuesta;
       if (!service) {
         return pantalla(respuesta, 503, {
-          error: "Sin base de datos conectada el padrón no tiene a dónde aplicarse.",
+          error: "Sin conexión con la base de datos: el padrón no tiene dónde aplicarse.",
         });
       }
 
@@ -170,7 +166,7 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
     if (!conSesion(peticion, respuesta)) return respuesta;
     if (!service) {
       return pantalla(respuesta, 503, {
-        error: "Sin base de datos conectada el padrón no tiene a dónde aplicarse.",
+        error: "Sin conexión con la base de datos: el padrón no tiene dónde aplicarse.",
       });
     }
 
@@ -178,6 +174,8 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
     const planId = typeof cuerpo.planId === "string" ? cuerpo.planId : "";
 
     try {
+      // El plan pudo leerse en otra instancia: se trae antes de aplicarlo.
+      await service.sincronizar();
       const resultado = await service.aplicar(planId, actor(peticion));
       peticion.log.info(
         {

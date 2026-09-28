@@ -89,7 +89,7 @@ explícita del departamento**.
 - Ledgers con trigger de inmutabilidad: sólo se agrega, no existe edición.
 - Dominio de cinco dígitos para el número de nómina, que nunca es numérico.
 - Exclusión GiST contra traslape de reservaciones de sala.
-- Superficie de lectura separada en el esquema `kcm_lectura`.
+- Tablas repartidas en ocho esquemas por dominio (`organizacion`, `catalogo`, `operacion`, `matriz`, `dnc`, `dc3`, `seguridad`, `sistema`) y superficie de lectura separada en el esquema `lectura`.
 
 Justificación tabla por tabla en [`database/README.md`](../../database/README.md) y
 [`database/JUSTIFICACION.md`](../../database/JUSTIFICACION.md).
@@ -100,8 +100,8 @@ Justificación tabla por tabla en [`database/README.md`](../../database/README.m
 
 | Componente | Ruta | Papel |
 |---|---|---|
-| Cliente VBA | `clients/excel/vba/` | Único escritor del XLSB. Quince módulos ASCII puro que corren en Excel para Windows y para Mac, con todo lo dependiente del sistema en `KcmPlataforma` y un linter propio (`npm run lint:vba`) que lo exige, porque aquí no hay Excel para compilarlos. Contrato en [`VBA_BRIDGE.md`](../referencia/VBA_BRIDGE.md) |
-| DC-3 | `packages/dc3/` | Planificador, compositor PDF sin dependencias y ledger idempotente. Integrado como tarea en segundo plano. Ver [`DC3_AUTOMATIZACION.md`](../referencia/DC3_AUTOMATIZACION.md) |
+| Cliente VBA | `clients/excel/vba/` | Único escritor del XLSB. Diecisiete módulos ASCII puro que corren en Excel para Windows y para Mac, con todo lo dependiente del sistema en `KcmPlataforma` y un linter propio (`npm run lint:vba`) que lo exige, porque aquí no hay Excel para compilarlos. Contrato en [`VBA_BRIDGE.md`](../referencia/VBA_BRIDGE.md) |
+| DC-3 | `packages/dc3/` | Compositor PDF de la constancia, sin dependencias, y lector del padrón activo. La emisión vive en la consola (`/dc3`). Ver [`DC3_AUTOMATIZACION.md`](../referencia/DC3_AUTOMATIZACION.md) |
 | Reglas DNC | `packages/dnc/` | Catálogo unificado y motor de aplicabilidad en dos niveles: `department` para los cursos de calidad, `area` para los técnicos |
 | Lector XLSB | `packages/xlsb/` | Extracción ZIP/BIFF12 de valores cacheados. No automatiza Excel, no ejecuta macros, no recalcula fórmulas |
 | Contratos | `packages/contracts/` | Contratos versionados y máquina de estados |
@@ -111,7 +111,24 @@ Justificación tabla por tabla en [`database/README.md`](../../database/README.m
 
 ## Despliegue
 
-Un solo servicio: la plataforma Node.
+Una sola imagen, dos papeles. `KCM_ROLE` los declara y vale `local` por omisión.
+
+| Papel | Dónde corre | Qué hace |
+|---|---|---|
+| `local` | Equipo del departamento | Todo. Disco propio y sin techo de tamaño: el snapshot completo de la matriz y el padrón semanal |
+| `nube` | Alojamiento publicado | Las pantallas, las actualizaciones ligeras de fechas y las constancias DC-3, con topes menores. Rechaza con explicación las dos operaciones pesadas |
+
+El reparto no es una preferencia: un alojamiento efímero corta las peticiones en
+4.5 MB y no conserva disco entre una y otra. El puente declara 24 MiB porque por
+ahí viaja el libro entero. Eso no cabe en la nube, y cabe de sobra en la
+máquina donde ya está el Excel que lo origina. Las constancias DC-3 sí caben:
+400 en un PDF pesan unos 3 MB.
+
+Lo que **no** se parte es la verdad: los dos procesos hablan con la misma base y
+no divergen, porque los ledgers son de sólo agregar e idempotentes —el mismo
+motivo por el que ya conviven dos escritores—.
+
+Un solo servicio publicado: la plataforma Node.
 
 - **Imagen**: `infra/docker/Dockerfile`; blueprint en [`render.yaml`](../../render.yaml).
 - **Desarrollo en contenedores**: `infra/compose.yaml` y `infra/docker/`, documentado en

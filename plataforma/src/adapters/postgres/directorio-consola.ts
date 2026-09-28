@@ -29,7 +29,7 @@ export class SupabaseConsoleDirectory implements ConsoleDirectoryPort {
   async buscarPorUsuario(usuario: string): Promise<CuentaDeConsola | undefined> {
     const { rows } = await this.#db.query<FilaCuenta>(
       `SELECT credencial_id, usuario, nombre_visible, credencial_hash, sal
-         FROM kcm.credencial_consola
+         FROM seguridad.credencial_consola
         WHERE lower(usuario) = lower($1) AND revocada_en IS NULL
         LIMIT 1;`,
       [usuario],
@@ -47,7 +47,7 @@ export class SupabaseConsoleDirectory implements ConsoleDirectoryPort {
 
   async registrarAcceso(credencialId: string, cuando: string): Promise<void> {
     await this.#db.query(
-      `UPDATE kcm.credencial_consola
+      `UPDATE seguridad.credencial_consola
           SET ultimo_acceso_en = $2
         WHERE credencial_id = $1 AND revocada_en IS NULL;`,
       [credencialId, cuando],

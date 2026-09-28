@@ -2,7 +2,7 @@
  * `ObjectStorePort` sobre PostgreSQL.
  *
  * Reemplaza a `FileObjectStore` allí donde el proceso no tiene disco que
- * sobreviva a un redespliegue. La evidencia y su apuntador en `kcm.evidencia`
+ * sobreviva a un redespliegue. La evidencia y su apuntador en `operacion.sesion_evidencia`
  * pasan a vivir en el mismo lugar, así que dejan de poder desincronizarse.
  *
  * No hay saneamiento de ruta como en el adaptador de disco, y no es un olvido:
@@ -27,7 +27,7 @@ export class PostgresObjectStore implements ObjectStorePort {
    */
   async put(path: string, content: Uint8Array, contentType: string): Promise<void> {
     await this.#db.query(
-      `INSERT INTO kcm.objeto_almacenado (ruta, contenido, tipo_mime)
+      `INSERT INTO sistema.archivo (ruta, contenido, tipo_mime)
             VALUES ($1, $2, $3)
        ON CONFLICT (ruta) DO UPDATE
               SET contenido = EXCLUDED.contenido,
@@ -39,7 +39,7 @@ export class PostgresObjectStore implements ObjectStorePort {
 
   async get(path: string): Promise<Uint8Array | null> {
     const { rows } = await this.#db.query<{ contenido: Buffer }>(
-      "SELECT contenido FROM kcm.objeto_almacenado WHERE ruta = $1",
+      "SELECT contenido FROM sistema.archivo WHERE ruta = $1",
       [path],
     );
     const fila = rows[0];

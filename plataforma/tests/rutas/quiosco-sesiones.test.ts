@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
 import { MemoryKioskSessionRepository } from "../../src/adapters/memoria/quiosco.ts";
 import { loadConfig } from "../../src/config/environment.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 
 const FIXED_DATE = new Date("2026-08-03T12:00:00.000Z");
@@ -95,6 +95,23 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     const body = JSON.parse(resOk.body);
     assert.equal(body.success, true);
     assert.ok(body.grant);
+  });
+
+  it("POST /api/kiosk/launch con un curso fuera del catálogo pide elegir de la lista", async () => {
+    const { app } = await createTestApp();
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/kiosk/launch",
+      payload: {
+        pin: "8765",
+        trainingId: "CURSO-INEXISTENTE",
+        instructor: "INSTRUCTOR_SALA",
+        date: "2026-08-03",
+        durationMinutes: 60,
+      },
+    });
+    assert.equal(respuesta.statusCode, 400);
+    assert.match(respuesta.body, /Seleccione un nombre válido de la lista\./u);
   });
 
   it("POST /api/kiosk/launch crea la sesión pero la deja esperando autorización", async () => {

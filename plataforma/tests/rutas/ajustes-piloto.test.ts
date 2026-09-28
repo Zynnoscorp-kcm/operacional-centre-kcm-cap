@@ -14,7 +14,7 @@ import { describe, it } from "node:test";
 import { MemoryKioskSessionRepository } from "../../src/adapters/memoria/quiosco.ts";
 import { ConfigError, loadConfig } from "../../src/config/environment.ts";
 import { shortPlantName } from "../../src/domain/sistema-trabajador/planta.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type { InjectOptions } from "fastify";
 
 import { buildServer } from "../../src/server/build-server.ts";

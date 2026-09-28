@@ -19,6 +19,13 @@ export interface AtomicBatchOperations {
   readonly recordsToInsert: readonly HcRecord[];
   readonly recordsToUpdate: readonly HcRecord[];
   readonly historyEntriesToInsert: readonly HcRecordHistory[];
+  /**
+   * Nóminas que trae una matriz completa. Con ellas se anota quién estuvo en
+   * la última matriz y se da de baja a quien no está ni ahí ni en el último
+   * padrón (0046). Ausente en una carga parcial: faltar en un extracto no dice
+   * nada de nadie.
+   */
+  readonly workersSeen?: readonly string[];
 }
 
 export interface MatrixRepositoryPort {

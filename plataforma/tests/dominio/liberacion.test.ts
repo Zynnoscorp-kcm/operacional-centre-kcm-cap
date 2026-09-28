@@ -19,7 +19,7 @@ import {
   ReleaseIntegrityError,
 } from "../../src/domain/liberacion/errores.ts";
 import { releaseIdempotencyKey } from "../../src/domain/liberacion/plan-de-escritura.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import {
   AUDITOR,
   CAPACITACION,

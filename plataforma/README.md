@@ -33,10 +33,13 @@ imports relativos llevan la extensión `.ts` escrita.
 ```
 src/
 ├── domain/          las reglas del negocio. No conoce HTTP, ni Fastify, ni SQL.
-├── ports/           los contratos que el dominio declara hacia afuera.
+│   └── comun/       piezas de todos los módulos: errores, número de trabajador, día de planta
+├── ports/           los contratos que el dominio declara hacia afuera (`*.port.ts`).
 ├── adapters/        las implementaciones de esos contratos.
 │   ├── postgres/    persistencia real
-│   └── memoria/     equivalentes en memoria, para pruebas y corridas locales
+│   ├── memoria/     equivalentes en memoria, para pruebas y corridas locales
+│   ├── archivos/    disco, padrón XLSX y matriz XLSB
+│   └── sistema/     reloj del sistema
 ├── routes/          una ruta por archivo; traduce HTTP a llamadas de dominio.
 ├── web/             render en servidor.
 │   ├── pages/       una pantalla por archivo
@@ -76,7 +79,7 @@ tests/
 ## Garantías cubiertas por pruebas
 
 - **El número de trabajador es texto de cinco dígitos.**
-  `src/domain/numero-trabajador.ts` lo valida y nunca lo convierte a número; el
+  `src/domain/comun/numero-trabajador.ts` lo valida y nunca lo convierte a número; el
   mensaje de rechazo no reproduce el valor recibido.
 - **La consola cierra por omisión.** `src/server/guardia.ts` deniega toda ruta
   que no esté en su lista blanca; una ruta nueva nace cerrada.

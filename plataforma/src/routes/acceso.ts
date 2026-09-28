@@ -3,7 +3,7 @@
  *
  * Hay dos formas de entrar y el orden importa:
  *
- * 1. El directorio (`kcm.credencial_consola`, migración 0038). Es el
+ * 1. El directorio (`seguridad.credencial_consola`, migración 0038). Es el
  *    mecanismo real: una fila por persona, contraseña sólo como derivación
  *    scrypt, revocación con actor y motivo, y la hora de la última entrada. Con
  *    base conectada, es lo único que se consulta.
@@ -26,7 +26,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import type { Clock } from "../ports/reloj.ts";
+import type { Clock } from "../ports/reloj.port.ts";
 import type { ConsoleDirectoryService } from "../domain/acceso/directorio-consola.ts";
 import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { igualEnTiempoConstante } from "../server/sesion-consola.ts";
@@ -45,13 +45,13 @@ const POLITICA_DEL_ACCESO = [
 
 const DIRECTORIO_SIN_CONECTAR =
   "El directorio de credenciales no está conectado. " +
-  "Solicite el acceso al departamento de capacitación.";
+  "El acceso lo asigna el departamento de capacitación.";
 
 /** Nunca dice cuál de los dos campos falló: eso confirmaría cuentas. */
 const CREDENCIAL_RECHAZADA = "Usuario o contraseña incorrectos.";
 
 const DEMASIADOS_INTENTOS =
-  "Demasiados intentos desde este equipo. Espere cinco minutos antes de reintentar.";
+  "Demasiados intentos desde este equipo. El acceso se reabre en cinco minutos.";
 
 const MAXIMO_DE_INTENTOS = 10;
 const VENTANA_MS = 5 * 60 * 1000;

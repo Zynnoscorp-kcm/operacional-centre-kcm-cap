@@ -2,20 +2,21 @@
  * Adaptador de repositorio para PostgreSQL / Supabase para Quiosco, Sesiones y Auditoría.
  *
  * Mapea a las tablas del esquema kcm:
- * - kcm.sesion
- * - kcm.asistencia
- * - kcm.registro_quiosco
- * - kcm.auditoria
- * - kcm.secreto_operacion
- * - kcm.concesion
- * - kcm.trabajador
- * - kcm.capacitacion
- * - kcm_lectura.obtener_sesiones_operativas()
+ * - operacion.sesion
+ * - operacion.asistencia
+ * - operacion.quiosco_registro
+ * - sistema.bitacora_auditoria
+ * - seguridad.secreto
+ * - seguridad.concesion
+ * - organizacion.trabajador
+ * - catalogo.capacitacion
+ * - lectura.obtener_sesiones_operativas()
  */
 
 import { scryptSync, timingSafeEqual } from "node:crypto";
 
-import { parseWorkerNumber, type WorkerNumber } from "../../domain/numero-trabajador.ts";
+import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
+import { InvalidInputError } from "../../domain/quiosco/errores.ts";
 import type {
   AuditEventRecord,
   AttendanceRecord,
@@ -180,7 +181,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   private async resolveActorId(identificador: string): Promise<string> {
     const clave = (identificador || "SISTEMA").trim() || "SISTEMA";
     const res = await this.db.query<{ actor_id: string }>(
-      `INSERT INTO kcm.actor (identificador, nombre_visible)
+      `INSERT INTO seguridad.actor (identificador, nombre_visible)
        VALUES ($1, $1)
        ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
        RETURNING actor_id;`,
@@ -198,11 +199,11 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
    */
   private async resolveTrainingId(trainingId: string): Promise<string> {
     const res = await this.db.query<{ capacitacion_id: string }>(
-      `SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = $1 LIMIT 1;`,
+      `SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $1 LIMIT 1;`,
       [trainingId],
     );
     const id = res.rows[0]?.capacitacion_id;
-    if (!id) throw new Error(`La capacitación ${trainingId} no está en el catálogo`);
+    if (!id) throw new InvalidInputError("Seleccione un nombre válido de la lista.");
     return id;
   }
 
@@ -220,7 +221,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     const autorizadaEn = session.authorized ? (session.authorizedAt ?? session.createdAt) : null;
 
     const sql = `
-      INSERT INTO kcm.sesion (
+      INSERT INTO operacion.sesion (
         sesion_id, codigo_sesion, capacitacion_id, capacitador_id,
         fecha_sesion, duracion_minutos, sala, turno, tipo_evento,
         cupo_maximo, estado, autorizada, autorizada_por, autorizada_en,
@@ -297,7 +298,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     }
 
     if (fields.length > 0) {
-      const sql = `UPDATE kcm.sesion SET ${fields.join(", ")} WHERE sesion_id = $1;`;
+      const sql = `UPDATE operacion.sesion SET ${fields.join(", ")} WHERE sesion_id = $1;`;
       await this.db.query(sql, values);
     }
 
@@ -310,10 +311,10 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     const sql = `
       SELECT s.*, c.clave_curso, c.nombre as capacitacion_nombre, a.nombre_visible as capacitador_nombre,
              cr.nombre_visible as creador_nombre
-      FROM kcm.sesion s
-      JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-      LEFT JOIN kcm.actor a ON a.actor_id = s.capacitador_id
-      LEFT JOIN kcm.actor cr ON cr.actor_id = s.creada_por
+      FROM operacion.sesion s
+      JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+      LEFT JOIN seguridad.actor a ON a.actor_id = s.capacitador_id
+      LEFT JOIN seguridad.actor cr ON cr.actor_id = s.creada_por
       WHERE s.sesion_id = $1;
     `;
     const res = await this.db.query<SesionRow>(sql, [sessionId]);
@@ -326,10 +327,10 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     const sql = `
       SELECT s.*, c.clave_curso, c.nombre as capacitacion_nombre, a.nombre_visible as capacitador_nombre,
              cr.nombre_visible as creador_nombre
-      FROM kcm.sesion s
-      JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-      LEFT JOIN kcm.actor a ON a.actor_id = s.capacitador_id
-      LEFT JOIN kcm.actor cr ON cr.actor_id = s.creada_por
+      FROM operacion.sesion s
+      JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+      LEFT JOIN seguridad.actor a ON a.actor_id = s.capacitador_id
+      LEFT JOIN seguridad.actor cr ON cr.actor_id = s.creada_por
       WHERE s.codigo_sesion = $1;
     `;
     const res = await this.db.query<SesionRow>(sql, [sessionCode.trim().toUpperCase()]);
@@ -342,10 +343,10 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     const sql = `
       SELECT s.*, c.clave_curso, c.nombre as capacitacion_nombre, a.nombre_visible as capacitador_nombre,
              cr.nombre_visible as creador_nombre
-      FROM kcm.sesion s
-      JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-      LEFT JOIN kcm.actor a ON a.actor_id = s.capacitador_id
-      LEFT JOIN kcm.actor cr ON cr.actor_id = s.creada_por
+      FROM operacion.sesion s
+      JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+      LEFT JOIN seguridad.actor a ON a.actor_id = s.capacitador_id
+      LEFT JOIN seguridad.actor cr ON cr.actor_id = s.creada_por
       WHERE s.solicitud_creacion_id = $1;
     `;
     const res = await this.db.query<SesionRow>(sql, [requestId]);
@@ -358,10 +359,10 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     const sql = `
       SELECT s.*, c.clave_curso, c.nombre as capacitacion_nombre, a.nombre_visible as capacitador_nombre,
              cr.nombre_visible as creador_nombre
-      FROM kcm.sesion s
-      JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-      LEFT JOIN kcm.actor a ON a.actor_id = s.capacitador_id
-      LEFT JOIN kcm.actor cr ON cr.actor_id = s.creada_por
+      FROM operacion.sesion s
+      JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+      LEFT JOIN seguridad.actor a ON a.actor_id = s.capacitador_id
+      LEFT JOIN seguridad.actor cr ON cr.actor_id = s.creada_por
       ORDER BY s.fecha_sesion DESC, s.codigo_sesion;
     `;
     const res = await this.db.query<SesionRow>(sql);
@@ -372,7 +373,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   /**
    * Sesiones que la consola puede operar hoy.
    *
-   * No usa `kcm_lectura.obtener_sesiones_operativas()`: esa función excluye
+   * No usa `lectura.obtener_sesiones_operativas()`: esa función excluye
    * `BORRADOR`, y una sesión recién creada nace precisamente ahí. El efecto era
    * que `/sesiones` creaba la sesión, redirigía, y la lista se veía idéntica:
    * la sesión existía en la base y la pantalla no la mostraba nunca, así que su
@@ -400,10 +401,10 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
         s.estado,
         s.autorizada,
         COUNT(a.asistencia_id) AS total_asistencias
-      FROM kcm.sesion s
-      JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-      LEFT JOIN kcm.actor act ON act.actor_id = s.capacitador_id
-      LEFT JOIN kcm.asistencia a ON a.sesion_id = s.sesion_id
+      FROM operacion.sesion s
+      JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+      LEFT JOIN seguridad.actor act ON act.actor_id = s.capacitador_id
+      LEFT JOIN operacion.asistencia a ON a.sesion_id = s.sesion_id
       WHERE s.estado IN ('ABIERTA', 'CERRADA', 'PRELIBERACION', 'LISTA_PARA_LIBERAR')
          OR (s.estado IN ('BORRADOR', 'LIBERADA_TOTAL') AND s.fecha_sesion >= $1::date)
       GROUP BY s.sesion_id, s.codigo_sesion, c.capacitacion_id, c.clave_curso, c.nombre,
@@ -425,7 +426,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
       // veía.
       trainingId: r.clave_curso ?? r.capacitacion_id,
       trainingName: r.capacitacion,
-      // El `LEFT JOIN` sobre `kcm.actor` puede no traer nombre y el contrato
+      // El `LEFT JOIN` sobre `seguridad.actor` puede no traer nombre y el contrato
       // promete texto: sin este respaldo la pantalla imprimía «null».
       instructor: r.capacitador ?? "",
       date:
@@ -471,14 +472,14 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   // --- Asistencias ---
   async createAttendance(attendance: AttendanceRecord): Promise<AttendanceRecord> {
     const sql = `
-      INSERT INTO kcm.asistencia (
+      INSERT INTO operacion.asistencia (
         asistencia_id, sesion_id, trabajador_id, numero_trabajador_capturado,
         ruta, origen, identidad_validada, asistencia_comprobada,
         estado_examen, estado, excluida_de_liberacion, liberada,
         solicitud_id, version
       ) VALUES (
         $1, $2,
-        (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3 LIMIT 1),
+        (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3 LIMIT 1),
         $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
       )
       RETURNING *;
@@ -507,8 +508,8 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   ): Promise<AttendanceRecord | null> {
     const sql = `
       SELECT a.*, t.numero_trabajador
-      FROM kcm.asistencia a
-      LEFT JOIN kcm.trabajador t ON t.trabajador_id = a.trabajador_id
+      FROM operacion.asistencia a
+      LEFT JOIN organizacion.trabajador t ON t.trabajador_id = a.trabajador_id
       WHERE a.sesion_id = $1 AND (t.numero_trabajador = $2 OR a.numero_trabajador_capturado = $2);
     `;
     const res = await this.db.query<AsistenciaRow>(sql, [sessionId, String(workerNumber)]);
@@ -520,8 +521,8 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   async listAttendancesBySession(sessionId: string): Promise<readonly AttendanceRecord[]> {
     const sql = `
       SELECT a.*, t.numero_trabajador
-      FROM kcm.asistencia a
-      LEFT JOIN kcm.trabajador t ON t.trabajador_id = a.trabajador_id
+      FROM operacion.asistencia a
+      LEFT JOIN organizacion.trabajador t ON t.trabajador_id = a.trabajador_id
       WHERE a.sesion_id = $1;
     `;
     const res = await this.db.query<AsistenciaRow>(sql, [sessionId]);
@@ -529,7 +530,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   }
 
   async countAttendancesBySession(sessionId: string): Promise<number> {
-    const sql = `SELECT COUNT(*)::int as total FROM kcm.asistencia WHERE sesion_id = $1;`;
+    const sql = `SELECT COUNT(*)::int as total FROM operacion.asistencia WHERE sesion_id = $1;`;
     const res = await this.db.query<{ total: number }>(sql, [sessionId]);
     return res.rows[0]?.total || 0;
   }
@@ -561,12 +562,12 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   // --- Journal Quiosco ---
   async createJournal(journal: KioskRegistrationJournal): Promise<KioskRegistrationJournal> {
     const sql = `
-      INSERT INTO kcm.registro_quiosco (
+      INSERT INTO operacion.quiosco_registro (
         registro_id, sesion_id, trabajador_id, numero_trabajador_capturado,
         asistencia_id, solicitud_id, estacion, fase, completado_en
       ) VALUES (
         $1, $2,
-        (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3 LIMIT 1),
+        (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3 LIMIT 1),
         $3, $4, $5, $6, $7, $8
       )
       RETURNING *;
@@ -613,12 +614,12 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     }
 
     if (fields.length > 0) {
-      const sql = `UPDATE kcm.registro_quiosco SET ${fields.join(", ")} WHERE registro_id = $1;`;
+      const sql = `UPDATE operacion.quiosco_registro SET ${fields.join(", ")} WHERE registro_id = $1;`;
       await this.db.query(sql, values);
     }
 
     const res = await this.db.query<RegistroQuioscoRow>(
-      `SELECT * FROM kcm.registro_quiosco WHERE registro_id = $1`,
+      `SELECT * FROM operacion.quiosco_registro WHERE registro_id = $1`,
       [registrationId],
     );
     const fila = res.rows[0];
@@ -627,7 +628,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   }
 
   async getJournalByRequest(requestId: string): Promise<KioskRegistrationJournal | null> {
-    const sql = `SELECT * FROM kcm.registro_quiosco WHERE solicitud_id = $1 LIMIT 1;`;
+    const sql = `SELECT * FROM operacion.quiosco_registro WHERE solicitud_id = $1 LIMIT 1;`;
     const res = await this.db.query<RegistroQuioscoRow>(sql, [requestId]);
     const fila = res.rows[0];
     if (!fila) return null;
@@ -638,7 +639,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     sessionId: string,
     workerNumber: WorkerNumber,
   ): Promise<KioskRegistrationJournal | null> {
-    const sql = `SELECT * FROM kcm.registro_quiosco WHERE sesion_id = $1 AND numero_trabajador_capturado = $2 LIMIT 1;`;
+    const sql = `SELECT * FROM operacion.quiosco_registro WHERE sesion_id = $1 AND numero_trabajador_capturado = $2 LIMIT 1;`;
     const res = await this.db.query<RegistroQuioscoRow>(sql, [sessionId, String(workerNumber)]);
     const fila = res.rows[0];
     if (!fila) return null;
@@ -646,7 +647,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   }
 
   async listJournalsBySession(sessionId: string): Promise<readonly KioskRegistrationJournal[]> {
-    const sql = `SELECT * FROM kcm.registro_quiosco WHERE sesion_id = $1;`;
+    const sql = `SELECT * FROM operacion.quiosco_registro WHERE sesion_id = $1;`;
     const res = await this.db.query<RegistroQuioscoRow>(sql, [sessionId]);
     return res.rows.map((r) => this.mapJournalRow(r));
   }
@@ -654,7 +655,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   async listIncompleteJournalsBySession(
     sessionId: string,
   ): Promise<readonly KioskRegistrationJournal[]> {
-    const sql = `SELECT * FROM kcm.registro_quiosco WHERE sesion_id = $1 AND fase <> 'COMPLETADO';`;
+    const sql = `SELECT * FROM operacion.quiosco_registro WHERE sesion_id = $1 AND fase <> 'COMPLETADO';`;
     const res = await this.db.query<RegistroQuioscoRow>(sql, [sessionId]);
     return res.rows.map((r) => this.mapJournalRow(r));
   }
@@ -677,9 +678,9 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   // --- Auditoría ---
 
   /**
-   * El enum `kcm.rol` tiene cuatro valores y `KIOSK` no es uno: el equipo de la
+   * El enum `comun.rol` tiene cuatro valores y `KIOSK` no es uno: el equipo de la
    * sala actúa con el rol del capacitador, que es quien responde por lo que ahí
-   * se registra. Sin esta traducción, `INSERT` en `kcm.auditoria` abortaba y se
+   * se registra. Sin esta traducción, `INSERT` en `sistema.bitacora_auditoria` abortaba y se
    * llevaba consigo la operación entera —el PIN correcto respondía «error en el
    * servidor»—, porque la bitácora es parte de la misma transacción.
    */
@@ -692,7 +693,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     event: Omit<AuditEventRecord, "eventId" | "occurredAt">,
   ): Promise<AuditEventRecord> {
     const sql = `
-      INSERT INTO kcm.auditoria (
+      INSERT INTO sistema.bitacora_auditoria (
         actor, rol, entidad_tipo, entidad_id, accion,
         estado_anterior, estado_nuevo, motivo, sesion_id,
         solicitud_id, procedencia, contrato_version
@@ -770,7 +771,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const sql = `SELECT * FROM kcm.auditoria ${where} ORDER BY secuencia ASC;`;
+    const sql = `SELECT * FROM sistema.bitacora_auditoria ${where} ORDER BY secuencia ASC;`;
     const res = await this.db.query<AuditoriaRow>(sql, values);
 
     return res.rows.map((r) => ({
@@ -794,7 +795,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
 
   // --- Padrón ---
   async isWorkerActive(workerNumber: WorkerNumber): Promise<boolean> {
-    const sql = `SELECT activo FROM kcm.trabajador WHERE numero_trabajador = $1 LIMIT 1;`;
+    const sql = `SELECT activo FROM organizacion.trabajador WHERE numero_trabajador = $1 LIMIT 1;`;
     const res = await this.db.query<{ activo: boolean }>(sql, [String(workerNumber)]);
     return res.rows.length > 0 && Boolean(res.rows[0]?.activo);
   }
@@ -802,8 +803,8 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   // --- Catálogo ---
   async listActiveTrainings(): Promise<readonly TrainingCatalogItem[]> {
     const sql = `SELECT c.capacitacion_id, c.clave_curso, c.nombre, c.activa, m.duracion_horas
-       FROM kcm.capacitacion c
-       LEFT JOIN kcm.metadato_curso_dc3 m ON m.capacitacion_id = c.capacitacion_id
+       FROM catalogo.capacitacion c
+       LEFT JOIN dc3.curso_configuracion m ON m.capacitacion_id = c.capacitacion_id
       WHERE c.activa = true ORDER BY c.nombre;`;
     const res = await this.db.query<CapacitacionRow>(sql);
     return res.rows.map((r) => ({
@@ -818,8 +819,8 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
 
   async getTrainingById(trainingId: string): Promise<TrainingCatalogItem | null> {
     const sql = `SELECT c.capacitacion_id, c.clave_curso, c.nombre, c.activa, m.duracion_horas
-       FROM kcm.capacitacion c
-       LEFT JOIN kcm.metadato_curso_dc3 m ON m.capacitacion_id = c.capacitacion_id
+       FROM catalogo.capacitacion c
+       LEFT JOIN dc3.curso_configuracion m ON m.capacitacion_id = c.capacitacion_id
       WHERE c.clave_curso = $1 OR c.capacitacion_id::text = $1 LIMIT 1;`;
     const res = await this.db.query<CapacitacionRow>(sql, [trainingId]);
     const r = res.rows[0];
@@ -836,7 +837,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   async verifySecret(scope: SecretScope, candidate: string): Promise<boolean> {
     const sql = `
       SELECT secreto_hash, algoritmo
-      FROM kcm.secreto_operacion
+      FROM seguridad.secreto
       WHERE alcance = $1 AND revocado_en IS NULL
         AND (expira_en IS NULL OR expira_en > now())
       ORDER BY creado_en DESC LIMIT 1;
@@ -862,13 +863,13 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   // --- Concesiones ---
   async createConcession(concession: ConcessionRecord): Promise<ConcessionRecord> {
     const sql = `
-      INSERT INTO kcm.concesion (
+      INSERT INTO seguridad.concesion (
         concesion_id, sesion_id, tipo, codigo_hash,
         estado, emitida_por, emitida_con_rol, emitida_en, expira_en,
         estacion, solicitud_id
       ) VALUES (
         $1, $2, $3, $4, $5,
-        (SELECT actor_id FROM kcm.actor WHERE identificador = $6 OR nombre_visible = $6 LIMIT 1),
+        (SELECT actor_id FROM seguridad.actor WHERE identificador = $6 OR nombre_visible = $6 LIMIT 1),
         $7, $8, $9, $10, $11
       );
     `;
@@ -889,7 +890,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   }
 
   async getConcessionByCodeHash(codeHash: string): Promise<ConcessionRecord | null> {
-    const sql = `SELECT * FROM kcm.concesion WHERE codigo_hash = $1 LIMIT 1;`;
+    const sql = `SELECT * FROM seguridad.concesion WHERE codigo_hash = $1 LIMIT 1;`;
     const res = await this.db.query<ConcesionRow>(sql, [codeHash]);
     const r = res.rows[0];
     if (!r) return null;
@@ -928,19 +929,19 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     }
     if (updates.consumedBy !== undefined) {
       fields.push(
-        `consumida_por = (SELECT actor_id FROM kcm.actor WHERE identificador = $${idx} OR nombre_visible = $${idx} LIMIT 1)`,
+        `consumida_por = (SELECT actor_id FROM seguridad.actor WHERE identificador = $${idx} OR nombre_visible = $${idx} LIMIT 1)`,
       );
       idx++;
       values.push(updates.consumedBy);
     }
 
     if (fields.length > 0) {
-      const sql = `UPDATE kcm.concesion SET ${fields.join(", ")} WHERE concesion_id = $1;`;
+      const sql = `UPDATE seguridad.concesion SET ${fields.join(", ")} WHERE concesion_id = $1;`;
       await this.db.query(sql, values);
     }
 
     const res = await this.db.query<ConcesionRow>(
-      `SELECT * FROM kcm.concesion WHERE concesion_id = $1`,
+      `SELECT * FROM seguridad.concesion WHERE concesion_id = $1`,
       [concessionId],
     );
     const r = res.rows[0];

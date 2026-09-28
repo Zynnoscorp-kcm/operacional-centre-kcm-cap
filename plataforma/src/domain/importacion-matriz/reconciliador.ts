@@ -12,7 +12,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { isWorkerNumber, parseWorkerNumber } from "../numero-trabajador.ts";
+import { isWorkerNumber, parseWorkerNumber } from "../comun/numero-trabajador.ts";
 import {
   InvalidSnapshotError,
   MatrixConflictError,

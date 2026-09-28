@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { RoomReservationService } from "../domain/salas/reservaciones.ts";
 import type { CreateReservationInput } from "../domain/salas/tipos.ts";
 import { igualEnTiempoConstante } from "../server/sesion-consola.ts";
@@ -39,7 +39,9 @@ export function registerRoomRoutes(
    * también la pide porque borra el horario de alguien más desde una pantalla
    * que está abierta a quien pase enfrente.
    */
-  const claveDeSala = deps.config.pilot.openAccess ? undefined : deps.config.pilot.roomPassword;
+  const claveDeSala = deps.config.pilot.openAccess
+    ? undefined
+    : (deps.config.roomPassword ?? deps.config.pilot.roomPassword);
 
   function claveValida(body: Record<string, unknown>): boolean {
     if (claveDeSala === undefined) return true;

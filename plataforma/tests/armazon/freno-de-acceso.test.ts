@@ -13,7 +13,10 @@ import { randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { describe, it } from "node:test";
 
 import { loadConfig } from "../../src/config/environment.ts";
-import type { ConsoleDirectoryPort, CuentaDeConsola } from "../../src/ports/directorio-consola.port.ts";
+import type {
+  ConsoleDirectoryPort,
+  CuentaDeConsola,
+} from "../../src/ports/directorio-consola.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 
 const FECHA_FIJA = new Date("2026-08-23T12:00:00.000Z");

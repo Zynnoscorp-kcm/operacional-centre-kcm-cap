@@ -15,7 +15,7 @@ import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
 
 import { loadConfig } from "../../src/config/environment.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 import { renderAgendaPage } from "../../src/web/pages/agenda.ts";
 

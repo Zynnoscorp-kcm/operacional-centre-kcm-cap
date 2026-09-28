@@ -42,7 +42,7 @@ import type {
   SessionRecord,
   ActorIdentity,
 } from "../../src/domain/quiosco/tipos.ts";
-import type { WorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type { EmployeeInfo, RosterRow } from "../../src/domain/preliberacion/tipos.ts";
 
 const FIXED_DATE = new Date("2026-08-03T10:00:00.000Z");

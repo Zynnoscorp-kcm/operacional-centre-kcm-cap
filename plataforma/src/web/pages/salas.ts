@@ -2,7 +2,8 @@ import type { AppConfig } from "../../config/environment.ts";
 import type { AuditEventRecord } from "../../domain/quiosco/tipos.ts";
 import type { RoomReservation } from "../../domain/salas/tipos.ts";
 import { ROOMS } from "../../domain/salas/tipos.ts";
-import { etiquetaDeEstadoDeReservacion } from "../kit/etiquetas.ts";
+import { etiquetaDeAuditoria, etiquetaDeEstadoDeReservacion } from "../kit/etiquetas.ts";
+import { fechaCorta } from "../kit/fechas.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
@@ -158,20 +159,20 @@ export function renderAuditPage(input: {
   const content = html`<section class="tarjeta">
     <div class="seccion-cabecera">
       <h2>Auditoría operativa</h2>
-      <p>Actor, entidad, transición, motivo, solicitud y procedencia.</p>
+      <p>Quién hizo qué, sobre qué registro y cuándo. No se edita ni se borra.</p>
     </div>
     <div class="tabla-contenedor">
       <table>
         <thead>
           <tr>
-            <th>Momento</th>
-            <th>Actor / rol</th>
-            <th>Entidad</th>
+            <th>Fecha</th>
+            <th>Quién</th>
+            <th>Registro</th>
             <th>Acción</th>
-            <th>Estados</th>
+            <th>Cambio</th>
             <th>Motivo</th>
             <th>Solicitud</th>
-            <th>Procedencia</th>
+            <th>Origen</th>
           </tr>
         </thead>
         <tbody>
@@ -180,14 +181,25 @@ export function renderAuditPage(input: {
               ? input.events.map(
                   (event) =>
                     html`<tr>
-                      <td>${event.occurredAt}</td>
-                      <td>${event.actor}<br />${event.role}</td>
-                      <td>${event.entityType}<br />${event.entityId}</td>
-                      <td>${event.action}</td>
-                      <td>${event.previousState ?? "—"} → ${event.newState ?? "—"}</td>
+                      <td class="celda-fecha">
+                        ${fechaCorta(event.occurredAt)} · ${event.occurredAt.slice(11, 16)}
+                      </td>
+                      <td>
+                        ${event.actor}
+                        <span class="persona-meta">${etiquetaDeAuditoria(event.role)}</span>
+                      </td>
+                      <td>
+                        ${etiquetaDeAuditoria(event.entityType)}
+                        <span class="persona-meta celda-mono">${event.entityId}</span>
+                      </td>
+                      <td>${etiquetaDeAuditoria(event.action)}</td>
+                      <td>
+                        ${etiquetaDeAuditoria(event.previousState)} →
+                        ${etiquetaDeAuditoria(event.newState)}
+                      </td>
                       <td>${event.reason ?? "—"}</td>
-                      <td>${event.requestId ?? "—"}</td>
-                      <td>${event.provenance}</td>
+                      <td class="celda-mono">${event.requestId ?? "—"}</td>
+                      <td>${etiquetaDeAuditoria(event.provenance)}</td>
                     </tr>`,
                 )
               : html`<tr>
@@ -201,7 +213,7 @@ export function renderAuditPage(input: {
   return renderLayout({
     titulo: "Auditoría",
     rutaActiva: "/auditoria",
-    subtitulo: "Registro inmutable de operación",
+    subtitulo: "Registro permanente de la operación",
     entorno: input.config.environment,
     contenido: content,
   });

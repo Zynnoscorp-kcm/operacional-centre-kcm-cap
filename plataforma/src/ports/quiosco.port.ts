@@ -2,7 +2,7 @@
  * Puerto de repositorio para Quiosco, Sesiones y Auditoría.
  */
 
-import type { WorkerNumber } from "../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../domain/comun/numero-trabajador.ts";
 import type {
   SessionRecord,
   AttendanceRecord,

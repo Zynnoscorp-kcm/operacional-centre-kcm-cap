@@ -25,7 +25,7 @@ import {
 } from "../../src/domain/consola-interna/tipos.ts";
 import type { InternalConsolePort } from "../../src/ports/consola-interna.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 
 const clock: Clock = {
   now: () => new Date("2026-08-03T12:00:00.000Z"),
@@ -291,7 +291,8 @@ describe("consola interna · adaptador de PostgreSQL", () => {
   it("enmascara la CURP y los marcadores de journal en el previsualizador", async () => {
     const repositorio = new SupabaseInternalConsoleRepository(
       ejecutorFalso((sql) => {
-        if (sql.includes("pg_class")) return [{ tabla: "trabajador", comentario: "Padrón." }];
+        if (sql.includes("pg_class"))
+          return [{ esquema: "organizacion", tabla: "trabajador", comentario: "Padrón." }];
         if (sql.includes("information_schema"))
           return [
             { column_name: "numero_trabajador" },
@@ -319,7 +320,8 @@ describe("consola interna · adaptador de PostgreSQL", () => {
     const repositorio = new SupabaseInternalConsoleRepository(
       ejecutorFalso((sql) => {
         sentencias.push(sql);
-        if (sql.includes("pg_class")) return [{ tabla: "sesion", comentario: null }];
+        if (sql.includes("pg_class"))
+          return [{ esquema: "operacion", tabla: "sesion", comentario: null }];
         if (sql.includes("information_schema")) return [{ column_name: "sesion_id" }];
         if (sql.includes("count(*)")) return [{ total: 0 }];
         return [];
@@ -366,7 +368,7 @@ describe("consola interna · rutas", () => {
         url: "/auditoria/sesiones",
         headers: { accept: "text/html" },
       });
-      assert.match(respuesta.body, /Sin base de datos conectada/u);
+      assert.match(respuesta.body, /Sin conexión con la base de datos/u);
     } finally {
       await app.close();
     }

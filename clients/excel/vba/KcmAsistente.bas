@@ -61,21 +61,14 @@ Public Sub KcmAsistenteConexion()
     On Error GoTo AsistenteError
     abierto = False
 
-    If MsgBox("Este asistente deja el equipo listo para transmitir la matriz." & vbCrLf & _
-        "Equipo detectado: " & KcmSistemaOperativo() & "." & vbCrLf & vbCrLf & _
-        "Le va a pedir tres cosas de la pantalla /excel de la plataforma:" & vbCrLf & _
-        "  1. La direccion del servidor (ENDPOINT)." & vbCrLf & _
-        "  2. El identificador del equipo (Client ID)." & vbCrLf & _
-        "  3. La credencial, que la plataforma muestra UNA sola vez." & vbCrLf & vbCrLf & _
-        "Despues le pedira el archivo de la matriz y el resto lo averigua solo." & vbCrLf & _
-        "No escribe nada en la base de datos: al terminar solo comprueba." & vbCrLf & vbCrLf & _
-        "Continuar?", vbQuestion + vbOKCancel, "Asistente de conexion KCM") <> vbOK Then Exit Sub
+    If Not KcmAvisoConfirmar("Conectar este equipo", _
+        "Se configurara la conexion de este equipo con la plataforma.", _
+        "Datos de la pantalla Conexion Excel: direccion, identificador y credencial. " & _
+        "Al final se elige el archivo de la matriz.") Then Exit Sub
 
     ' --- Hoja de configuracion -------------------------------------------
     If Not KcmAsistenteHojaConfig() Then
-        MsgBox "Falta la hoja " & KCM_CONFIG_SHEET & ". Se va a crear ahora." & vbCrLf & vbCrLf & _
-            "Si Excel pide guardar el libro, guardelo como KCM_Bridge.xlsm en el " & _
-            "escritorio y vuelva a ejecutar el asistente.", vbInformation, "Asistente KCM"
+        KcmAvisoHecho "Conectar este equipo", "Se creara la hoja " & KCM_CONFIG_SHEET & "."
         KcmInstallBridge
         If Not KcmAsistenteHojaConfig() Then Err.Raise vbObjectError + 7400, "KcmAsistenteConexion", _
             "No se pudo crear la hoja " & KCM_CONFIG_SHEET
@@ -83,69 +76,54 @@ Public Sub KcmAsistenteConexion()
 
     ' --- 1. Endpoint ------------------------------------------------------
     endpoint = Trim$(InputBox( _
-        "Pegue la direccion que muestra la pantalla /excel, en el renglon " & _
-        """Endpoint VBA""." & vbCrLf & vbCrLf & _
-        "Termina en /api/v1/vba-bridge y empieza con https://", _
-        "1 de 4: direccion del servidor", KcmAsistenteValor("ENDPOINT")))
+        "Direccion de la plataforma." & vbCrLf & vbCrLf & _
+        "Ejemplo: https://kcm-cap.vercel.app/api/v1/vba-bridge", _
+        "1 de 4: direccion", KcmAsistenteValor("ENDPOINT")))
     If Len(endpoint) = 0 Then GoTo AsistenteCancelado
     If Not KcmAsistenteEndpointValido(endpoint) Then
-        MsgBox "Esa direccion no sirve." & vbCrLf & vbCrLf & _
-            "Debe empezar con https:// (o con http:// solo si es 127.0.0.1 o " & _
-            "localhost) y terminar en /api/v1/vba-bridge." & vbCrLf & vbCrLf & _
-            "Copiela tal cual de la pantalla /excel y vuelva a ejecutar el asistente.", _
-            vbExclamation, "Asistente KCM"
+        KcmAvisoAtencion "Conectar este equipo", "La direccion no es valida.", _
+            "Formato: https://.../api/v1/vba-bridge"
         Exit Sub
     End If
 
     ' --- 2. Client ID -----------------------------------------------------
     clienteId = Trim$(InputBox( _
-        "Escriba el mismo Client ID con el que se emitio la credencial en /excel." & vbCrLf & _
-        vbCrLf & "Si no lo cambiaron, es KCM-OFFICE-01.", _
-        "2 de 4: identificador del equipo", KcmAsistenteValor("CLIENT_ID")))
+        "Identificador del equipo, tal como aparece en la credencial." & vbCrLf & vbCrLf & _
+        "Ejemplo: KCM-OFFICE-01", _
+        "2 de 4: identificador", KcmAsistenteValor("CLIENT_ID")))
     If Len(clienteId) = 0 Then GoTo AsistenteCancelado
 
     ' --- 3. Credencial ----------------------------------------------------
     ' Se escribe en la variable de usuario y no se guarda en el libro. El cuadro
     ' de entrada la muestra mientras se pega: conviene decirlo antes.
     secreto = Trim$(InputBox( _
-        "Pegue la credencial que la plataforma mostro al emitirla." & vbCrLf & vbCrLf & _
-        "Se guarda en " & KcmCredencialDonde() & ", no en este libro." & vbCrLf & _
-        "Mientras la pega queda a la vista: hagalo sin nadie mirando la pantalla." & vbCrLf & _
-        vbCrLf & "Si ya la configuro antes y no la tiene a mano, deje esto vacio " & _
-        "y se conservara la que ya estaba.", _
+        "Credencial emitida en la pantalla Conexion Excel." & vbCrLf & vbCrLf & _
+        "Se guarda en " & KcmCredencialDonde() & ". En blanco se conserva la actual.", _
         "3 de 4: credencial"))
     If Len(secreto) > 0 Then
         KcmCredencialGuardar secreto
         secreto = ""
     ElseIf Len(KcmCredencialLeer()) = 0 Then
-        MsgBox "No hay ninguna credencial guardada en este equipo y no se pego una." & vbCrLf & _
-            vbCrLf & "Emitala en la pantalla /excel y vuelva a ejecutar el asistente.", _
-            vbExclamation, "Asistente KCM"
+        KcmAvisoAtencion "Conectar este equipo", "Este equipo no tiene credencial.", _
+            "La credencial se emite en la pantalla Conexion Excel."
         Exit Sub
     End If
 
     ' --- 4. Archivo de la matriz ------------------------------------------
-    MsgBox "Ahora elija el archivo de la matriz." & vbCrLf & vbCrLf & _
-        "Tiene que ser el archivo .xlsb y estar en una carpeta del equipo o de " & _
-        "la red. Una direccion web de OneDrive o SharePoint no sirve: si la " & _
-        "matriz vive ahi, sincronicela primero y elija la copia local." & vbCrLf & vbCrLf & _
-        "En macOS puede aparecer despues un cuadro del sistema pidiendo permiso " & _
-        "para ese archivo: concedalo, y no se volvera a preguntar.", _
-        vbInformation, "4 de 4: archivo de la matriz"
+    KcmAvisoHecho "Conectar este equipo", "Falta elegir el archivo de la matriz.", _
+        "Archivo .xlsb en una carpeta del equipo o de la red."
     ruta = KcmAsistenteElegirArchivo()
     If Len(ruta) = 0 Then GoTo AsistenteCancelado
 
     problema = KcmLocalFileProblem(ruta)
     If Len(problema) > 0 Then
-        MsgBox "Ese archivo no se puede usar: " & problema, vbExclamation, "Asistente KCM"
+        KcmAvisoAtencion "Conectar este equipo", "El archivo no se puede usar.", problema
         Exit Sub
     End If
     If LCase$(Right$(ruta, 5)) <> ".xlsb" Then
-        MsgBox "La matriz tiene que ser un archivo .xlsb." & vbCrLf & vbCrLf & _
-            "El que eligio es " & Mid$(ruta, InStrRev(ruta, ".")) & _
-            ". Si la matriz esta en .xlsx o .xlsm, guardela como .xlsb " & _
-            "(Archivo, Guardar como, Libro binario de Excel) y elija esa copia.", _
-            vbExclamation, "Asistente KCM"
+        KcmAvisoAtencion "Conectar este equipo", _
+            "La matriz debe estar en formato .xlsb.", _
+            "Archivo elegido: " & Mid$(ruta, InStrRev(ruta, ".")) & "."
         Exit Sub
     End If
 
@@ -157,7 +135,7 @@ Public Sub KcmAsistenteConexion()
     KcmResetCaches
 
     ' --- Deteccion --------------------------------------------------------
-    Application.StatusBar = "KCM: leyendo la matriz para reconocer su forma"
+    Application.StatusBar = "KCM: leyendo la matriz..."
     Set libro = KcmOpenMaster(True)
     abierto = True
     problema = KcmAsistenteDetectar(libro, hoja, colTrabajador, colPrimerCurso, colUltimoCurso)
@@ -166,24 +144,18 @@ Public Sub KcmAsistenteConexion()
     Application.StatusBar = False
 
     If Len(problema) > 0 Then
-        MsgBox "El asistente no pudo reconocer la forma de la matriz." & vbCrLf & vbCrLf & _
-            problema & vbCrLf & vbCrLf & _
-            "La conexion quedo configurada; falta decir donde estan las columnas. " & _
-            "Pida a quien conoce la matriz que complete MATRIX_SHEET, " & _
-            "EMPLOYEE_COLUMN, FIRST_COURSE_COLUMN y LAST_COURSE_COLUMN en la hoja " & _
-            KCM_CONFIG_SHEET & ", y ejecute despues Verificar matriz.", _
-            vbExclamation, "Asistente KCM"
+        KcmAvisoAtencion "Conectar este equipo", _
+            "No se reconocio la estructura de la matriz.", _
+            problema & vbCrLf & vbCrLf & "La conexion quedo guardada. Las columnas se indican en el panel."
         KcmInstallButtons
         Exit Sub
     End If
 
-    resumen = "Esto es lo que el asistente encontro en la matriz:" & vbCrLf & vbCrLf & _
-        "  Hoja: " & hoja & vbCrLf & _
-        "  Numero de trabajador en la columna " & colTrabajador & vbCrLf & _
-        "  Cursos de la columna " & colPrimerCurso & " a la " & colUltimoCurso & vbCrLf & vbCrLf & _
-        "Si le parece correcto, acepte y se comprobara todo." & vbCrLf & _
-        "Si no, cancele: nada se ha transmitido."
-    If MsgBox(resumen, vbQuestion + vbOKCancel, "Confirme la forma de la matriz") <> vbOK Then
+    resumen = "Hoja: " & hoja & vbCrLf & _
+        "Numero de trabajador: columna " & colTrabajador & vbCrLf & _
+        "Cursos: columnas " & colPrimerCurso & " a " & colUltimoCurso
+    If Not KcmAvisoConfirmar("Conectar este equipo", _
+        "Estructura reconocida en la matriz.", resumen) Then
         GoTo AsistenteCancelado
     End If
 
@@ -194,20 +166,17 @@ Public Sub KcmAsistenteConexion()
     KcmResetCaches
 
     KcmInstallButtons
-    MsgBox "Configuracion lista." & vbCrLf & vbCrLf & _
-        "Ahora se va a comprobar la conexion y la matriz, sin transmitir nada. " & _
-        "El resultado queda en la hoja " & KCM_PANEL_SHEET & ", una linea por etapa." & _
-        vbCrLf & vbCrLf & _
-        "Si las cinco etapas salen en CORRECTO, el equipo esta listo.", _
-        vbInformation, "Asistente KCM"
+    KcmAvisoHecho "Conectar este equipo", "Configuracion completa.", _
+        "A continuacion se comprueba la conexion, sin enviar datos."
     KcmVerificarMatriz
     Exit Sub
 
 AsistenteCancelado:
     If abierto Then KcmReleaseMaster
     Application.StatusBar = False
-    MsgBox "Asistente cancelado. No se transmitio nada." & vbCrLf & vbCrLf & _
-        "Puede volver a ejecutarlo cuando tenga los datos.", vbInformation, "Asistente KCM"
+    ' La direccion, el identificador y la ruta pueden haberse guardado ya.
+    KcmPanelRefrescar
+    KcmAvisoHecho "Conectar este equipo", "Asistente cancelado."
     Exit Sub
 
 AsistenteError:
@@ -216,8 +185,9 @@ AsistenteError:
     On Error Resume Next
     If abierto Then KcmReleaseMaster
     Application.StatusBar = False
+    KcmPanelRefrescar
     On Error GoTo 0
-    MsgBox "El asistente se detuvo: " & descripcion, vbCritical, "Asistente KCM"
+    KcmAvisoFallo "Conectar este equipo", "El asistente se detuvo.", descripcion
 End Sub
 
 ''' Reconoce hoja y columnas leyendo el libro. Devuelve la cadena vacia si lo
@@ -392,8 +362,8 @@ Private Function KcmAsistenteElegirHoja(ByVal libro As Workbook) As String
         lista = lista & CStr(indice) & ". " & sheet.Name & vbCrLf
     Next sheet
 
-    respuesta = Trim$(InputBox("Este libro no tiene una hoja llamada HC." & vbCrLf & vbCrLf & _
-        "Escriba el numero de la hoja que contiene la matriz:" & vbCrLf & vbCrLf & lista, _
+    respuesta = Trim$(InputBox("No existe la hoja HC." & vbCrLf & vbCrLf & _
+        "Numero de la hoja con la matriz:" & vbCrLf & vbCrLf & lista, _
         "Hoja de la matriz"))
     If Len(respuesta) = 0 Then Exit Function
     elegida = CLng(Val(respuesta))
@@ -410,7 +380,7 @@ End Function
 ''' un lunes cualquiera sin que nadie hubiera tocado nada. En Windows la llamada
 ''' no hace nada.
 Private Function KcmAsistenteElegirArchivo() As String
-    KcmAsistenteElegirArchivo = KcmElegirArchivo("Elija el archivo de la matriz")
+    KcmAsistenteElegirArchivo = KcmElegirArchivo("Archivo de la matriz")
     If Len(KcmAsistenteElegirArchivo) = 0 Then Exit Function
     KcmConcederAcceso KcmAsistenteElegirArchivo, True
 End Function

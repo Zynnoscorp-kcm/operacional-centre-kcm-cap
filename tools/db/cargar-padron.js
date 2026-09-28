@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Ingesta del padrón semanal (`sem NN CAP.xlsx`) hacia `kcm.trabajador`.
+ * Ingesta del padrón semanal (`sem NN CAP.xlsx`) hacia `organizacion.trabajador`.
  *
  * El archivo cambia cada lunes, así que la ruta es un argumento y nunca una
  * constante: la única cosa declarada es la *forma* —las hojas `SND ACTIVOS` y
@@ -71,7 +71,7 @@ async function main() {
 
   const pool = new pg.Pool({
     connectionString: url,
-    options: "-c search_path=kcm,public",
+    options: "-c search_path=comun,public",
     ssl: { rejectUnauthorized: false },
     max: 4,
   });
@@ -81,7 +81,7 @@ async function main() {
     // sola lectura evita 1 686 viajes de ida y vuelta contra un presupuesto de
     // consultas que no los admite.
     const { rows: padron } = await pool.query(
-      "SELECT trabajador_id, numero_trabajador, curp, fecha_alta FROM kcm.trabajador",
+      "SELECT trabajador_id, numero_trabajador, curp, fecha_alta FROM organizacion.trabajador",
     );
     const porNumero = new Map(padron.map((t) => [t.numero_trabajador, t]));
 
@@ -137,7 +137,7 @@ async function main() {
       // `unnest` manda los tres lotes en tres sentencias en vez de en miles.
       if (cambiosCurp.length) {
         await cliente.query(
-          `UPDATE kcm.trabajador t
+          `UPDATE organizacion.trabajador t
               SET curp = v.curp, actualizado_en = now(), version = t.version + 1
              FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS curp) v
             WHERE t.trabajador_id = v.id`,
@@ -146,7 +146,7 @@ async function main() {
       }
       if (cambiosAlta.length) {
         await cliente.query(
-          `UPDATE kcm.trabajador t
+          `UPDATE organizacion.trabajador t
               SET fecha_alta = v.alta, actualizado_en = now(), version = t.version + 1
              FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::date[]) AS alta) v
             WHERE t.trabajador_id = v.id`,
@@ -161,16 +161,16 @@ async function main() {
       // `NOT EXISTS` deja pasar sólo a quien no tiene registro vigente; la
       // fecha distinta se revisa aparte, en `/padron`.
       const { rowCount: inducidos } = await cliente.query(
-        `INSERT INTO kcm.registro_hc
+        `INSERT INTO operacion.historial_capacitacion
            (clave_idempotencia, trabajador_id, capacitacion_id, fecha_capacitacion,
             procedencia, estado_registro, version_mapeo)
          SELECT v.clave, v.id, $4::uuid, v.fecha,
-                'ROSTER_ALTA'::kcm.procedencia_fecha, 'VIGENTE'::kcm.estado_registro_hc,
+                'ROSTER_ALTA'::comun.procedencia_fecha, 'VIGENTE'::comun.estado_historial,
                 'roster-v1'
            FROM (SELECT unnest($1::text[]) AS clave, unnest($2::uuid[]) AS id,
                         unnest($3::date[]) AS fecha) v
           WHERE NOT EXISTS (
-                  SELECT 1 FROM kcm.registro_hc r
+                  SELECT 1 FROM operacion.historial_capacitacion r
                    WHERE r.trabajador_id = v.id
                      AND r.capacitacion_id = $4::uuid
                      AND r.estado_registro = 'VIGENTE')

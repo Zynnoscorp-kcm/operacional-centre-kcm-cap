@@ -16,7 +16,7 @@
 
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { ConsoleDirectoryPort, CuentaDeConsola } from "../../ports/directorio-consola.port.ts";
 
 /** Sal de relleno para el caso sin cuenta. Se sortea al cargar el módulo. */

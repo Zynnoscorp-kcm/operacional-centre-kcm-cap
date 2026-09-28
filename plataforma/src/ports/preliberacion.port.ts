@@ -4,7 +4,7 @@
  * trabajan contra esta interfaz, nunca contra Supabase ni memoria directamente.
  */
 
-import type { WorkerNumber } from "../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../domain/comun/numero-trabajador.ts";
 import type {
   AttendanceRecord,
   SessionRecord,

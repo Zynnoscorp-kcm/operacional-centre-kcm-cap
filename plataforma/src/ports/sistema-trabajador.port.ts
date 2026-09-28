@@ -2,7 +2,7 @@
  * Puerto de acceso a datos para el Sistema General por Trabajador (Función 8).
  */
 
-import type { WorkerNumber } from "../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../domain/comun/numero-trabajador.ts";
 import type {
   WorkerRecord,
   CourseTrajectoryEntry,
@@ -73,6 +73,14 @@ export interface DepartmentDncSummary {
   readonly datosInsuficientes: number;
 }
 
+/** Un curso exigible en el área de una persona, con cuántos lo tienen vigente. */
+export interface AreaCourseCompletionRow {
+  readonly courseKey: string;
+  readonly courseName: string;
+  readonly applicable: number;
+  readonly completed: number;
+}
+
 /** Un renglón por curso exigible, con el nivel de la regla que lo impone. */
 export interface CourseDncSummary {
   readonly curso: string;
@@ -120,12 +128,19 @@ export interface WorkerSystemRepositoryPort {
    * base: devuelve decenas de filas ya sumadas en vez de decenas de miles.
    *
    * La aplicabilidad —a quién le toca cada curso— sigue viviendo en un solo
-   * lugar, `kcm.regla_dnc`. Lo que la consulta reproduce es la derivación de
+   * lugar, `dnc.regla`. Lo que la consulta reproduce es la derivación de
    * estado del motor: vigente contra vencido según `meses_recurrencia` y
    * `dias_gracia`, programado si hay asistencia sin liberar, pendiente si no.
    */
   getDncSummaryByDepartment?(): Promise<readonly DepartmentDncSummary[]>;
   getDncSummaryByCourse?(): Promise<readonly CourseDncSummary[]>;
+  /**
+   * Los cursos exigibles en el área de una persona, con cuántos de sus
+   * compañeros de área los tienen vigentes. Es la referencia de la telaraña de
+   * la ficha, y opcional por la misma razón que los resúmenes: donde hay base,
+   * la suma la base; en memoria, el servicio la calcula con el motor.
+   */
+  getAreaCourseCompletion?(workerNumber: WorkerNumber): Promise<readonly AreaCourseCompletionRow[]>;
   getWorkerDc3Records(workerNumber: WorkerNumber): Promise<readonly Dc3WorkerLogEntry[]>;
   listDepartments(): Promise<readonly string[]>;
   listAreas(department?: string): Promise<readonly string[]>;

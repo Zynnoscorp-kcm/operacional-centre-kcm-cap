@@ -2,14 +2,14 @@
  * Adaptador PostgreSQL para el Sistema General por Trabajador (Función 8).
  *
  * Tablas que consume:
- * - `kcm.trabajador`, `kcm.departamento`, `kcm.area`, `kcm.puesto`
- * - `kcm.atributo_declarado` (escolaridad declarada, con su procedencia)
- * - `kcm.registro_hc` y `kcm.capacitacion` (trayectoria acreditada)
- * - `kcm.sesion` y `kcm.asistencia` (cursos ya programados)
- * - `kcm.documento_dc3` y `kcm.metadato_curso_dc3` (constancias y sus bloqueos)
+ * - `organizacion.trabajador`, `organizacion.departamento`, `organizacion.area`, `organizacion.puesto`
+ * - `organizacion.trabajador_atributo` (escolaridad declarada, con su procedencia)
+ * - `operacion.historial_capacitacion` y `catalogo.capacitacion` (trayectoria acreditada)
+ * - `operacion.sesion` y `operacion.asistencia` (cursos ya programados)
+ * - `dc3.constancia` y `dc3.curso_configuracion` (constancias y sus bloqueos)
  */
 
-import { parseWorkerNumber, type WorkerNumber } from "../../domain/numero-trabajador.ts";
+import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   WorkerSystemRepositoryPort,
   WorkerFilter,
@@ -18,6 +18,7 @@ import type {
   DncReconciliation,
   DepartmentDncSummary,
   CourseDncSummary,
+  AreaCourseCompletionRow,
 } from "../../ports/sistema-trabajador.port.ts";
 import type {
   WorkerRecord,
@@ -60,11 +61,11 @@ const SELECCION_TRABAJADOR = `
     t.activo,
     t.planta,
     esc.valor AS escolaridad
-  FROM kcm.trabajador t
-  LEFT JOIN kcm.departamento d ON d.departamento_id = t.departamento_id
-  LEFT JOIN kcm.area a ON a.area_id = t.area_id
-  LEFT JOIN kcm.puesto p ON p.puesto_id = t.puesto_id
-  LEFT JOIN kcm.atributo_declarado esc
+  FROM organizacion.trabajador t
+  LEFT JOIN organizacion.departamento d ON d.departamento_id = t.departamento_id
+  LEFT JOIN organizacion.area a ON a.area_id = t.area_id
+  LEFT JOIN organizacion.puesto p ON p.puesto_id = t.puesto_id
+  LEFT JOIN organizacion.trabajador_atributo esc
     ON esc.trabajador_id = t.trabajador_id
    AND esc.nombre_atributo = 'ESCOLARIDAD'
    AND esc.vigente_hasta IS NULL
@@ -159,9 +160,9 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }>(
       `SELECT r.registro_id, c.clave_curso, c.nombre,
               r.fecha_capacitacion, r.procedencia, r.lote_id, r.creado_en
-         FROM kcm.registro_hc r
-         JOIN kcm.capacitacion c ON c.capacitacion_id = r.capacitacion_id
-         JOIN kcm.trabajador t ON t.trabajador_id = r.trabajador_id
+         FROM operacion.historial_capacitacion r
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = r.capacitacion_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = r.trabajador_id
         WHERE t.numero_trabajador = $1 AND r.estado_registro = 'VIGENTE'
         ORDER BY r.fecha_capacitacion DESC`,
       [String(workerNumber)],
@@ -190,10 +191,10 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
       codigo_sesion: string;
     }>(
       `SELECT c.clave_curso, s.codigo_sesion
-         FROM kcm.asistencia asi
-         JOIN kcm.sesion s ON s.sesion_id = asi.sesion_id
-         JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-         JOIN kcm.trabajador t ON t.trabajador_id = asi.trabajador_id
+         FROM operacion.asistencia asi
+         JOIN operacion.sesion s ON s.sesion_id = asi.sesion_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = asi.trabajador_id
         WHERE t.numero_trabajador = $1
           AND asi.liberada = false
           AND s.estado IN ('BORRADOR', 'ABIERTA', 'CERRADA', 'PRELIBERACION', 'LISTA_PARA_LIBERAR')
@@ -220,9 +221,9 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }>(
       `SELECT t.numero_trabajador, c.clave_curso,
               max(r.fecha_capacitacion) AS fecha_capacitacion
-         FROM kcm.registro_hc r
-         JOIN kcm.capacitacion c ON c.capacitacion_id = r.capacitacion_id
-         JOIN kcm.trabajador t ON t.trabajador_id = r.trabajador_id
+         FROM operacion.historial_capacitacion r
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = r.capacitacion_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = r.trabajador_id
         WHERE r.estado_registro = 'VIGENTE'
         GROUP BY t.numero_trabajador, c.clave_curso`,
     );
@@ -243,9 +244,9 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
   /**
    * Resumen DNC por departamento y por curso, sumado por la base.
    *
-   * `kcm_lectura.cobertura_dnc` ya resuelve a quién le toca cada curso y con
+   * `lectura.cobertura_dnc` ya resuelve a quién le toca cada curso y con
    * qué fecha lo cumplió; lo que falta para llegar a los cinco estados del motor
-   * es la vigencia, que vive en `kcm.regla_dnc`. Se vuelve a unir contra la
+   * es la vigencia, que vive en `dnc.regla`. Se vuelve a unir contra la
    * regla porque la vista no publica `meses_recurrencia`, y se toma una sola
    * regla por par con `DISTINCT ON`: si un curso estuviera declarado a la vez
    * por área y por departamento, gana el área —la más específica—, que es lo que
@@ -254,8 +255,8 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
   readonly #EVALUACION_DNC = `
     WITH programado AS (
       SELECT DISTINCT asi.trabajador_id, s.capacitacion_id
-        FROM kcm.asistencia asi
-        JOIN kcm.sesion s ON s.sesion_id = asi.sesion_id
+        FROM operacion.asistencia asi
+        JOIN operacion.sesion s ON s.sesion_id = asi.sesion_id
        WHERE asi.liberada = false
          AND s.estado IN ('BORRADOR','ABIERTA','CERRADA','PRELIBERACION','LISTA_PARA_LIBERAR')
     ),
@@ -264,8 +265,8 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
              cob.trabajador_id, cob.capacitacion_id, cob.curso, cob.departamento,
              cob.fecha_cumplida, r.nivel::text AS nivel_regla,
              r.meses_recurrencia, r.dias_gracia
-        FROM kcm_lectura.cobertura_dnc cob
-        JOIN kcm.regla_dnc r
+        FROM lectura.cobertura_dnc cob
+        JOIN dnc.regla r
           ON r.capacitacion_id = cob.capacitacion_id
          AND r.vigente_hasta IS NULL
          AND ( (r.nivel = 'AREA'       AND r.area_id = cob.area_id)
@@ -308,8 +309,8 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
                 count(*) FILTER (
                   WHERE t.departamento_id IS NULL AND t.area_id IS NULL
                 ) AS datos_insuficientes
-           FROM kcm.trabajador t
-           LEFT JOIN kcm.departamento d ON d.departamento_id = t.departamento_id
+           FROM organizacion.trabajador t
+           LEFT JOIN organizacion.departamento d ON d.departamento_id = t.departamento_id
           WHERE t.activo
           GROUP BY 1
        ),
@@ -362,7 +363,7 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
               count(*) FILTER (WHERE e.estado = 'PENDIENTE')  AS pendientes,
               count(*) FILTER (WHERE e.estado = 'PROGRAMADO') AS programados
          FROM evaluado e
-         JOIN kcm.capacitacion c ON c.capacitacion_id = e.capacitacion_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = e.capacitacion_id
         GROUP BY e.curso, c.clave_curso, e.nivel_regla
         ORDER BY e.curso`,
     );
@@ -379,6 +380,41 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }));
   }
 
+  /**
+   * Los cursos exigibles en el área de una persona y cuántos de sus compañeros
+   * los tienen vigentes. Reutiliza la evaluación de los resúmenes —la misma
+   * derivación de estados que el motor— y sólo acota por el área de la persona.
+   */
+  async getAreaCourseCompletion(
+    workerNumber: WorkerNumber,
+  ): Promise<readonly AreaCourseCompletionRow[]> {
+    const { rows } = await this.sqlClient.query<{
+      clave_curso: string;
+      curso: string;
+      aplicables: string;
+      completados: string;
+    }>(
+      `${this.#EVALUACION_DNC}
+       SELECT c.clave_curso, e.curso,
+              count(*) AS aplicables,
+              count(*) FILTER (WHERE e.estado = 'COMPLETADO') AS completados
+         FROM evaluado e
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = e.capacitacion_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = e.trabajador_id
+         JOIN organizacion.trabajador yo ON yo.numero_trabajador = $1
+        WHERE t.area_id IS NOT DISTINCT FROM yo.area_id
+        GROUP BY c.clave_curso, e.curso`,
+      [String(workerNumber)],
+    );
+
+    return rows.map((r) => ({
+      courseKey: r.clave_curso,
+      courseName: r.curso,
+      applicable: Number(r.aplicables),
+      completed: Number(r.completados),
+    }));
+  }
+
   /** Sesiones pendientes de liberar por trabajador y curso, en una consulta. */
   async getScheduledSessionsByWorker(): Promise<ReadonlyMap<string, Record<string, string>>> {
     const { rows } = await this.sqlClient.query<{
@@ -387,10 +423,10 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
       codigo_sesion: string;
     }>(
       `SELECT t.numero_trabajador, c.clave_curso, s.codigo_sesion
-         FROM kcm.asistencia asi
-         JOIN kcm.sesion s ON s.sesion_id = asi.sesion_id
-         JOIN kcm.capacitacion c ON c.capacitacion_id = s.capacitacion_id
-         JOIN kcm.trabajador t ON t.trabajador_id = asi.trabajador_id
+         FROM operacion.asistencia asi
+         JOIN operacion.sesion s ON s.sesion_id = asi.sesion_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = asi.trabajador_id
         WHERE asi.liberada = false
           AND s.estado IN ('BORRADOR', 'ABIERTA', 'CERRADA', 'PRELIBERACION', 'LISTA_PARA_LIBERAR')
         ORDER BY s.fecha_sesion DESC`,
@@ -410,6 +446,11 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
    * Constancias DC-3. Un curso es elegible cuando sus metadatos legales están
    * aprobados; mientras no lo estén, el motivo del bloqueo se nombra en vez de
    * dejar la fila muda.
+   *
+   * Lo emitido sale de dos sitios. `dc3.constancia` es el contrato del lote;
+   * la emisión desde la consola —que es como sale casi todo— se asienta en
+   * `sistema.bitacora_auditoria`. Leer sólo el primero dejaba la ficha diciendo «pendiente de
+   * emisión» de constancias que el módulo DC-3 ya había entregado.
    */
   async getWorkerDc3Records(workerNumber: WorkerNumber): Promise<readonly Dc3WorkerLogEntry[]> {
     const { rows } = await this.sqlClient.query<{
@@ -422,18 +463,28 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
       metadatos_aprobados: boolean;
       curp: string | null;
       puesto_id: string | null;
+      emitida_en: string | Date | null;
     }>(
-      `SELECT c.clave_curso, c.nombre,
+      `SELECT DISTINCT ON (c.clave_curso)
+              c.clave_curso, c.nombre,
               dc.folio, dc.estado, dc.emitido_en, dc.codigo_bloqueo,
               COALESCE(m.aprobado, false) AS metadatos_aprobados,
-              t.curp, t.puesto_id
-         FROM kcm.trabajador t
-         JOIN kcm.registro_hc r
+              t.curp, t.puesto_id,
+              e.ultima AS emitida_en
+         FROM organizacion.trabajador t
+         JOIN operacion.historial_capacitacion r
            ON r.trabajador_id = t.trabajador_id AND r.estado_registro = 'VIGENTE'
-         JOIN kcm.capacitacion c ON c.capacitacion_id = r.capacitacion_id
-         JOIN kcm.metadato_curso_dc3 m ON m.capacitacion_id = c.capacitacion_id
-         LEFT JOIN kcm.documento_dc3 dc
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = r.capacitacion_id
+         JOIN dc3.curso_configuracion m ON m.capacitacion_id = c.capacitacion_id
+         LEFT JOIN dc3.constancia dc
            ON dc.trabajador_id = t.trabajador_id AND dc.capacitacion_id = c.capacitacion_id
+         LEFT JOIN (SELECT a.entidad_id, max(a.ocurrido_en) AS ultima
+                      FROM sistema.bitacora_auditoria a
+                     WHERE a.accion = 'DC3_EMITIDA_INDIVIDUAL'
+                       AND a.entidad_tipo = 'CONSTANCIA_DC3'
+                       AND split_part(a.entidad_id, ':', 1) = $1
+                     GROUP BY a.entidad_id) e
+           ON e.entidad_id = t.numero_trabajador || ':' || c.clave_curso
         WHERE t.numero_trabajador = $1
         ORDER BY c.clave_curso`,
       [String(workerNumber)],
@@ -450,8 +501,11 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
         courseId: r.clave_curso,
         courseName: r.nombre,
         isEligible: bloqueos.length === 0,
-        isIssued: r.estado === "COMPLETADO",
-        issuedAt: r.emitido_en ? new Date(r.emitido_en).toISOString().slice(0, 10) : null,
+        isIssued: r.estado === "COMPLETADO" || r.emitida_en !== null,
+        issuedAt:
+          (r.emitido_en ?? r.emitida_en)
+            ? new Date(r.emitido_en ?? r.emitida_en ?? "").toISOString().slice(0, 10)
+            : null,
         documentFolio: r.folio ?? null,
         blockingReasons: bloqueos,
       };
@@ -460,13 +514,13 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
 
   async listDepartments(): Promise<readonly string[]> {
     const { rows } = await this.sqlClient.query<{ nombre: string }>(
-      `SELECT nombre FROM kcm.departamento WHERE activo = true ORDER BY nombre ASC`,
+      `SELECT nombre FROM organizacion.departamento WHERE activo = true ORDER BY nombre ASC`,
     );
     return rows.map((r) => r.nombre);
   }
 
   /**
-   * Tablero DNC. Se apoya en `kcm_lectura.resumen_dnc_trabajador`, que ya
+   * Tablero DNC. Se apoya en `lectura.resumen_dnc_trabajador`, que ya
    * resuelve la regla por área subiendo al departamento; filtrar por curso o
    * por estado obliga a bajar al detalle, porque «trabajadores a los que les
    * falta BPM» no se contesta con el resumen.
@@ -493,9 +547,7 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
         params.push(filter.estado);
         detalle.push(`d.estado = $${params.length}`);
       }
-      donde.push(
-        `EXISTS (SELECT 1 FROM kcm_lectura.cobertura_dnc d WHERE ${detalle.join(" AND ")})`,
-      );
+      donde.push(`EXISTS (SELECT 1 FROM lectura.cobertura_dnc d WHERE ${detalle.join(" AND ")})`);
     }
 
     const { rows } = await this.sqlClient.query<{
@@ -511,7 +563,7 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }>(
       `SELECT r.numero_trabajador, r.nombre_completo, r.planta, r.departamento, r.area,
               r.cursos_requeridos, r.cursos_cubiertos, r.cursos_faltantes, r.porcentaje
-         FROM kcm_lectura.resumen_dnc_trabajador r
+         FROM lectura.resumen_dnc_trabajador r
         WHERE ${donde.join(" AND ")}
         ORDER BY r.cursos_faltantes DESC, r.numero_trabajador ASC
         LIMIT 2000`,
@@ -532,7 +584,7 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
 
   async listPlants(): Promise<readonly string[]> {
     const { rows } = await this.sqlClient.query<{ planta: string }>(
-      `SELECT DISTINCT planta FROM kcm.trabajador
+      `SELECT DISTINCT planta FROM organizacion.trabajador
         WHERE planta IS NOT NULL AND activo = true ORDER BY planta ASC`,
     );
     return rows.map((r) => r.planta);
@@ -541,8 +593,8 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
   async listDncCourses(): Promise<readonly string[]> {
     const { rows } = await this.sqlClient.query<{ nombre: string }>(
       `SELECT DISTINCT c.nombre
-         FROM kcm.regla_dnc r
-         JOIN kcm.capacitacion c ON c.capacitacion_id = r.capacitacion_id
+         FROM dnc.regla r
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = r.capacitacion_id
         WHERE r.vigente_hasta IS NULL ORDER BY c.nombre ASC`,
     );
     return rows.map((r) => r.nombre);
@@ -565,21 +617,21 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
       ultima_induccion: string | null;
     }>(
       `SELECT
-         (SELECT count(*) FROM kcm.trabajador WHERE activo)::int AS activos,
-         (SELECT count(*) FROM kcm.trabajador WHERE activo AND curp IS NOT NULL)::int AS con_curp,
-         (SELECT count(*) FROM kcm_lectura.resumen_dnc_trabajador WHERE activo)::int AS con_regla,
-         (SELECT count(*) FROM kcm_lectura.cobertura_dnc WHERE cubierto)::int AS cubiertos,
-         (SELECT count(*) FROM kcm_lectura.cobertura_dnc WHERE NOT cubierto)::int AS faltantes,
+         (SELECT count(*) FROM organizacion.trabajador WHERE activo)::int AS activos,
+         (SELECT count(*) FROM organizacion.trabajador WHERE activo AND curp IS NOT NULL)::int AS con_curp,
+         (SELECT count(*) FROM lectura.resumen_dnc_trabajador WHERE activo)::int AS con_regla,
+         (SELECT count(*) FROM lectura.cobertura_dnc WHERE cubierto)::int AS cubiertos,
+         (SELECT count(*) FROM lectura.cobertura_dnc WHERE NOT cubierto)::int AS faltantes,
          (SELECT count(*) FROM (
             SELECT h.trabajador_id
-              FROM kcm.registro_hc h
-              JOIN kcm.metadato_curso_dc3 m ON m.capacitacion_id = h.capacitacion_id
+              FROM operacion.historial_capacitacion h
+              JOIN dc3.curso_configuracion m ON m.capacitacion_id = h.capacitacion_id
              WHERE h.estado_registro = 'VIGENTE'
              GROUP BY h.trabajador_id
             HAVING count(DISTINCT h.capacitacion_id) =
-                   (SELECT count(*) FROM kcm.metadato_curso_dc3)) q)::int AS candidatos,
-         (SELECT max(fecha_capacitacion)::text FROM kcm.registro_hc) AS ultimo_hc,
-         (SELECT max(creado_en)::text FROM kcm.registro_hc
+                   (SELECT count(*) FROM dc3.curso_configuracion)) q)::int AS candidatos,
+         (SELECT max(fecha_capacitacion)::text FROM operacion.historial_capacitacion) AS ultimo_hc,
+         (SELECT max(creado_en)::text FROM operacion.historial_capacitacion
            WHERE procedencia = 'ROSTER_ALTA') AS ultima_induccion`,
     );
     const f = rows[0];
@@ -600,8 +652,8 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
   async listAreas(department?: string): Promise<readonly string[]> {
     let sql = `
       SELECT a.nombre
-        FROM kcm.area a
-        JOIN kcm.departamento d ON d.departamento_id = a.departamento_id
+        FROM organizacion.area a
+        JOIN organizacion.departamento d ON d.departamento_id = a.departamento_id
        WHERE a.activo = true`;
     const params: unknown[] = [];
     if (department) {

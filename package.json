@@ -40,17 +40,17 @@
 
     "build:semilla-catalogo": "node tools/build/semilla-catalogo.js",
     "build:mapeo-matriz": "node tools/build/mapeo-matriz.js",
+    "build:catalogo-ocupaciones": "node tools/build/catalogo-ocupaciones.js",
     "extraer:hc": "node packages/xlsb/extract-hc-xlsb.js",
 
-    "dc3:plan": "node tools/build/generar-dc3.js",
-    "dc3:check": "node tools/build/generar-dc3.js --check",
-    "dc3:report": "node tools/build/generar-dc3.js --report",
-    "dc3:generar": "node tools/build/generar-dc3.js --generate",
-    "dc3:vista-previa": "node tools/build/vista-previa-dc3.js"
+    "ia:ocupaciones": "node --env-file-if-exists=.env plataforma/src/cli/probar-ocupaciones.ts"
   },
   "dependencies": {
+    "@langchain/core": "1.2.12",
+    "@langchain/langgraph": "1.4.18",
     "fastify": "5.11.0",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

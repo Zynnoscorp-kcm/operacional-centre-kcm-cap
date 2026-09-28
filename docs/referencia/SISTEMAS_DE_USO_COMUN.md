@@ -55,7 +55,7 @@ Eso es correcto y está bien escrito. Lo que no da es **frontera**:
   `SameSite=Lax`, `Path=/` y **sin atributo `Domain`**, así que no viaja entre
   anfitriones; el problema no es que se filtre, es que se queda.
 - **Un solo rol de base.** El proceso se conecta con `kcm_app`, que tiene
-  `SELECT, INSERT, UPDATE` sobre **todas** las tablas de `kcm`. El quiosco y la
+  `SELECT, INSERT, UPDATE` sobre **todas** las tablas de los esquemas de dominio. El quiosco y la
   agenda corren con el mismo permiso que el padrón y la matriz. Un defecto en la
   ruta más expuesta alcanza, en principio, a la tabla más sensible.
 - **Un solo secreto.** El proceso carga `KCM_RELEASE_INTEGRITY_SECRET`, que
@@ -146,20 +146,20 @@ común se conecta con **`kcm_comun`**, un rol nuevo `LOGIN NOBYPASSRLS` con
 permisos únicamente sobre lo que esas dos pantallas tocan.
 
 El inventario sale de los dos adaptadores, no de una suposición. La agenda usa
-`kcm.sala`, `kcm.reserva_sala` y `kcm.actor`. El quiosco usa `kcm.sesion`,
-`kcm.asistencia`, `kcm.registro_quiosco`, `kcm.concesion`, `kcm.auditoria`,
-`kcm.secreto_operacion`, `kcm.capacitacion`, `kcm.metadato_curso_dc`,
-`kcm.actor`, `kcm.rol` y `kcm_lectura.obtener_sesiones_operativas()`.
+`catalogo.sala`, `operacion.sala_reserva` y `seguridad.actor`. El quiosco usa `operacion.sesion`,
+`operacion.asistencia`, `operacion.quiosco_registro`, `seguridad.concesion`, `sistema.bitacora_auditoria`,
+`seguridad.secreto`, `catalogo.capacitacion`, `dc3.curso_configuracion`,
+`seguridad.actor`, `comun.rol` y `lectura.obtener_sesiones_operativas()`.
 
-**Y `kcm.trabajador`, que es el punto que hay que resolver a mano.** El quiosco
+**Y `organizacion.trabajador`, que es el punto que hay que resolver a mano.** El quiosco
 la lee para dos cosas: resolver `numero_trabajador → trabajador_id` en los dos
 `INSERT`, y proyectar el número de vuelta en el `LEFT JOIN` de las listas de
-asistencia. Darle `SELECT` sobre `kcm.trabajador` al rol común sería darle el
+asistencia. Darle `SELECT` sobre `organizacion.trabajador` al rol común sería darle el
 padrón entero a la máquina más expuesta de la instalación —justo lo que esta
 separación existe para impedir—.
 
 La salida es la que el esquema ya usa en todas partes: **dos funciones
-`SECURITY DEFINER` en `kcm_lectura`**, una que resuelve un número de trabajador a
+`SECURITY DEFINER` en `lectura`**, una que resuelve un número de trabajador a
 su identificador interno y otra que devuelve la asistencia de **una** sesión. El
 rol común recibe `EXECUTE` sobre esas dos y **ningún `SELECT` sobre el padrón**.
 Sigue funcionando igual, y el acuse genérico e indistinguible del quiosco —que
@@ -179,7 +179,7 @@ navegador cualquiera:
 contraseñas planas y provisionales de la corrida piloto. `loadConfig` ya las
 prohíbe con `KCM_ENV=production`, así que el perfil común **no puede arrancar en
 producción con ellas**, y está bien que así sea. Los secretos definitivos viven
-en `kcm.secreto_operacion`, que hoy está vacía; llenarla es requisito de esta
+en `seguridad.secreto`, que hoy está vacía; llenarla es requisito de esta
 publicación, no un pendiente posterior.
 
 **`KCM_PILOT_OPEN_ACCESS` se prohíbe bajo `COMUN`, en cualquier entorno.** Con
@@ -237,7 +237,7 @@ Ordenado por archivo, para dimensionar. Nada de esto es una reescritura.
   `cdnjs.cloudflare.com`, `fonts.googleapis.com` y `fonts.gstatic.com`.
 - **`database/migrations/00NN_rol_comun.sql`** *(nuevo)* — rol `kcm_comun`, sus
   `GRANT`, y las dos funciones `SECURITY DEFINER` que sustituyen al acceso
-  directo a `kcm.trabajador`.
+  directo a `organizacion.trabajador`.
 - **Pruebas** — la que fija la tabla de ruteo por perfil; una que compruebe que
   el perfil común no construye repositorio de padrón, matriz ni liberación; y
   una que verifique que ninguna página del perfil común referencia un origen
@@ -263,7 +263,7 @@ depende de que la siguiente ocurra.
 3. **Rol de base y funciones de lectura.** La migración, aplicada con
    confirmación, y el cambio de cadena de conexión del proceso común. A partir de
    aquí la contención es del motor y no de la aplicación.
-4. **La estación.** Secretos reales en `kcm.secreto_operacion`, etiqueta por
+4. **La estación.** Secretos reales en `seguridad.secreto`, etiqueta por
    estación, recursos alojados y el navegador en modo quiosco.
 
 Una etapa 0 previa y trivial: **nada de esto se sostiene sobre la base sucia del
@@ -285,7 +285,7 @@ quiosco o la agenda exigirá revisar si el rol común puede hacerla. Eso es el
 precio de la contención y se paga cada vez, no una sola.
 
 **Una decisión menos reversible sobre los secretos.** Publicar en la planta
-obliga a llenar `kcm.secreto_operacion` de verdad. No es costo de esta estrategia
+obliga a llenar `seguridad.secreto` de verdad. No es costo de esta estrategia
 —hace falta igual— pero deja de poderse posponer.
 
 ---
@@ -326,7 +326,7 @@ Sin esto, «está separado» es una afirmación sin respaldo:
 - Una sesión de consola válida, con su cookie, enviada al anfitrión común: no
   abre nada, porque ahí no hay nada que abrir.
 - El proceso común, conectado con `kcm_comun`, intentando `SELECT` sobre
-  `kcm.trabajador` y sobre `kcm.registro_hc`: permiso denegado por el motor.
+  `organizacion.trabajador` y sobre `operacion.historial_capacitacion`: permiso denegado por el motor.
 - Un registro completo de asistencia y una reservación, de punta a punta, desde
   una computadora común y con la red de planta —no desde la del departamento—.
 - La pantalla del quiosco con la salida a Internet cortada: idéntica, porque ya

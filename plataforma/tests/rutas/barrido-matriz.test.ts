@@ -31,13 +31,14 @@ import type {
   WorkerCatalogEntry,
 } from "../../src/domain/importacion-matriz/tipos.ts";
 import { MatrixScanService } from "../../src/domain/barrido-matriz/servicio.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type {
   AtomicBatchOperations,
   MatrixRepositoryPort,
 } from "../../src/ports/importacion-matriz.port.ts";
-import type { Clock } from "../../src/ports/reloj.ts";
+import type { Clock } from "../../src/ports/reloj.port.ts";
 import { buildServer } from "../../src/server/build-server.ts";
+import { almacenCompartido } from "../apoyo/almacen-compartido.ts";
 import { renderMatrixScanPage } from "../../src/web/pages/barrido-matriz.ts";
 
 const ENTORNO = {
@@ -488,39 +489,6 @@ describe("Barrido de matriz · revisión", () => {
   });
 });
 
-// -------------------------------------------------------------- la orden
-
-describe("Barrido de matriz · orden", () => {
-  it("dos clics no encargan dos barridos y la orden caduca sola", () => {
-    const reloj = new RelojFalso();
-    const servicio = new MatrixScanService({ repository: new MatrizFalsa(), clock: reloj });
-
-    const primera = servicio.solicitar("Maricela0000");
-    const segunda = servicio.solicitar("Maricela0000");
-    assert.equal(primera.ordenId, segunda.ordenId);
-    assert.equal(servicio.ordenVigente()?.solicitadaPor, "Maricela0000");
-
-    reloj.avanzarMinutos(31);
-    assert.equal(servicio.ordenVigente(), undefined);
-  });
-
-  it("recibir un barrido da la orden por atendida", async () => {
-    const servicio = new MatrixScanService({
-      repository: new MatrizFalsa(),
-      clock: new RelojFalso(),
-    });
-    servicio.solicitar("Maricela0000");
-    assert.ok(servicio.ordenVigente());
-
-    await servicio.registrar({
-      snapshot: BARRIDA,
-      requestId: "vba-scan-1",
-      cliente: "KCM-OFFICE-01",
-    });
-    assert.equal(servicio.ordenVigente(), undefined);
-  });
-});
-
 // -------------------------------------------------------------- el puente
 
 describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
@@ -577,26 +545,8 @@ describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
     return salida;
   }
 
-  it("una sola consulta contesta por los dos barridos", async () => {
-    const { service, scans, secreto } = await puente();
-
-    const sinOrden = campos(await llamar(service, secreto, "", "nonce-1", "SCAN_ORDERS_V1"));
-    assert.equal(sinOrden.estado, "OK");
-    assert.equal(sinOrden.matrixPending, "false");
-    assert.equal(sinOrden.rosterPending, "false");
-
-    const orden = scans.solicitar("Maricela0000");
-    const conOrden = campos(await llamar(service, secreto, "", "nonce-2", "SCAN_ORDERS_V1"));
-    assert.equal(conOrden.matrixPending, "true");
-    assert.equal(conOrden.matrixOrderId, orden.ordenId);
-    // Sin padrón cableado, la mitad de la respuesta sigue siendo válida y dice
-    // que no hay nada encargado, en vez de fallar la consulta entera.
-    assert.equal(conOrden.rosterPending, "false");
-  });
-
   it("con snapshot deja la revisión sin aplicar nada", async () => {
     const { service, scans, secreto } = await puente();
-    scans.solicitar("Maricela0000");
 
     const respuesta = campos(await llamar(service, secreto, JSON.stringify(BARRIDA), "nonce-3"));
     assert.equal(respuesta.estado, "OK");
@@ -613,7 +563,6 @@ describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
     const informe = scans.ultimoBarrido();
     assert.equal(informe?.barridoId, respuesta.scanId);
     assert.equal(informe?.fuente.cliente, "KCM-OFFICE-01");
-    assert.equal(scans.ordenVigente(), undefined);
   });
 
   it("un cuerpo que no es JSON se rechaza sin reintento", async () => {
@@ -650,7 +599,7 @@ describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
 // --------------------------------------------------------------- la pantalla
 
 describe("Barrido de matriz · pantalla", () => {
-  it("enseña las columnas con nombre y sólo los cambios", async () => {
+  it("enseña los cambios con nombre y los cursos plegados", async () => {
     const repositorio = await baseCargada();
     const servicio = new MatrixScanService({ repository: repositorio, clock: new RelojFalso() });
     const informe = await servicio.registrar({
@@ -663,13 +612,14 @@ describe("Barrido de matriz · pantalla", () => {
 
     for (const nombre of [INDUCCION, SEGURIDAD, ALTURAS])
       assert.match(html, new RegExp(nombre, "u"));
-    assert.match(html, /Columnas detectadas/u);
-    assert.match(html, /Cambios contra la matriz anterior/u);
-    assert.match(html, /Aplicar a la base/u);
+    assert.match(html, /<details class="tarjeta plegable">\s*<summary>\s*Cursos/u);
+    assert.match(html, /class="panel-cambios"/u);
+    assert.match(html, /Aplicar los cambios/u);
     assert.match(html, /Revisión sin aplicar/u);
-    // El barrido nombra al trabajador por su nómina y nunca por su nombre.
+    // Desde el 2026-09-25 la revisión nombra a la persona: nómina, nombre y
+    // adscripción, para leer el cambio sin ir al libro. Sigue detrás de sesión.
     assert.match(html, /00002/u);
-    assert.doesNotMatch(html, /TRABAJADOR SINTETICO/u);
+    assert.match(html, /TRABAJADOR SINTETICO/u);
   });
 
   it("con conflictos no ofrece aplicar", () => {
@@ -722,7 +672,7 @@ describe("Barrido de matriz · pantalla", () => {
       },
     });
 
-    assert.match(html, /no puede aplicarse/u);
+    assert.match(html, /contradicen sesiones ya liberadas/u);
     assert.match(html, /Bloqueado por conflictos/u);
     assert.match(html, /disabled/u);
   });
@@ -753,10 +703,8 @@ describe("Barrido de matriz · rutas", () => {
     const app = await servidor();
     for (const [method, url] of [
       ["GET", "/matriz"],
-      ["POST", "/matriz/barrido"],
       ["POST", "/matriz/aplicar"],
       ["POST", "/matriz/descartar"],
-      ["POST", "/matriz/cancelar"],
     ] as const) {
       const res = await app.inject({ method, url });
       assert.equal(res.statusCode, 303);
@@ -764,34 +712,22 @@ describe("Barrido de matriz · rutas", () => {
     }
   });
 
-  it("con sesión ofrece encargar el barrido y encargarlo no escribe", async () => {
+  it("la pantalla remite a Excel y ya no ofrece encargar el barrido", async () => {
     const app = await servidor();
     const cookie = await sesion(app);
 
     const inicial = await app.inject({ method: "GET", url: "/matriz", headers: { cookie } });
     assert.equal(inicial.statusCode, 200);
-    assert.match(inicial.body, /Solicitar barrido/u);
+    assert.match(inicial.body, /Actualización completa/u);
+    assert.doesNotMatch(inicial.body, /Solicitar barrido|Cancelar encargo/u);
 
-    const encargo = await app.inject({
-      method: "POST",
-      url: "/matriz/barrido",
-      headers: { cookie },
-    });
-    assert.equal(encargo.statusCode, 303);
-    assert.equal(encargo.headers.location, "/matriz");
-
-    const conOrden = await app.inject({ method: "GET", url: "/matriz", headers: { cookie } });
-    assert.match(conOrden.body, /Barrido encargado/u);
-    assert.match(conOrden.body, /Maricela0000/u);
-
-    const cancelado = await app.inject({
-      method: "POST",
-      url: "/matriz/cancelar",
-      headers: { cookie },
-    });
-    assert.equal(cancelado.statusCode, 303);
-    const limpio = await app.inject({ method: "GET", url: "/matriz", headers: { cookie } });
-    assert.match(limpio.body, /Solicitar barrido/u);
+    // Las dos rutas del encargo se retiraron con el botón. Se comprueba que no
+    // quedaron respondiendo: una ruta viva sin quién la invoque es la forma en
+    // que una función retirada vuelve por la puerta de atrás.
+    for (const url of ["/matriz/barrido", "/matriz/cancelar"]) {
+      const res = await app.inject({ method: "POST", url, headers: { cookie } });
+      assert.equal(res.statusCode, 404);
+    }
   });
 
   it("una revisión que ya no existe no escribe: responde 409", async () => {
@@ -804,7 +740,7 @@ describe("Barrido de matriz · rutas", () => {
       payload: new URLSearchParams({ barridoId: "no-existe" }).toString(),
     });
     assert.equal(res.statusCode, 409);
-    assert.match(res.body, /Solicite otro barrido/u);
+    assert.match(res.body, /un barrido nuevo vuelve a mostrar qué cambiaría/u);
   });
 
   it("sin base la pantalla lo explica y no ofrece barrer", async () => {
@@ -812,7 +748,69 @@ describe("Barrido de matriz · rutas", () => {
     const cookie = await sesion(app);
     const res = await app.inject({ method: "GET", url: "/matriz", headers: { cookie } });
     assert.equal(res.statusCode, 200);
-    assert.match(res.body, /Sin base de datos conectada/u);
+    assert.match(res.body, /Sin conexión con la base de datos/u);
     assert.doesNotMatch(res.body, /Solicitar barrido/u);
+  });
+});
+
+describe("Barrido de matriz · varias instancias", () => {
+  it("la instancia que no recibió el barrido lo enseña y lo aplica", async () => {
+    const repositorio = await baseCargada();
+    const revisiones = almacenCompartido();
+    const reloj = new RelojFalso();
+    const recibe = new MatrixScanService({ repository: repositorio, clock: reloj, revisiones });
+    const aplica = new MatrixScanService({ repository: repositorio, clock: reloj, revisiones });
+
+    const informe = await recibe.registrar({
+      snapshot: BARRIDA,
+      requestId: "vba-scan-compartido",
+      cliente: "KCM-OFFICE-01",
+    });
+
+    assert.equal(aplica.ultimoBarrido(), undefined, "sin sincronizar no sabe nada");
+    await aplica.sincronizar();
+    assert.equal(aplica.ultimoBarrido()?.barridoId, informe.barridoId);
+
+    const resultado = await aplica.aplicar(informe.barridoId, "Maricela0000");
+    assert.equal(resultado.informe.barridoId, informe.barridoId);
+
+    // La que lo recibió se entera de que ya no hay nada que ofrecer.
+    await recibe.sincronizar();
+    assert.equal(recibe.ultimoBarrido(), undefined);
+    await assert.rejects(recibe.aplicar(informe.barridoId, "Pablo0000"), /ya no está disponible/u);
+  });
+
+  it("de dos «Aplicar» simultáneos en instancias distintas, sólo uno escribe", async () => {
+    const repositorio = await baseCargada();
+    const revisiones = almacenCompartido();
+    const reloj = new RelojFalso();
+    const a = new MatrixScanService({ repository: repositorio, clock: reloj, revisiones });
+    const b = new MatrixScanService({ repository: repositorio, clock: reloj, revisiones });
+
+    const informe = await a.registrar({
+      snapshot: BARRIDA,
+      requestId: "vba-scan-doble",
+      cliente: "KCM-OFFICE-01",
+    });
+    await b.sincronizar();
+
+    const intentos = await Promise.allSettled([
+      a.aplicar(informe.barridoId, "Maricela0000"),
+      b.aplicar(informe.barridoId, "Pablo0000"),
+    ]);
+    assert.equal(intentos.filter((intento) => intento.status === "fulfilled").length, 1);
+  });
+
+  it("descartar en una instancia lo retira de todas", async () => {
+    const repositorio = await baseCargada();
+    const revisiones = almacenCompartido();
+    const reloj = new RelojFalso();
+    const a = new MatrixScanService({ repository: repositorio, clock: reloj, revisiones });
+    const b = new MatrixScanService({ repository: repositorio, clock: reloj, revisiones });
+
+    await a.registrar({ snapshot: BARRIDA, requestId: "vba-scan-3", cliente: "KCM-OFFICE-01" });
+    await b.descartar();
+    await a.sincronizar();
+    assert.equal(a.ultimoBarrido(), undefined);
   });
 });

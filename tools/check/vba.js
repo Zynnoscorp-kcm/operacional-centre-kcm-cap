@@ -31,13 +31,9 @@ const MAX_CONTINUATIONS = 24;
 const VBA_EXTENSIONS = [".bas", ".cls"];
 
 /**
- * Los unicos modulos autorizados a compilar codigo distinto por sistema.
- *
- * `KcmPlataforma` es el puerto: las seis funciones que cruzan la frontera y nada mas.
- * `KcmDiagHash` es el diagnostico temporal de la huella, que interroga a la API criptografica de
- * Windows y por eso necesita su propia rama; no se importa en una instalacion normal.
+ * El unico modulo autorizado a compilar codigo distinto por sistema: `KcmPlataforma`, el puerto.
  */
-const PLATFORM_FILES = new Set(["KcmPlataforma.bas", "KcmDiagHash.bas"]);
+const PLATFORM_FILES = new Set(["KcmPlataforma.bas"]);
 
 /** VBA solo admite `""` dentro de una cadena; una comilla suelta la termina. */
 const STRING_FOLLOWERS = new Set([

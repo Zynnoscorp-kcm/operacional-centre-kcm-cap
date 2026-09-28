@@ -12,6 +12,12 @@
  *
  * Es el único guion de la pantalla. No hay biblioteca, no hay origen externo y
  * la política de contenido de `/acceso` declara `script-src 'self'`.
+ *
+ * Lo que pasa después ya no es cosa de este guion. La silueta que la puerta
+ * descubre lleva los mismos `view-transition-name` que el armazón de la consola,
+ * así que al navegar el navegador convierte cada rectángulo gris en la pieza
+ * real que le corresponde. Por eso la hoja dura menos que antes: ya no tiene que
+ * cubrir el trayecto entero, sólo la primera mitad.
  */
 
 (function () {
@@ -22,7 +28,7 @@
   if (!hojas || !formulario) return;
 
   /** Duración de `.puerta-hoja` en la hoja de estilos, en milisegundos. */
-  var RECORRIDO_MS = 720;
+  var RECORRIDO_MS = 520;
 
   var enviando = false;
 

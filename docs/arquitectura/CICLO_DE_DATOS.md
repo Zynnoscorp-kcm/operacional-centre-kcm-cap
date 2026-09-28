@@ -76,12 +76,12 @@ Conviene decirlo antes, porque casi toda la mecánica ya existe:
   `XLSB_IMPORT` se corrige, se retira y se reactiva en su misma fila.
 - El **barrido gobernado** (`MATRIX_SCAN_V1` → `/matriz`): leer no escribe, y lo
   que la pantalla anuncia sale del mismo motor que aplicaría la carga.
-- El **historial append-only** (`kcm.historial_sobrescritura_fecha`): toda
+- El **historial append-only** (`operacion.historial_capacitacion_cambio`): toda
   sobrescritura conserva valor anterior, actor, motivo y procedencia **antes** de
   escribir.
 - El **puente de liberaciones**: la plataforma registra el efecto, el cliente VBA
   lo materializa con marcador `KCM_VBA_V1|…`, calcula SHA del libro y acusa.
-- La **bitácora de cargas** (`kcm.auditoria` vía `BitacoraDeCargas`): los cuatro
+- La **bitácora de cargas** (`sistema.bitacora_auditoria` vía `BitacoraDeCargas`): los cuatro
   hechos —encargada, revisada, aplicada, rechazada— quedan asentados.
 
 Lo que falta no es maquinaria. Es **gobierno**: cinco huecos concretos que en el
@@ -180,6 +180,18 @@ plataforma clasifica el libro antes de mirar una sola fecha:
 
 El hecho 4 obliga a partir en dos lo que hoy es un solo acto. No se distinguen
 por la hora sino por **qué tienen permiso de mover**.
+
+Esa misma partición decide ahora **dónde corre cada una**. La ligera es pequeña
+—unas quince al día, del orden de quinientas fechas— y viaja a la plataforma
+publicada como cualquier otra petición. La completa sube el libro entero, y eso
+no cabe en un alojamiento que corta en 4.5 MB: se corre desde el equipo del
+departamento, apuntando el `ENDPOINT` del cliente a su propia máquina. Lo mismo
+vale para el padrón del lunes. Las constancias DC-3 se emiten desde cualquier
+instancia.
+
+La consecuencia operativa es acotada y conviene decirla sin adornos: si ese
+equipo está apagado, ese día no hay barrido completo ni padrón nuevo. Las
+pantallas, el quiosco, la agenda y las actualizaciones de fechas siguen vivas.
 
 ### La actualización ligera — a voluntad del capacitador, sólo fechas
 
@@ -377,14 +389,14 @@ desaparece cuando el servidor se duerme no es un control de cambios: es una
 vista previa. Tiene que poder consultarse la semana que viene, cuando alguien
 pregunte qué pasó el martes.
 
-Una tabla, `kcm.cambio_detectado`, con una fila por cambio: el lote que lo
+Una tabla, `matriz.cambio_detectado`, con una fila por cambio: el lote que lo
 encontró, la clase, si es discrepante, el trabajador y la capacitación —por
 número y clave de origen, porque un trabajador nuevo todavía no tiene `uuid`—, el
 valor anterior y el nuevo, la procedencia del valor anterior, y el estado del
 cambio: `PROPUESTO`, `APLICADO`, `RECHAZADO` u `OMITIDO`, con actor, motivo y
 momento cuando alguien decide.
 
-**Y se cuelga del ciclo de vida que ya existe.** `kcm.lote_importacion` ya
+**Y se cuelga del ciclo de vida que ya existe.** `matriz.importacion` ya
 recorre `RECIBIDO → PREPARADO → VALIDADO → APROBADO → CONFIRMADO`, con
 `RECHAZADO` y `CONFLICTO` como salidas, y `batch-lifecycle.ts` ya implementa las
 seis transiciones. **La ruta de barrido lo salta**: fabrica un `importId`
@@ -408,7 +420,7 @@ explícita, no como carga inicial de la pantalla.
 
 ## La bandeja de divergencias
 
-Sustituye al bloqueo total. Una tabla durable, `kcm.divergencia_matriz`, con una
+Sustituye al bloqueo total. Una tabla durable, `matriz.divergencia`, con una
 fila por par en desacuerdo: trabajador, capacitación, fecha en la matriz, fecha
 en la base, procedencia de la base, carga que la detectó, estado, y —al
 resolverse— actor, motivo y momento.
@@ -441,11 +453,11 @@ mismas tres salidas. Deja de ser un callejón.
 
 ## La prueba de cierre: confirmado en maestro
 
-Dos columnas en `kcm.registro_hc`:
+Dos columnas en `operacion.historial_capacitacion`:
 
 ```sql
 confirmado_en_maestro_en    timestamptz,
-confirmado_por_importacion  uuid REFERENCES kcm.lote_importacion (importacion_id)
+confirmado_por_importacion  uuid REFERENCES matriz.importacion (importacion_id)
 ```
 
 Cada carga —la actualización también— las escribe para todo par cuya fecha en la
@@ -513,7 +525,7 @@ El motivo es que el trabajo ya está hecho. La revisión del padrón lee el arch
 completo y el padrón completo de la base en una sola pasada, y compara en
 memoria: `CuadreDePadron` ya trae una veintena de conteos y `MuestrasDeCuadre` ya
 trae las muestras. Pintarlo con el componente del control de cambios y escribir
-sus filas en `kcm.cambio_detectado` **no agrega una sola consulta**: la
+sus filas en `matriz.cambio_detectado` **no agrega una sola consulta**: la
 comparación ya ocurrió. Lo único nuevo es un `INSERT` por lote, que es la
 escritura más barata del ciclo.
 
@@ -658,22 +670,26 @@ En orden de dependencia, no de tamaño:
    `conflicts.length > 0` y pasa a ser el sello ajeno.
 3. **La apertura deja de vivir en memoria.** Hoy fabrica un `importId` sintético
    —`barrido-${uuid}`— y guarda la revisión en el proceso. Debe crear un
-   `kcm.lote_importacion` real y recorrer las transiciones que
+   `matriz.importacion` real y recorrer las transiciones que
    `batch-lifecycle.ts` **ya implementa** y nadie usa:
    `RECIBIDO → PREPARADO → VALIDADO → APROBADO → CONFIRMADO`. La actualización de
    fechas puede seguir en memoria: se aplica sola y no espera a nadie.
 4. **El control de cambios** — persistir una fila por cambio en
-   `kcm.cambio_detectado`, con su clase, si es discrepante, valores antes y
+   `matriz.cambio_detectado`, con su clase, si es discrepante, valores antes y
    después, y el estado de la decisión. Las bajas entran como **propuesta**, no
    como efecto.
-5. **Migración `0042_sello_cambios_y_divergencias.sql`** — `kcm.cambio_detectado`
+5. **Migración `0042_sello_cambios_y_divergencias.sql`** — `matriz.cambio_detectado`
    con sus enums de clase y estado, y las dos columnas de confirmación en
-   `kcm.registro_hc`. **No se aplica sin confirmación del departamento.**
-6. **La cola de liberaciones por sesión** — `RELEASE_PULL_V1` debe devolver el
-   resumen legible —código de sesión, curso, fecha y cuántas fechas inyecta— y
-   aceptar una decisión **por sesión**, con `DECLINADA` como estado que conserva
-   motivo y devuelve la sesión a la cola. La tercera declinación escala a la
-   bandeja.
+   `operacion.historial_capacitacion`. **No se aplica sin confirmación del departamento.**
+6. **La cola de liberaciones por sesión** — *hecha a medias.* El resumen
+   legible ya existe: `RELEASE_SESSIONS_V1` devuelve código de sesión, curso,
+   fecha y cuántas fechas faltan, el subpanel `KCM_ENTRADAS` del libro lo
+   enumera y `KcmApplyPendingReleases` acepta la decisión **por sesión**
+   —escribir sólo las marcadas—. Falta el otro lado de la decisión:
+   **`DECLINADA`** como estado que conserva motivo y devuelve la sesión a la
+   cola, y la escalada a la bandeja en la tercera declinación. Hoy no escoger una
+   sesión la deja pendiente sin dejar rastro de que alguien la miró y la dejó
+   pasar.
 7. **El padrón al mismo control de cambios** — `RosterIngestService` ya calcula
    todo el cuadre en memoria; sólo falta escribir sus filas y pintarlas con el
    mismo componente. Ninguna consulta nueva.

@@ -8,7 +8,13 @@
 
 import type { FastifyInstance } from "fastify";
 
-import { guionAcceso, guionHaces, guionQuiosco, hojaDeEstilos, imagenes } from "../web/estaticos.ts";
+import {
+  guionAcceso,
+  guionHaces,
+  guionQuiosco,
+  hojaDeEstilos,
+  imagenes,
+} from "../web/estaticos.ts";
 import { notFound } from "../server/errors.ts";
 
 const CACHE_INMUTABLE = "public, max-age=31536000, immutable";

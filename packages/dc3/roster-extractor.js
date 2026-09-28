@@ -34,7 +34,7 @@ const OPTIONAL_HEADERS = Object.freeze({
    * `SERVILLETAS Y FACIALES` o `GERENCIA DE MANTTO. ELECTRICO`. Compararlas
    * porque comparten rotulo produciria mil seiscientas divergencias falsas.
    *
-   * Se lee como `plant` y se contrasta con `kcm.trabajador.planta`, que es el
+   * Se lee como `plant` y se contrasta con `organizacion.trabajador.planta`, que es el
    * campo que si significa lo mismo. Opcional, como la clave de ocupacion: un
    * libro sin la columna se sigue leyendo.
    */
@@ -60,7 +60,28 @@ const OPTIONAL_HEADERS = Object.freeze({
     "CLAVE TIPO DE TRABAJO",
     "CLAVE DE TIPO DE TRABAJO",
     "CLAVE DEL TIPO DE TRABAJO"
-  ]
+  ],
+  // El resto del padrón, desde el 2026-09-25: el departamento pidió que el
+  // panel de cambios cubra todas las columnas. Opcionales como las anteriores:
+  // un libro que no las traiga se sigue leyendo.
+  rfc: ["R F C", "RFC"],
+  nss: ["I M S S", "IMSS", "NSS", "NUMERO DE SEGURO SOCIAL"],
+  costCenterKey: ["CVE C COSTOS", "CLAVE C COSTOS", "CLAVE CENTRO DE COSTOS"],
+  costCenterName: ["NOMBRE C COSTOS", "NOMBRE CENTRO DE COSTOS", "CENTRO DE COSTOS"],
+  address: ["DIRECCIO", "DIRECCION", "DOMICILIO"],
+  postalCode: ["C POSTAL", "CODIGO POSTAL", "CP"],
+  maritalStatus: ["E CIVIL", "ESTADO CIVIL"],
+  sex: ["SEXO", "GENERO"]
+});
+
+/**
+ * Hojas de bajas: `SND BAJAS` y `EMP BAJAS`. No hacen falta para leer el
+ * padrón; si vienen, dan la fecha de baja de quien ya no está en activos.
+ */
+const TERMINATION_SHEET_PATTERN = /BAJAS/;
+const TERMINATION_HEADERS = Object.freeze({
+  employeeId: ["NUMERO", "NO", "NUMERO DE TRABAJADOR"],
+  terminationDate: ["FEC BAJA", "FECHA DE BAJA"]
 });
 
 /**
@@ -240,8 +261,10 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
       const position = normalizeText(cellValue(row, columns.position));
       const curp = normalizeCurp(cellValue(row, columns.curp));
       const hireDate = civilDateToIso(cellValue(row, columns.hireDate), workbook.dateSystem);
-      const cnoKey = normalizeCnoKey(cellValue(row, columns.cnoKey));
+      const claveEnCelda = cellValue(row, columns.cnoKey);
+      const cnoKey = normalizeCnoKey(claveEnCelda);
       const plant = normalizeText(cellValue(row, columns.plant));
+      const texto = (campo) => normalizeText(cellValue(row, columns[campo]));
       const employeeIssues = [];
       if (!displayName) employeeIssues.push("MISSING_DISPLAY_NAME");
       if (!position) employeeIssues.push("MISSING_POSITION");
@@ -250,7 +273,11 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
       // La clave del CNO sólo se reclama cuando la columna existe: en un libro
       // que todavía no la trae, anotar mil setecientas incidencias no informaría
       // de nada. Con columna presente y celda vacía, sí es un hueco real.
-      if (columns.cnoKey !== null && !cnoKey) employeeIssues.push("MISSING_CNO_KEY");
+      // Una celda con texto que no es clave (mas de veinte caracteres) no es un
+      // hueco: nadie debe escribir encima como si estuviera vacia.
+      if (columns.cnoKey !== null && !cnoKey) {
+        employeeIssues.push(normalizeText(claveEnCelda) ? "INVALID_CNO_KEY" : "MISSING_CNO_KEY");
+      }
       const record = {
         employeeId,
         displayName,
@@ -259,6 +286,14 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
         hireDate: hireDate || "",
         cnoKey: cnoKey || "",
         plant: plant || "",
+        rfc: texto("rfc").toUpperCase(),
+        nss: texto("nss"),
+        costCenterKey: texto("costCenterKey"),
+        costCenterName: texto("costCenterName"),
+        address: texto("address"),
+        postalCode: texto("postalCode"),
+        maritalStatus: texto("maritalStatus"),
+        sex: texto("sex"),
         payrollType: payrollTypeFromSheet(sheet.name),
         active: true,
         sourceSheet: sheet.name,
@@ -292,6 +327,33 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
     });
   }
 
+  // Las bajas: número y fecha, de las hojas que las traigan. Una hoja sin los
+  // dos encabezados se ignora; la baja es un dato de más, no un requisito.
+  const terminations = new Map();
+  for (const sheet of workbook.sheets) {
+    if (!TERMINATION_SHEET_PATTERN.test(normalizedLabel(sheet.name))) continue;
+    const leida = workbook.readSheet(sheet);
+    const byLabel = new Map();
+    for (const cell of leida.cells.values()) {
+      if (cell.row !== 1 || cell.value === null || cell.error) continue;
+      const label = normalizedLabel(cell.value);
+      if (label && !byLabel.has(label)) byLabel.set(label, cell.column);
+    }
+    const columna = (aliases) =>
+      aliases.map(normalizedLabel).map((alias) => byLabel.get(alias)).find((c) => c !== undefined);
+    const colNumero = columna(TERMINATION_HEADERS.employeeId);
+    const colFecha = columna(TERMINATION_HEADERS.terminationDate);
+    if (colNumero === undefined || colFecha === undefined) continue;
+    for (const row of rowsByNumber(leida).values()) {
+      const employeeId = normalizeEmployeeId(cellValue(row, colNumero));
+      const fecha = civilDateToIso(cellValue(row, colFecha), workbook.dateSystem);
+      if (!employeeId || !fecha) continue;
+      // Si alguien tiene varias bajas, vale la más reciente.
+      const previa = terminations.get(employeeId);
+      if (!previa || fecha > previa) terminations.set(employeeId, fecha);
+    }
+  }
+
   const records = [...employees.values()]
     .map((employee) => ({ ...employee, issues: [...new Set(employee.issues)].sort() }))
     .sort((left, right) => left.employeeId.localeCompare(right.employeeId));
@@ -303,6 +365,9 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
       sheets: requestedSheets.slice()
     },
     employees: records,
+    terminations: [...terminations]
+      .map(([employeeId, terminationDate]) => ({ employeeId, terminationDate }))
+      .sort((left, right) => left.employeeId.localeCompare(right.employeeId)),
     diagnostics: {
       sourceRowCount,
       employeeCount: records.length,

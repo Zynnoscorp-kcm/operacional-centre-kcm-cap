@@ -247,10 +247,30 @@ function assertPrintable(data, allowBlank = false) {
   return { ...data, curp: printableCurp, ...dates, durationHours };
 }
 
-export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, editable = false, logos }) {
+/**
+ * La constancia como pagina, sin cerrar el archivo.
+ *
+ * Existe para poder juntar varias constancias en un solo PDF —una tanda que se imprime de una vez—
+ * sin componer cada una dos veces. `renderDc3Pdf` la envuelve en un archivo de una pagina y produce
+ * exactamente los mismos bytes que antes de separarlas: el ledger del lote reconoce una constancia
+ * por su huella, y una constancia que cambiara de bytes por un arreglo interno seria otra.
+ *
+ * `prefijoDeCampos` distingue los recuadros escribibles de cada pagina. En un PDF, dos campos con el
+ * mismo nombre son el mismo campo: sin el prefijo, escribir la ocupacion en la primera constancia de
+ * una tanda la escribiria en todas.
+ */
+export function componerPaginaDc3({
+  legends,
+  data: rawData,
+  allowBlank = false,
+  editable = false,
+  logos,
+  prefijoDeCampos = ""
+}) {
   const data = assertPrintable(rawData, allowBlank);
   const page = new PdfPage({ width: PAGE.width, height: PAGE.height });
   const left = PAGE.margin;
+  const campo = (nombre) => `${prefijoDeCampos}${nombre}`;
 
   // Los logotipos van arriba de todo, y el contenido arranca debajo de la banda que
   // ocupan. El bloque entero baja igual para todos: se desplaza en conjunto, no se
@@ -280,7 +300,7 @@ export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, edita
   y = sectionBar(page, y, legends.workerSection) + 8;
   y = labeledBox(page, {
     x: left, y, width: CONTENT_WIDTH, label: legends.workerNameLabel, value: data.workerName,
-    field: "workerName", editable
+    field: campo("workerName"), editable
   }) + 9;
 
   const curpBoxWidth = 15.5;
@@ -301,14 +321,14 @@ export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, edita
   } else if (editable) {
     writableBox(page, {
       x: occupationLeft, y: boxesTop, width: occupationWidth, height: 18,
-      field: "occupation", label: legends.occupationLabel
+      field: campo("occupation"), label: legends.occupationLabel
     });
   }
   y = curpBottom + 9;
 
   y = labeledBox(page, {
     x: left, y, width: CONTENT_WIDTH * 0.62, label: legends.positionLabel, value: data.position,
-    field: "position", editable
+    field: campo("position"), editable
   }) + 14;
 
   y = sectionBar(page, y, legends.employerSection) + 8;
@@ -355,7 +375,7 @@ export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, edita
   const durationWidth = 104;
   labeledBox(page, {
     x: left, y, width: durationWidth, label: legends.durationLabel, value: String(data.durationHours),
-    height: 17, size: 10, align: "center", field: "durationHours", editable
+    height: 17, size: 10, align: "center", field: campo("durationHours"), editable
   });
   const periodLeft = left + durationWidth + 30;
   page.text(legends.periodLabel, { x: periodLeft, y, size: LABEL_SIZE, gray: 0.25 });
@@ -380,11 +400,11 @@ export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, edita
 
   y = labeledBox(page, {
     x: left, y, width: CONTENT_WIDTH, label: legends.thematicAreaLabel, value: data.thematicArea,
-    field: "thematicArea", editable
+    field: campo("thematicArea"), editable
   }) + 9;
   y = labeledBox(page, {
     x: left, y, width: CONTENT_WIDTH, label: legends.trainingAgentLabel, value: data.trainingAgent,
-    field: "trainingAgent", editable
+    field: campo("trainingAgent"), editable
   }) + 16;
 
   const affidavit = `${legends.affidavitFirst} ${legends.affidavitSecond}`;
@@ -423,22 +443,22 @@ export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, edita
     throw new Error("El contenido del DC-3 no cabe en una pagina");
   }
 
-  return buildPdf({
-    pages: [page],
+  return {
+    page,
     title: `${legends.formId} ${data.workerName}`,
     // La fecha del PDF es su propiedad de creacion, no un recuadro impreso. Normalmente es la del
     // cierre del curso; cuando la constancia se emite sin fecha —el formato en blanco para llenarse
     // a mano— se usa el dia de la emision, que es lo unico cierto que hay. Fallar aqui dejaria sin
     // documento a quien pidio justamente el formato vacio.
-    date: ISO_DATE.test(String(data.endDate ?? "")) ? data.endDate : hoyIso(),
-    producer: "KCM Cap DC3"
-  });
+    date: ISO_DATE.test(String(data.endDate ?? "")) ? data.endDate : hoyIso()
+  };
 }
 
-/**
- * Punto de entrada equivalente al que llenaba la hoja de calculo: recibe la plantilla oficial y los
- * datos de la constancia y devuelve el PDF listo para entregar.
- */
+export function renderDc3Pdf(opciones) {
+  const { page, title, date } = componerPaginaDc3(opciones);
+  return buildPdf({ pages: [page], title, date, producer: "KCM Cap DC3" });
+}
+
 /**
  * Constancia lista para imprimir. Las leyendas salen de `leyendas-oficiales.js`, no de ningun
  * archivo: emitir un DC-3 no depende de que la hoja oficial este en el disco.
@@ -448,6 +468,14 @@ export function renderDc3Pdf({ legends, data: rawData, allowBlank = false, edita
  */
 export function generateDc3Document(data, { allowBlank = false, editable = false, logos } = {}) {
   return renderDc3Pdf({ legends: LEYENDAS_DC3, data, allowBlank, editable, logos });
+}
+
+/** La misma constancia como pagina suelta, para juntarla con otras en un solo archivo. */
+export function componerConstanciaDc3(
+  data,
+  { allowBlank = false, editable = false, logos, prefijoDeCampos = "" } = {}
+) {
+  return componerPaginaDc3({ legends: LEYENDAS_DC3, data, allowBlank, editable, logos, prefijoDeCampos });
 }
 
 /**

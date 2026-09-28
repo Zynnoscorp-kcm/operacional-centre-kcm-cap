@@ -1,10 +1,14 @@
 Attribute VB_Name = "KcmPlataforma"
 Option Explicit
+Option Private Module
+
+' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
+' en Herramientas > Macros, donde solo quedan las que se usan a mano.
 
 ' EL PUERTO DE PLATAFORMA. Aqui vive todo lo que Windows y macOS no hacen igual,
 ' y en ningun otro modulo del cliente hay una sola directiva `#If Mac`. El
 ' analisis estatico lo comprueba: `npm run lint:vba` falla si aparece una fuera
-' de aqui o de KcmDiagHash, que es el diagnostico temporal.
+' de aqui.
 '
 ' La regla que gobierna el diseno es el tamano de esta superficie. Cuanto menos
 ' dependa de la plataforma, mas dice la prueba hecha en la Mac sobre lo que
@@ -14,14 +18,13 @@ Option Explicit
 ' preflight, la busqueda por nomina, la escritura con historial, el rollback, la
 ' idempotencia, las codificaciones-- corre por el mismo codigo en los dos.
 '
-' Seis funciones cruzan la frontera:
+' Cinco funciones cruzan la frontera:
 '
 '   1. Enviar un POST                KcmTransportePost
 '   2. Calcular SHA-256 de un archivo KcmFileSha256
 '   3. Sortear un identificador      KcmNewGuidHex
 '   4. Fechar en UTC                 KcmUtcIsoNow
 '   5. Guardar y leer la credencial  KcmCredencialGuardar / KcmCredencialLeer
-'   6. Abrir el navegador            KcmAbrirNavegador
 '
 ' Y dos servicios que solo macOS necesita: conceder acceso a un archivo fuera de
 ' la caja de arena de Excel, y ejecutar un programa del sistema.
@@ -800,6 +803,138 @@ End Function
 
 ' ============================================== entradas comunes del puerto
 
+''' La carpeta personal de quien tiene la sesion abierta.
+'''
+''' En macOS, dentro de la caja de arena, HOME apunta al contenedor de Excel
+''' (~/Library/Containers/com.microsoft.Excel/Data): lo que va antes de
+''' /Library/Containers/ es la carpeta del usuario.
+Private Function KcmCarpetaPersonal() As String
+    Dim casa As String
+    #If Mac Then
+        Dim corte As Long
+        casa = Environ$("HOME")
+        corte = InStr(1, casa, "/Library/Containers/", vbTextCompare)
+        If corte > 0 Then casa = Left$(casa, corte - 1)
+    #Else
+        casa = Environ$("USERPROFILE")
+    #End If
+    KcmCarpetaPersonal = casa
+End Function
+
+''' La carpeta con los modulos nuevos del cliente: KCM-VBA-CRLF en el escritorio.
+'''
+''' Si no esta ahi, se elige cualquier modulo de la carpeta que los traiga. En
+''' macOS se concede ademas el permiso de leerla, que el editor de VBA necesita
+''' para importar desde fuera de la caja de arena; el sistema lo pide una vez y
+''' lo recuerda. Cadena vacia si se cancela.
+Public Function KcmCarpetaDeModulos() As String
+    Dim carpeta As String
+    Dim elegido As String
+    Dim separador As String
+
+    #If Mac Then
+        separador = "/"
+    #Else
+        separador = "\"
+    #End If
+    carpeta = KcmCarpetaPersonal() & separador & "Desktop" & separador & "KCM-VBA-CRLF"
+    If Not KcmCarpetaExiste(carpeta) Then
+        elegido = KcmElegirArchivo("Cualquier modulo de la carpeta con los modulos nuevos", _
+            "Modulos de VBA (*.bas; *.cls),*.bas;*.cls")
+        If Len(elegido) = 0 Then Exit Function
+        carpeta = Left$(elegido, InStrRev(elegido, separador) - 1)
+    End If
+    #If Mac Then
+        Dim concedido As Boolean
+        On Error Resume Next
+        concedido = GrantAccessToMultipleFiles(Array(carpeta))
+        Err.Clear
+        On Error GoTo 0
+    #End If
+    KcmCarpetaDeModulos = carpeta
+End Function
+
+''' Los modulos .bas y .cls de `carpeta`, con su ruta completa.
+Public Function KcmArchivosDeModulos(ByVal carpeta As String) As Collection
+    Dim archivos As Collection
+    Dim nombre As String
+
+    Set archivos = New Collection
+    #If Mac Then
+        Dim salida As String
+        Dim renglon As Variant
+        ' Se lista fuera de la caja de arena: en macOS, Dir no admite comodines.
+        If KcmMacCorrer("/bin/ls" & vbTab & "-1" & vbTab & carpeta, salida) Then
+            For Each renglon In Split(Replace(salida, vbCr, vbLf), vbLf)
+                nombre = Trim$(CStr(renglon))
+                If LCase$(Right$(nombre, 4)) = ".bas" Or LCase$(Right$(nombre, 4)) = ".cls" Then
+                    archivos.Add carpeta & "/" & nombre
+                End If
+            Next renglon
+        End If
+    #Else
+        nombre = Dir$(carpeta & "\*.bas")
+        Do While Len(nombre) > 0
+            archivos.Add carpeta & "\" & nombre
+            nombre = Dir$()
+        Loop
+        nombre = Dir$(carpeta & "\*.cls")
+        Do While Len(nombre) > 0
+            archivos.Add carpeta & "\" & nombre
+            nombre = Dir$()
+        Loop
+    #End If
+    Set KcmArchivosDeModulos = archivos
+End Function
+
+''' Pide de una vez permiso para leer todos los `archivos` y devuelve el primero
+''' que siga sin poder leerse; cadena vacia si se leen todos. En macOS el sistema
+''' muestra un solo cuadro con la lista; en Windows no hay nada que pedir.
+Public Function KcmConcederAccesoArchivos(ByVal archivos As Collection) As String
+    Dim archivo As Variant
+    Dim atributos As Long
+
+    If archivos.Count = 0 Then Exit Function
+    #If Mac Then
+        Dim rutas() As Variant
+        Dim indice As Long
+        Dim concedido As Boolean
+        ReDim rutas(0 To archivos.Count - 1)
+        For Each archivo In archivos
+            rutas(indice) = CStr(archivo)
+            indice = indice + 1
+        Next archivo
+        On Error Resume Next
+        concedido = GrantAccessToMultipleFiles(rutas)
+        Err.Clear
+        On Error GoTo 0
+    #End If
+    For Each archivo In archivos
+        On Error Resume Next
+        atributos = GetAttr(CStr(archivo))
+        If Err.Number <> 0 Then
+            Err.Clear
+            On Error GoTo 0
+            KcmConcederAccesoArchivos = CStr(archivo)
+            Exit Function
+        End If
+        On Error GoTo 0
+    Next archivo
+End Function
+
+Private Function KcmCarpetaExiste(ByVal carpeta As String) As Boolean
+    #If Mac Then
+        Dim salida As String
+        KcmCarpetaExiste = KcmMacCorrer("/bin/test" & vbTab & "-d" & vbTab & carpeta, salida)
+    #Else
+        On Error Resume Next
+        KcmCarpetaExiste = (Len(Dir$(carpeta, vbDirectory)) > 0)
+        Err.Clear
+        On Error GoTo 0
+    #End If
+End Function
+
+
 Public Function KcmSistemaOperativo() As String
     #If Mac Then
         KcmSistemaOperativo = "macOS"
@@ -945,7 +1080,73 @@ Public Sub KcmConcederAcceso(ByVal ruta As String, Optional ByVal persistir As B
             End If
             Err.Clear
         End If
-        concedido = GrantAccessToMultipleFiles(Array(ruta))
+        ' Con la ruta se pide la carpeta personal completa (Escritorio, Documentos,
+        ' Descargas, OneDrive) y /Volumes, donde macOS monta las carpetas
+        ' compartidas de la red. El sistema pregunta una vez y lo recuerda: despues
+        ' cualquier matriz o padron local o de red se abre sin volver a pedir nada.
+        concedido = GrantAccessToMultipleFiles(Array(ruta, KcmCarpetaPersonal(), "/Volumes"))
+        Err.Clear
+        On Error GoTo 0
+    #End If
+End Sub
+
+''' Pide acceso a las carpetas del equipo y devuelve las que siguen sin leerse,
+''' una por renglon; cadena vacia si se leen todas.
+'''
+''' En macOS Excel vive en una caja de arena: se pide de una vez la raiz del
+''' disco, la carpeta personal y /Volumes (carpetas compartidas montadas), mas
+''' las rutas configuradas. El sistema pregunta una sola vez y lo recuerda; al
+''' tocar Escritorio, Documentos y Descargas pregunta ademas por cada una, y
+''' conviene que sea aqui y no a media corrida. En Windows no hay caja de arena:
+''' lo que decide son los permisos de la carpeta, que Excel no puede darse a si
+''' mismo, asi que solo se comprueba y se informa.
+Public Function KcmConcederPermisosEquipo(ByVal rutaMatriz As String, ByVal rutaPadron As String) As String
+    Dim casa As String
+    Dim carpetas As Variant
+    Dim carpeta As Variant
+    Dim atributos As Long
+    Dim pendientes As String
+    Dim separador As String
+
+    casa = KcmCarpetaPersonal()
+    #If Mac Then
+        separador = "/"
+        Dim concedido As Boolean
+        On Error Resume Next
+        concedido = GrantAccessToMultipleFiles(Array("/", casa, "/Volumes", _
+            casa & "/Desktop", casa & "/Documents", casa & "/Downloads"))
+        If Len(rutaMatriz) > 0 Then concedido = GrantAccessToMultipleFiles(Array(rutaMatriz))
+        If Len(rutaPadron) > 0 Then concedido = GrantAccessToMultipleFiles(Array(rutaPadron))
+        Err.Clear
+        On Error GoTo 0
+    #Else
+        separador = "\"
+    #End If
+
+    carpetas = Array(casa & separador & "Desktop", casa & separador & "Documents", _
+        casa & separador & "Downloads", rutaMatriz, rutaPadron)
+    For Each carpeta In carpetas
+        If Len(CStr(carpeta)) > 0 Then
+            On Error Resume Next
+            atributos = GetAttr(CStr(carpeta))
+            If Err.Number <> 0 Then pendientes = pendientes & CStr(carpeta) & vbCrLf
+            Err.Clear
+            On Error GoTo 0
+        End If
+    Next carpeta
+    KcmConcederPermisosEquipo = pendientes
+End Function
+
+''' Borra la credencial de este equipo del llavero de macOS o de la variable de
+''' usuario de Windows. No falla si no habia ninguna.
+Public Sub KcmCredencialBorrar()
+    #If Mac Then
+        Dim salida As String
+        KcmMacCorrer "/usr/bin/security" & vbTab & "delete-generic-password" & vbTab & _
+            "-a" & vbTab & KCM_MAC_CUENTA & vbTab & "-s" & vbTab & KCM_TOKEN_ENV, salida
+    #Else
+        On Error Resume Next
+        CreateObject("WScript.Shell").Environment("USER").Remove KCM_TOKEN_ENV
         Err.Clear
         On Error GoTo 0
     #End If
@@ -972,6 +1173,20 @@ Public Function KcmLocalFileProblem(ByVal filePath As String) As String
     KcmConcederAcceso filePath
     On Error Resume Next
     atributos = GetAttr(filePath)
+    #If Mac Then
+        ' La caja de arena de Excel no ve Descargas ni Escritorio sin permiso, y el
+        ' permiso se pide una sola vez por sesion. El guion corre fuera de ella:
+        ' si ahi el archivo existe, la ruta es buena y Excel pedira acceso al abrirlo.
+        If Err.Number <> 0 Then
+            Dim salida As String
+            Err.Clear
+            If KcmMacCorrer("/bin/test" & vbTab & "-f" & vbTab & filePath, salida) Then
+                On Error GoTo 0
+                Exit Function
+            End If
+            Err.Raise 53
+        End If
+    #End If
     If Err.Number <> 0 Then
         KcmLocalFileProblem = KcmSistemaOperativo() & " no reconoce la ruta, error " & _
             CStr(Err.Number) & " " & Err.Description
@@ -1092,23 +1307,6 @@ Public Sub KcmCredencialGuardar(ByVal secreto As String)
     #End If
 End Sub
 
-''' Abre una direccion en el navegador del equipo. Todavia no la usa ninguna
-''' rutina: existe porque el flujo de autorizacion del puente la necesita y
-''' porque es una de las funciones que la autoprueba tiene que poder nombrar.
-Public Sub KcmAbrirNavegador(ByVal url As String)
-    #If Mac Then
-        Dim salida As String
-        If Not KcmMacCorrer("/usr/bin/open" & vbTab & url, salida) Then
-            Err.Raise vbObjectError + 7232, "KcmAbrirNavegador", _
-                "No fue posible abrir el navegador: " & salida
-        End If
-    #Else
-        ' `FollowHyperlink` usa el mecanismo de Office y no crea un proceso hijo
-        ' desde la macro, que es justo lo que las politicas corporativas bloquean.
-        ThisWorkbook.FollowHyperlink Address:=url, NewWindow:=True
-    #End If
-End Sub
-
 ''' Cuadro de Abrir del sistema. Devuelve la ruta elegida, o la cadena vacia si
 ''' se cancelo.
 '''
@@ -1120,7 +1318,7 @@ End Sub
 ''' Alli el filtro se declara con codigos de tipo de cuatro letras, y para `.xlsb`
 ''' no hay ninguno. Asi que en macOS el cuadro se abre sin filtro y la extension
 ''' la comprueba quien llama, que en este cliente ya lo hacia de todos modos.
-Public Function KcmElegirArchivo(ByVal titulo As String) As String
+Public Function KcmElegirArchivo(ByVal titulo As String, Optional ByVal filtro As String = "") As String
     Dim elegido As Variant
 
     #If Mac Then
@@ -1134,9 +1332,8 @@ Public Function KcmElegirArchivo(ByVal titulo As String) As String
         End If
         On Error GoTo 0
     #Else
-        elegido = Application.GetOpenFilename( _
-            FileFilter:="Matriz de capacitacion (*.xlsb),*.xlsb,Todos los archivos (*.*),*.*", _
-            Title:=titulo)
+        If Len(filtro) = 0 Then filtro = "Matriz de capacitacion (*.xlsb),*.xlsb,Todos los archivos (*.*),*.*"
+        elegido = Application.GetOpenFilename(FileFilter:=filtro, Title:=titulo)
     #End If
     If VarType(elegido) = vbBoolean Then Exit Function
     KcmElegirArchivo = CStr(elegido)

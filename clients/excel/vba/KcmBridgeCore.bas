@@ -1,5 +1,9 @@
 Attribute VB_Name = "KcmBridgeCore"
 Option Explicit
+Option Private Module
+
+' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
+' en Herramientas > Macros, donde solo quedan las que se usan a mano.
 
 Public Const KCM_PROTOCOL_VERSION As String = "KCM_VBA_BRIDGE_V1"
 Public Const KCM_CONFIG_SHEET As String = "KCM_CONFIG"
@@ -33,7 +37,7 @@ Public Sub KcmInstallBridge()
         configSheet.Cells(1, 2).Value2 = "VALOR"
         configRow = 2
         KcmWriteConfig configSheet, configRow, "ENDPOINT", ""
-        KcmWriteConfig configSheet, configRow, "CLIENT_ID", "KCM-OFFICE-01"
+        KcmWriteConfig configSheet, configRow, "CLIENT_ID", ""
         KcmWriteConfig configSheet, configRow, "MATRIX_PATH", ""
         KcmWriteConfig configSheet, configRow, "MATRIX_SHEET", "HC"
         KcmWriteConfig configSheet, configRow, "EMPLOYEE_COLUMN", "B"
@@ -50,7 +54,7 @@ Public Sub KcmInstallBridge()
         configSheet.Rows(1).Font.Bold = True
         configSheet.Rows(1).Interior.Color = RGB(31, 78, 121)
         configSheet.Rows(1).Font.Color = RGB(255, 255, 255)
-        configSheet.Range("D1").Value2 = "El token no se guarda aqui. Use la variable de usuario " & KCM_TOKEN_ENV & "."
+        configSheet.Range("D1").Value2 = "El token no se guarda aqui: vive en la variable de usuario " & KCM_TOKEN_ENV & "."
         configSheet.Range("D1").WrapText = True
         configSheet.Columns("D").ColumnWidth = 52
     End If
@@ -64,7 +68,8 @@ Public Sub KcmInstallBridge()
 
     KcmResetCaches
     ThisWorkbook.Save
-    MsgBox "Cliente KCM instalado. Complete KCM_CONFIG y configure " & KCM_TOKEN_ENV & ".", vbInformation
+    KcmAvisoHecho "Instalacion", "Cliente de Excel instalado.", _
+        "Conectar este equipo completa la configuracion."
 End Sub
 
 ''' Vacia los caches por ejecucion. Toda entrada publica debe llamarla antes de leer configuracion.
@@ -209,9 +214,8 @@ Private Function KcmMasterStillOpen() As Boolean
 End Function
 
 ''' Abre la matriz maestra una sola vez por ejecucion y recuerda si fue este cliente quien la abrio.
-''' La referencia se sondea antes de reutilizarla: `KcmApplyPendingReleases` y
-''' `KcmTransmitMatrixSnapshot` no cierran la matriz cuando se ejecutan por separado, asi que el
-''' puntero sobrevive a la corrida. Si entre dos corridas alguien cerro el libro a mano, reutilizarlo
+''' La referencia se sondea antes de reutilizarla: `KcmApplyPendingReleases` no cierra la matriz
+''' cuando se ejecuta por separado, asi que el puntero sobrevive a la corrida. Si entre dos corridas alguien cerro el libro a mano, reutilizarlo
 ''' fallaba con un error de automatizacion sin explicacion en lugar de volver a abrirlo.
 Public Function KcmOpenMaster(Optional ByVal readOnlyAccess As Boolean = False) As Workbook
     Dim targetPath As String
@@ -305,7 +309,8 @@ End Function
 Public Function KcmNormalizeEmployeeId(ByVal value As Variant) As String
     Dim text As String
     If IsError(value) Or IsEmpty(value) Or IsNull(value) Then Exit Function
-    text = Trim$(KcmCellText(value))
+    ' El servidor recorta tambien el espacio duro; aqui se hace lo mismo.
+    text = Trim$(Replace(KcmCellText(value), ChrW(160), " "))
     If Len(text) < 1 Or Len(text) > 5 Then Exit Function
     If Not text Like String$(Len(text), "#") Then Exit Function
     KcmNormalizeEmployeeId = Right$("00000" & text, 5)

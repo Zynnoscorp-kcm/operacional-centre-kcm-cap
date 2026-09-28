@@ -6,7 +6,7 @@
  * dos deja rastro: la matriz escribe su lote de importación y nada más, y el
  * padrón se aplica sin registrar qué archivo entró, quién lo subió ni cuándo.
  *
- * Los asientos van a `kcm.auditoria` y no a una tabla propia. Ese ledger ya es
+ * Los asientos van a `sistema.bitacora_auditoria` y no a una tabla propia. Ese ledger ya es
  * append-only y ya lleva actor, rol, entidad, acción, `solicitud_id` y
  * procedencia; una carga es un hecho auditable como cualquier otro.
  *
@@ -22,13 +22,11 @@ export type TipoDeCarga = "MATRIZ" | "PADRON";
 /**
  * Qué ocurrió.
  *
- * - `ENCARGADA`: alguien pidió el barrido desde la consola. Todavía no hay
- *   archivo; lo que queda registrado es quién lo pidió y cuándo.
  * - `REVISADA`: el archivo llegó y se cuadró contra la base. No se escribió nada.
  * - `APLICADA`: se confirmó y la base cambió. Es el único hecho con efecto.
  * - `RECHAZADA`: la revisión no se pudo aplicar. El motivo va en el resumen.
  */
-export type HechoDeCarga = "ENCARGADA" | "REVISADA" | "APLICADA" | "RECHAZADA";
+export type HechoDeCarga = "REVISADA" | "APLICADA" | "RECHAZADA";
 
 /**
  * El resumen de un hecho.
@@ -56,8 +54,8 @@ export interface AsientoDeCarga {
    */
   readonly archivo: string;
   /**
-   * Huella del archivo leído. Cadena vacía en `ENCARGADA`, donde todavía no hay
-   * archivo.
+   * Huella del archivo leído. Cadena vacía en el rechazo de una revisión
+   * vencida, donde el archivo ya no está para huellarlo.
    *
    * Es lo que permite responder «¿este libro es el mismo de la semana pasada?»
    * sin abrirlo: dos huellas iguales son el mismo archivo byte por byte.

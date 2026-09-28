@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { PreReleaseRepositoryPort } from "../../ports/preliberacion.port.ts";
 import type {
   ActorIdentity,
@@ -22,8 +22,8 @@ import type {
   AuditEventRecord,
   SessionRecord,
 } from "../quiosco/tipos.ts";
-import type { WorkerNumber } from "../numero-trabajador.ts";
-import { parseWorkerNumber } from "../numero-trabajador.ts";
+import type { WorkerNumber } from "../comun/numero-trabajador.ts";
+import { parseWorkerNumber } from "../comun/numero-trabajador.ts";
 import {
   InvalidPreReleaseStateError,
   PreReleaseDuplicateError,
@@ -31,13 +31,7 @@ import {
   PreReleaseInputError,
   PreReleaseNotFoundError,
 } from "./errores.ts";
-import {
-  buildRosterRow,
-  counters,
-  derivedFindings,
-  reviewDto,
-  sessionHeader,
-} from "./servicio.ts";
+import { buildRosterRow, counters, derivedFindings, reviewDto, sessionHeader } from "./servicio.ts";
 import type {
   AddWorkerInput,
   EmployeeInfo,
@@ -479,7 +473,7 @@ export class WorkbenchService {
       const review = await this.repo.getLatestReview(sid);
       if (!review || !review.reviewedAt) {
         throw new InvalidPreReleaseStateError(
-          "Guarde la revisión antes de pasar la sesión a preliberación",
+          "La revisión tiene que guardarse antes de pasar la sesión a preliberación",
         );
       }
 
@@ -532,7 +526,9 @@ export class WorkbenchService {
 
       const review = await this.repo.getLatestReview(sid);
       if (!review || !review.reviewedAt) {
-        throw new InvalidPreReleaseStateError("Guarde la revisión antes de pasarla a liberación");
+        throw new InvalidPreReleaseStateError(
+          "La revisión tiene que guardarse antes de pasarla a liberación",
+        );
       }
 
       // All exams must be classified (no EXAMEN_PENDIENTE)

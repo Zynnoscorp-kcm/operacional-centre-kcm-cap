@@ -17,7 +17,7 @@ import { describe, it } from "node:test";
 
 import { MemoryKioskSessionRepository } from "../../src/adapters/memoria/quiosco.ts";
 import { loadConfig } from "../../src/config/environment.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 
 const FECHA_FIJA = new Date("2026-08-03T12:00:00.000Z");

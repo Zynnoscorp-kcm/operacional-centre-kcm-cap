@@ -21,7 +21,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { ReleaseRepositoryPort } from "../../ports/liberacion.port.ts";
 import type { ActorIdentity, AttendanceRecord, SessionRecord } from "../quiosco/tipos.ts";
 import { blockingReasons } from "../preliberacion/servicio.ts";

@@ -13,10 +13,17 @@ coverage/
 # oficial firmada, logotipos y bocetos. Se consulta en sitio y no se versiona:
 # contiene datos personales y no es código fuente.
 referencias/
-
-config/dc3-generator.local.json
+# Otra carpeta de referencia local: la maqueta CAPTA trae datos con nombres.
+referencias 2/
 
 # Temporales y salidas locales
 tmp/
 build/
 artifacts/
+
+# Skills de agentes: material local de apoyo al desarrollo (apple-design).
+# Cualquier agente del proyecto las lee desde aquí, pero no se versionan
+# ni viajan con la entrega.
+.agents/
+.claude/skills/
+skills-lock.json

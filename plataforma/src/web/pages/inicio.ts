@@ -22,7 +22,9 @@ import type { SessionHeader } from "../../domain/preliberacion/tipos.ts";
 import type { RoomReservation } from "../../domain/salas/tipos.ts";
 import { ROOMS } from "../../domain/salas/tipos.ts";
 import { etiquetaDeEstadoDeSesion } from "../kit/etiquetas.ts";
+import { fechaLarga } from "../kit/fechas.ts";
 import { html, type Html } from "../kit/html.ts";
+import { renderEmergenteDeApagado, renderEmergenteDelAcuse } from "./apagado.ts";
 import { renderLayout } from "../layout.ts";
 
 /** Cuántas filas caben en una tarjeta del tablero sin volverla una tabla. */
@@ -40,6 +42,39 @@ export interface DatosPantallaBase {
   readonly reservas: readonly RoomReservation[];
   /** Sesiones en la bandeja de liberación. */
   readonly porLiberar: readonly SessionHeader[];
+  /**
+   * El tablero se está dibujando como respuesta al apagado. Cambia tres cosas:
+   * la tarjeta de encendido pasa a decir que ya no lo está, se le quita el botón
+   * y encima aparece el acuse. También se apaga la recarga automática, que si no
+   * volvería a pedir esta pantalla a un servidor que ya no contesta y sustituiría
+   * el acuse por el error del navegador.
+   */
+  readonly apagando?: boolean;
+  /** Constancias DC-3 por emitir de los cursos desde el corte. Ausente sin base. */
+  readonly dc3PorEmitir?: number;
+}
+
+interface FilaDeCola {
+  readonly cuantas: number;
+  /** Lo que le pasa a esas sesiones, en plural: la cifra va delante. */
+  readonly texto: string;
+  /** Qué hay que hacer con ellas. Una línea, sin explicación. */
+  readonly pista: string;
+  readonly destino: string;
+  readonly accion: string;
+  readonly tono: string;
+}
+
+/** Cifra, qué son y a dónde ir. Nada más: el renglón se lee de un vistazo. */
+function renderFilaDeCola(fila: FilaDeCola): Html {
+  return html`<li class="cola-fila ${fila.tono}">
+    <span class="cola-cifra">${fila.cuantas}</span>
+    <span class="cola-texto">
+      <strong>${fila.texto}</strong>
+      <span class="cola-pista">${fila.pista}</span>
+    </span>
+    <a class="cola-accion" href="${fila.destino}">${fila.accion}</a>
+  </li>`;
 }
 
 export function renderHomePage(datos: DatosPantallaBase): string {
@@ -65,12 +100,144 @@ export function renderHomePage(datos: DatosPantallaBase): string {
     )
     .slice(0, MAXIMO_DE_CERRADAS);
 
+  /*
+   * La cola del día.
+   *
+   * Es lo primero de la pantalla y lo único que contesta «¿qué hago ahora?».
+   * El resto del tablero informa —cuántas sesiones hay, qué salas están
+   * ocupadas—, que es una pregunta distinta y que sólo se hace cuando ya se
+   * sabe qué toca.
+   *
+   * El orden no es alfabético ni por tamaño: es el de la jornada. Una sesión
+   * recorre abierta, cerrada, en revisión y lista para liberar, y la cola la
+   * enseña en ese mismo orden para que bajar la lista sea avanzar el trabajo.
+   *
+   * Los renglones en cero no se dibujan. Una cola que enseña cuatro ceros para
+   * decir que no hay nada obliga a leer cuatro renglones para averiguarlo; sin
+   * ellos, una cola vacía se reconoce sin leer.
+   *
+   * No cuesta ninguna consulta: los cuatro grupos salen de las mismas dos
+   * lecturas que el tablero ya hacía.
+   */
+  const enRevision = datos.sesiones.filter((sesion) => sesion.status === "PRELIBERACION");
+  const conError = datos.sesiones.filter((sesion) => sesion.status === "ERROR");
+
+  const cola: readonly FilaDeCola[] = [
+    {
+      cuantas: abiertas.length,
+      texto: "abiertas en la sala",
+      pista: "Se cierran desde el quiosco",
+      destino: "/sesiones",
+      accion: "Ver sesiones",
+      tono: "",
+    },
+    {
+      cuantas: cerradas.length,
+      texto: "esperan su lista física",
+      pista: "Revisar exámenes y cotejar",
+      destino: "/preliberacion",
+      accion: "Revisar",
+      tono: "cola-toca",
+    },
+    {
+      cuantas: enRevision.length,
+      texto: "en revisión",
+      pista: "Preliberación empezada y sin terminar",
+      destino: "/preliberacion",
+      accion: "Continuar",
+      tono: "cola-toca",
+    },
+    {
+      cuantas: datos.porLiberar.length,
+      texto: "listas para liberar",
+      pista: "Revisión concluida",
+      destino: "/liberacion",
+      accion: "Liberar",
+      tono: "cola-toca",
+    },
+    {
+      cuantas: conError.length,
+      texto: "con error",
+      pista: "No avanzan solas",
+      destino: "/sesiones",
+      accion: "Atender",
+      tono: "cola-alto",
+    },
+    {
+      // Va al final de la jornada, cuando lo de la sala ya está liberado.
+      cuantas: datos.dc3PorEmitir ?? 0,
+      texto: "constancias DC-3 por emitir",
+      pista: "Cursos desde el 1 de enero de 2026",
+      destino: "/dc3",
+      accion: "Emitir",
+      tono: "cola-toca",
+    },
+  ].filter((fila) => fila.cuantas > 0);
+
   const contenido = html`
+    ${
+      // El acuse del apagado y su ancla de cierre, antes que nada. El recuadro
+      // es fijo y le da igual el orden, pero el ancla no: pulsar OK lleva el
+      // navegador hasta ella, y a media página eso dejaba el tablero desplazado
+      // con la barra y la tarjeta de estado fuera de la pantalla.
+      datos.apagando === true && datos.config.role === "local" ? renderEmergenteDelAcuse() : ""
+    }
+    ${
+      // Sólo en la computadora del departamento, y arriba del todo: quien la
+      // encendió para mandar el barrido necesita encontrar el apagado sin
+      // buscarlo. En la nube esta tarjeta no existe, porque allí no hay nada
+      // que apagar y la ruta responde 404.
+      datos.config.role !== "local"
+        ? ""
+        : datos.apagando === true
+          ? html`<section class="tarjeta" aria-labelledby="titulo-energia">
+              <div class="seccion-cabecera">
+                <h2 id="titulo-energia">Esta computadora</h2>
+              </div>
+              <p class="energia-estado">
+                <span class="energia-punto energia-punto-apagado" aria-hidden="true"></span>
+                Servidor local apagado
+              </p>
+              <p class="texto-nota">
+                Se enciende con <strong>Encender KCM</strong>, en el Escritorio.
+              </p>
+            </section>`
+          : html`<section class="tarjeta" aria-labelledby="titulo-energia">
+                <div class="seccion-cabecera">
+                  <h2 id="titulo-energia">Esta computadora</h2>
+                </div>
+                <p class="energia-estado">
+                  <span class="energia-punto" aria-hidden="true"></span>
+                  Plataforma encendida
+                </p>
+                <p class="texto-nota">
+                  Recibe el barrido de la matriz y el padrón enviados desde Excel.
+                </p>
+                <p class="acciones-fila">
+                  <a class="boton-peligro energia-boton" href="#apagar">Apagar la plataforma</a>
+                </p>
+              </section>
+              ${renderEmergenteDeApagado()}`
+    }
+
+    <section class="tarjeta" aria-labelledby="titulo-cola">
+      <div class="seccion-cabecera">
+        <h2 id="titulo-cola">Lo que toca ahora</h2>
+      </div>
+      ${
+        cola.length > 0
+          ? html`<ul class="cola">
+              ${cola.map(renderFilaDeCola)}
+            </ul>`
+          : html`<p class="texto-vacio">Nada pendiente.</p>`
+      }
+    </section>
+
     <dl class="kpi-tira">
-      ${renderIndicador("Sesiones de hoy", deHoy.length, "sesiones", "kpi-texto", "Fecha de planta")}
+      ${renderIndicador("Sesiones de hoy", deHoy.length, "sesiones", "kpi-texto", "Agendadas para hoy")}
       ${renderIndicador("Sesiones abiertas", abiertas.length, "sesiones", "kpi-ok", "Registro de asistencia en curso")}
-      ${renderIndicador("Salas ocupadas", reservasVivas.length, "reservaciones", "kpi-texto", "Reservaciones vigentes")}
-      ${renderIndicador("Pendientes de liberación", datos.porLiberar.length, "sesiones", datos.porLiberar.length > 0 ? "kpi-aviso" : "kpi-texto", "Revisión concluida")}
+      ${renderIndicador("Salas ocupadas", reservasVivas.length, "reservaciones", "kpi-texto", "Reservaciones de hoy")}
+      ${renderIndicador("Pendientes de liberación", datos.porLiberar.length, "sesiones", datos.porLiberar.length > 0 ? "kpi-aviso" : "kpi-texto", "Con la revisión concluida")}
     </dl>
 
     <div class="tablero-columnas">
@@ -79,7 +246,7 @@ export function renderHomePage(datos: DatosPantallaBase): string {
           <div class="seccion-cabecera cabecera-fila">
             <div>
               <h2 id="titulo-sesiones-hoy">Sesiones de hoy</h2>
-              <p>Programadas para ${datos.hoy}</p>
+              <p>Programadas para hoy</p>
             </div>
             <a class="enlace-seccion" href="/sesiones">Ver sesiones</a>
           </div>
@@ -146,13 +313,15 @@ export function renderHomePage(datos: DatosPantallaBase): string {
 
   return renderLayout({
     titulo: "Inicio",
-    subtitulo: `Resumen operativo · ${datos.hoy}`,
+    subtitulo: `Resumen del día · ${fechaLarga(datos.hoy)}`,
     entorno: datos.config.environment,
+    papel: datos.config.role,
     contenido,
     rutaActiva: "/",
     // Medio minuto. Es lo que hace que cerrar en la sala se vea aquí sin que
-    // nadie recargue: Inicio no tiene un solo campo que se pueda perder.
-    recargaCada: 30,
+    // nadie recargue: Inicio no tiene un solo campo que se pueda perder. Con el
+    // servidor apagándose no se recarga: no habría quien contestara.
+    ...(datos.apagando === true ? {} : { recargaCada: 30 }),
   });
 }
 
@@ -184,7 +353,7 @@ function renderSiguientePaso(porLiberar: number, enPreliberacion: number, abiert
       ? {
           rotulo: "Pendiente",
           titulo: `${String(porLiberar)} ${porLiberar === 1 ? "sesión lista" : "sesiones listas"} para liberar`,
-          texto: "Revisión previa del lote antes de escribir en la matriz.",
+          texto: "Con la revisión concluida, listas para escribirse en la matriz.",
           accion: { nombre: "Ir a liberación", href: "/liberacion" },
         }
       : enPreliberacion > 0
@@ -204,7 +373,7 @@ function renderSiguientePaso(porLiberar: number, enPreliberacion: number, abiert
           : {
               rotulo: "Estado",
               titulo: "Sin pendientes",
-              texto: "Ninguna sesión abierta ni lote en espera.",
+              texto: "Ninguna sesión abierta ni liberación pendiente.",
               accion: { nombre: "Crear sesión", href: "/sesiones" },
             };
 

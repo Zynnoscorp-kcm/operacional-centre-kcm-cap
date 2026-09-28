@@ -20,8 +20,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import type { Clock } from "../ports/reloj.ts";
-import { DomainError } from "../domain/errores.ts";
+import type { Clock } from "../ports/reloj.port.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import type { InternalAuditService } from "../domain/consola-interna/auditoria.ts";
 import type { DataPreviewService } from "../domain/consola-interna/vista-de-datos.ts";
 import type { DeclaredFieldService } from "../domain/consola-interna/campos-declarados.ts";

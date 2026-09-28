@@ -2,17 +2,17 @@
  * Adaptador de repositorio de matriz para PostgreSQL / Supabase.
  *
  * Mapea las entidades y operaciones de lote al esquema `kcm.*`:
- * - `kcm.lote_importacion`
- * - `kcm.trabajador`
- * - `kcm.capacitacion`
- * - `kcm.alias_capacitacion`
- * - `kcm.registro_hc`
- * - `kcm.historial_sobrescritura_fecha`
- * - `kcm.candidato_curso`
- * - `kcm.candidato_trabajador`
+ * - `matriz.importacion`
+ * - `organizacion.trabajador`
+ * - `catalogo.capacitacion`
+ * - `catalogo.capacitacion_alias`
+ * - `operacion.historial_capacitacion`
+ * - `operacion.historial_capacitacion_cambio`
+ * - `matriz.capacitacion_desconocida`
+ * - `matriz.trabajador_desconocido`
  */
 
-import { parseWorkerNumber } from "../../domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   BatchPhase,
   CandidateCourse,
@@ -27,7 +27,10 @@ import type {
   SnapshotDiagnostics,
   WorkerCatalogEntry,
 } from "../../domain/importacion-matriz/tipos.ts";
-import type { AtomicBatchOperations, MatrixRepositoryPort } from "../../ports/importacion-matriz.port.ts";
+import type {
+  AtomicBatchOperations,
+  MatrixRepositoryPort,
+} from "../../ports/importacion-matriz.port.ts";
 
 export interface SqlExecutor {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -47,12 +50,12 @@ interface LoteImportacionRow {
   total_trabajadores: number;
   total_cursos: number;
   total_fechas: number;
-  insertados_count: number;
-  corregidos_count: number;
-  retirados_count: number;
-  reactivados_count: number;
-  conflictos_count: number;
-  pendientes_maestro_count: number;
+  total_insertados: number;
+  total_corregidos: number;
+  total_retirados: number;
+  total_reactivados: number;
+  total_conflictos: number;
+  total_pendientes_maestro: number;
   diagnosticos: SnapshotDiagnostics;
   creado_por: string;
   creado_en: string | Date;
@@ -70,6 +73,7 @@ interface TrabajadorRow {
   area_nombre: string | null;
   planta: string;
   activo: boolean;
+  visto_en_padron: boolean | null;
   hash_fuente: string;
   actualizado_en: string | Date;
 }
@@ -137,10 +141,10 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       `SELECT importacion_id, solicitud_id, sha256_fuente, sha256_snapshot,
               nombre_archivo_fuente, nombre_hoja_fuente, extraido_en,
               estado, alcance, total_trabajadores, total_cursos, total_fechas,
-              insertados_count, corregidos_count, retirados_count,
-              reactivados_count, conflictos_count, pendientes_maestro_count,
+              total_insertados, total_corregidos, total_retirados,
+              total_reactivados, total_conflictos, total_pendientes_maestro,
               diagnosticos, creado_por, creado_en, completado_en, version
-       FROM kcm.lote_importacion
+       FROM matriz.importacion
        WHERE solicitud_id = $1`,
       [requestId],
     );
@@ -155,10 +159,10 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       `SELECT importacion_id, solicitud_id, sha256_fuente, sha256_snapshot,
               nombre_archivo_fuente, nombre_hoja_fuente, extraido_en,
               estado, alcance, total_trabajadores, total_cursos, total_fechas,
-              insertados_count, corregidos_count, retirados_count,
-              reactivados_count, conflictos_count, pendientes_maestro_count,
+              total_insertados, total_corregidos, total_retirados,
+              total_reactivados, total_conflictos, total_pendientes_maestro,
               diagnosticos, creado_por, creado_en, completado_en, version
-       FROM kcm.lote_importacion
+       FROM matriz.importacion
        WHERE importacion_id = $1`,
       [importId],
     );
@@ -172,10 +176,10 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       `SELECT importacion_id, solicitud_id, sha256_fuente, sha256_snapshot,
               nombre_archivo_fuente, nombre_hoja_fuente, extraido_en,
               estado, alcance, total_trabajadores, total_cursos, total_fechas,
-              insertados_count, corregidos_count, retirados_count,
-              reactivados_count, conflictos_count, pendientes_maestro_count,
+              total_insertados, total_corregidos, total_retirados,
+              total_reactivados, total_conflictos, total_pendientes_maestro,
               diagnosticos, creado_por, creado_en, completado_en, version
-       FROM kcm.lote_importacion
+       FROM matriz.importacion
        WHERE estado = 'CONFIRMADO'
        ORDER BY extraido_en DESC
        LIMIT 1`,
@@ -200,12 +204,12 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         totalEmployees: r.total_trabajadores,
         totalCourses: r.total_cursos,
         totalCompletions: r.total_fechas,
-        insertedCount: r.insertados_count,
-        correctedCount: r.corregidos_count,
-        retiredCount: r.retirados_count,
-        reactivatedCount: r.reactivados_count,
-        conflictCount: r.conflictos_count,
-        pendingMasterCount: r.pendientes_maestro_count,
+        insertedCount: r.total_insertados,
+        correctedCount: r.total_corregidos,
+        retiredCount: r.total_retirados,
+        reactivatedCount: r.total_reactivados,
+        conflictCount: r.total_conflictos,
+        pendingMasterCount: r.total_pendientes_maestro,
       },
       diagnostics: r.diagnosticos,
       createdBy: r.creado_por,
@@ -221,12 +225,12 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
   async saveBatch(batch: ImportBatch): Promise<void> {
     const creadoPor = await resolverActor(this.db, batch.createdBy);
     await this.db.query(
-      `INSERT INTO kcm.lote_importacion (
+      `INSERT INTO matriz.importacion (
         importacion_id, solicitud_id, sha256_fuente, sha256_snapshot,
         nombre_archivo_fuente, nombre_hoja_fuente, extraido_en,
         estado, alcance, total_trabajadores, total_cursos, total_fechas,
-        insertados_count, corregidos_count, retirados_count, reactivados_count,
-        conflictos_count, pendientes_maestro_count, diagnosticos, creado_por,
+        total_insertados, total_corregidos, total_retirados, total_reactivados,
+        total_conflictos, total_pendientes_maestro, diagnosticos, creado_por,
         creado_en, completado_en, version
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
@@ -234,12 +238,12 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       ON CONFLICT (solicitud_id) DO UPDATE SET
         estado = EXCLUDED.estado,
         alcance = EXCLUDED.alcance,
-        insertados_count = EXCLUDED.insertados_count,
-        corregidos_count = EXCLUDED.corregidos_count,
-        retirados_count = EXCLUDED.retirados_count,
-        reactivados_count = EXCLUDED.reactivados_count,
-        conflictos_count = EXCLUDED.conflictos_count,
-        pendientes_maestro_count = EXCLUDED.pendientes_maestro_count,
+        total_insertados = EXCLUDED.total_insertados,
+        total_corregidos = EXCLUDED.total_corregidos,
+        total_retirados = EXCLUDED.total_retirados,
+        total_reactivados = EXCLUDED.total_reactivados,
+        total_conflictos = EXCLUDED.total_conflictos,
+        total_pendientes_maestro = EXCLUDED.total_pendientes_maestro,
         diagnosticos = EXCLUDED.diagnosticos,
         completado_en = EXCLUDED.completado_en,
         version = EXCLUDED.version`,
@@ -279,11 +283,11 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
     const res = await this.db.query<TrabajadorRow>(
       `SELECT t.numero_trabajador, t.nombre_completo, t.fecha_alta, t.tipo_nomina,
               p.nombre AS puesto_nombre, d.nombre AS depto_nombre, a.nombre AS area_nombre,
-              t.planta, t.activo, t.hash_fuente, t.actualizado_en
-       FROM kcm.trabajador t
-       LEFT JOIN kcm.puesto p ON p.puesto_id = t.puesto_id
-       LEFT JOIN kcm.departamento d ON d.departamento_id = t.departamento_id
-       LEFT JOIN kcm.area a ON a.area_id = t.area_id`,
+              t.planta, t.activo, t.visto_en_padron, t.hash_fuente, t.actualizado_en
+       FROM organizacion.trabajador t
+       LEFT JOIN organizacion.puesto p ON p.puesto_id = t.puesto_id
+       LEFT JOIN organizacion.departamento d ON d.departamento_id = t.departamento_id
+       LEFT JOIN organizacion.area a ON a.area_id = t.area_id`,
     );
 
     return res.rows.map((r) => ({
@@ -296,6 +300,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       area: r.area_nombre ?? "",
       plant: r.planta,
       active: r.activo,
+      seenInRoster: r.visto_en_padron ?? true,
       sourceHash: r.hash_fuente,
       updatedAt: new Date(r.actualizado_en).toISOString(),
     }));
@@ -306,8 +311,8 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       `SELECT c.capacitacion_id, c.clave_curso, c.nombre, c.nombre_normalizado,
               c.clave_origen, c.activa, c.primera_importacion, c.ultima_importacion, c.actualizada_en,
               COALESCE(array_agg(a.alias) FILTER (WHERE a.alias IS NOT NULL), '{}') AS aliases
-       FROM kcm.capacitacion c
-       LEFT JOIN kcm.alias_capacitacion a ON a.capacitacion_id = c.capacitacion_id
+       FROM catalogo.capacitacion c
+       LEFT JOIN catalogo.capacitacion_alias a ON a.capacitacion_id = c.capacitacion_id
        GROUP BY c.capacitacion_id`,
     );
 
@@ -330,9 +335,9 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
               r.fecha_capacitacion, r.procedencia, r.estado_registro, r.sesion_id,
               r.liberacion_id, r.version_mapeo, r.lote_id, r.marcador, r.importacion_id,
               r.solicitud_id, r.creado_en, r.actualizado_en, r.version
-       FROM kcm.registro_hc r
-       JOIN kcm.trabajador t ON t.trabajador_id = r.trabajador_id
-       JOIN kcm.capacitacion c ON c.capacitacion_id = r.capacitacion_id`,
+       FROM operacion.historial_capacitacion r
+       JOIN organizacion.trabajador t ON t.trabajador_id = r.trabajador_id
+       JOIN catalogo.capacitacion c ON c.capacitacion_id = r.capacitacion_id`,
     );
 
     return res.rows.map((r) => ({
@@ -364,10 +369,10 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
               h.tipo_cambio, h.fecha_anterior, h.fecha_nueva, h.estado_anterior,
               h.estado_nuevo, h.procedencia, a.identificador AS actor_correo,
               h.motivo, h.solicitud_id, h.importacion_id, h.registrado_en
-       FROM kcm.historial_sobrescritura_fecha h
-       JOIN kcm.trabajador t ON t.trabajador_id = h.trabajador_id
-       JOIN kcm.capacitacion c ON c.capacitacion_id = h.capacitacion_id
-       JOIN kcm.actor a ON a.actor_id = h.actor_id
+       FROM operacion.historial_capacitacion_cambio h
+       JOIN organizacion.trabajador t ON t.trabajador_id = h.trabajador_id
+       JOIN catalogo.capacitacion c ON c.capacitacion_id = h.capacitacion_id
+       JOIN seguridad.actor a ON a.actor_id = h.actor_id
        ORDER BY h.secuencia ASC`,
     );
 
@@ -400,7 +405,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       // 2. Upsert trabajadores
       for (const w of ops.workersToUpsert) {
         await tx.query(
-          `INSERT INTO kcm.trabajador (
+          `INSERT INTO organizacion.trabajador (
             numero_trabajador, nombre_completo, fecha_alta, tipo_nomina, planta, activo, hash_fuente
           ) VALUES ($1, $2, $3, $4, $5, $6, $7)
           ON CONFLICT (numero_trabajador) DO UPDATE SET
@@ -426,7 +431,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       // 3. Upsert cursos
       for (const c of ops.coursesToUpsert) {
         await tx.query(
-          `INSERT INTO kcm.capacitacion (
+          `INSERT INTO catalogo.capacitacion (
             clave_curso, nombre, nombre_normalizado, clave_origen, activa, primera_importacion, ultima_importacion
           ) VALUES ($1, $2, $3, $4, $5, $6, $7)
           ON CONFLICT (clave_curso) DO UPDATE SET
@@ -451,7 +456,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       // 4. Actualizar registros existentes
       for (const r of ops.recordsToUpdate) {
         await tx.query(
-          `UPDATE kcm.registro_hc SET
+          `UPDATE operacion.historial_capacitacion SET
             fecha_capacitacion = $1,
             estado_registro = $2,
             importacion_id = $3,
@@ -465,14 +470,14 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       // 5. Insertar nuevos registros
       for (const r of ops.recordsToInsert) {
         await tx.query(
-          `INSERT INTO kcm.registro_hc (
+          `INSERT INTO operacion.historial_capacitacion (
             registro_id, clave_idempotencia, trabajador_id, capacitacion_id,
             fecha_capacitacion, procedencia, estado_registro, sesion_id,
             liberacion_id, version_mapeo, lote_id, marcador, importacion_id, solicitud_id
           ) VALUES (
             $1, $2,
-            (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3),
-            (SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = $4),
+            (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
+            (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
             $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
           )`,
           [
@@ -497,14 +502,14 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       // 6. Insertar historial append-only
       for (const h of ops.historyEntriesToInsert) {
         await tx.query(
-          `INSERT INTO kcm.historial_sobrescritura_fecha (
+          `INSERT INTO operacion.historial_capacitacion_cambio (
             historial_id, registro_id, trabajador_id, capacitacion_id,
             tipo_cambio, fecha_anterior, fecha_nueva, estado_anterior,
             estado_nuevo, procedencia, actor_id, motivo, solicitud_id, importacion_id
           ) VALUES (
             $1, $2,
-            (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3),
-            (SELECT capacitacion_id FROM kcm.capacitacion WHERE clave_curso = $4),
+            (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
+            (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
             $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
           )`,
           [
@@ -525,12 +530,28 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
           ],
         );
       }
+
+      // 7. Quién estuvo en esta matriz, y la baja de quien no está ni aquí ni
+      //    en el último padrón. Dos sentencias para toda la planta.
+      if (ops.workersSeen) {
+        await tx.query(
+          `UPDATE organizacion.trabajador
+              SET visto_en_matriz = (numero_trabajador = ANY($1::text[]))
+            WHERE visto_en_matriz IS DISTINCT FROM (numero_trabajador = ANY($1::text[]));`,
+          [ops.workersSeen],
+        );
+        await tx.query(
+          `UPDATE organizacion.trabajador
+              SET activo = false
+            WHERE activo AND NOT visto_en_matriz AND NOT visto_en_padron;`,
+        );
+      }
     });
   }
 
   async recordCandidateCourse(candidate: CandidateCourse): Promise<void> {
     await this.db.query(
-      `INSERT INTO kcm.candidato_curso (
+      `INSERT INTO matriz.capacitacion_desconocida (
         candidato_id, clave_origen, nombre_detectado, nombre_normalizado, origen_fuente, estado
       ) VALUES ($1, $2, $3, $4, $5, $6)`,
       [
@@ -546,7 +567,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
 
   async recordCandidateWorker(candidate: CandidateWorker): Promise<void> {
     await this.db.query(
-      `INSERT INTO kcm.candidato_trabajador (
+      `INSERT INTO matriz.trabajador_desconocido (
         candidato_id, numero_trabajador, nombre_detectado, datos_laborales, origen_fuente, estado
       ) VALUES ($1, $2, $3, $4, $5, $6)`,
       [
@@ -564,7 +585,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
 /**
  * Actor durable a partir de su identificador de texto.
  *
- * Las columnas de auditoría del esquema son `uuid NOT NULL REFERENCES kcm.actor`, mientras que
+ * Las columnas de auditoría del esquema son `uuid NOT NULL REFERENCES seguridad.actor`, mientras que
  * el dominio maneja al responsable por su identificador legible — `VBA_CLIENT_KCM-MAC-01` para
  * el puente de Excel. Pasar ese texto directo a la columna hacía que Postgres rechazara el lote
  * completo, ya recibido y validado, con "invalid input syntax for type uuid". Se crea si no
@@ -574,7 +595,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {
   const clave = identificador.trim() || "SISTEMA";
   const { rows } = await tx.query<{ actor_id: string }>(
-    `INSERT INTO kcm.actor (identificador, nombre_visible)
+    `INSERT INTO seguridad.actor (identificador, nombre_visible)
      VALUES ($1, $1)
      ON CONFLICT (identificador) DO UPDATE SET identificador = EXCLUDED.identificador
      RETURNING actor_id;`,

@@ -20,7 +20,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# `--omit=dev` deja fuera el utillaje local; aquí sólo quedan `fastify` y `pg`.
+# `--omit=dev` deja fuera el utillaje local; aquí sólo quedan las `dependencies`.
 # `--ignore-scripts` evita que un postinstall compile binarios que nadie usa.
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
@@ -37,7 +37,7 @@ WORKDIR /app
 # disco persistente pierde las evidencias de preliberación en cada ciclo; con la
 # variable ausente la plataforma las guarda en la propia base
 # (`PostgresObjectStore`), donde sobreviven al redespliegue junto al apuntador
-# de `kcm.evidencia`.
+# de `operacion.sesion_evidencia`.
 ENV NODE_ENV=production \
     PORT=8787 \
     KCM_ENV=staging \

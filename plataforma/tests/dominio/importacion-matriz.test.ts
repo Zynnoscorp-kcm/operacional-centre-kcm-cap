@@ -41,7 +41,7 @@ import type {
   SnapshotCourse,
   SnapshotEmployee,
 } from "../../src/domain/importacion-matriz/tipos.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 
 function createSyntheticSnapshot(overrides: Partial<MatrixSnapshot> = {}): MatrixSnapshot {
   const employees: SnapshotEmployee[] = [

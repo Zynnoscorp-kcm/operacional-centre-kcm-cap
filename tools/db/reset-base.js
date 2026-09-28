@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Cierre de la corrida piloto: reconstruye `kcm` y `kcm_lectura` desde cero.
+ * Cierre de la corrida piloto: reconstruye todos los esquemas de la plataforma
+ * desde cero (ver `ESQUEMAS`).
  *
  * No borra fila por fila. Auditoria, liberaciones, acuses e historial de
  * sobrescritura son append-only y sus triggers rechazan DELETE y TRUNCATE por
- * diseno, asi que el unico cierre valido es tirar los dos esquemas y reaplicar
+ * diseno, asi que el unico cierre valido es tirar los esquemas y reaplicar
  * las migraciones. Ver `database/RESET.md`.
  *
  * Exige `KCM_ADMIN_DATABASE_URL`: la cadena del rol `postgres` del proyecto,
@@ -31,6 +32,27 @@ import {
 } from "./lib/migraciones.js";
 
 const require = createRequire(import.meta.url);
+
+/**
+ * Todo lo que crean las migraciones. `kcm` y `kcm_lectura` son los nombres que
+ * tenian `comun` y `lectura` antes de `0043`: se incluyen para poder cerrar
+ * tambien una base que se quedo antes de esa migracion.
+ */
+const ESQUEMAS = [
+  "lectura",
+  "organizacion",
+  "catalogo",
+  "operacion",
+  "matriz",
+  "dnc",
+  "dc3",
+  "seguridad",
+  "sistema",
+  "comun",
+  "kcm_lectura",
+  "kcm",
+];
+const ESQUEMAS_CON_TABLAS = ["organizacion", "catalogo", "operacion", "matriz", "dnc", "dc3", "seguridad", "sistema"];
 const { Client } = require("pg");
 
 async function main() {
@@ -38,7 +60,7 @@ async function main() {
   const dryRun = args.has("--dry-run");
   if (!dryRun && !args.has("--confirmo")) {
     throw new Error(
-      "Falta --confirmo. Esto destruye los esquemas kcm y kcm_lectura sin retorno.",
+      `Falta --confirmo. Esto destruye los esquemas ${ESQUEMAS.join(", ")} sin retorno.`,
     );
   }
 
@@ -47,7 +69,7 @@ async function main() {
   const archivos = await listarMigraciones();
 
   if (dryRun) {
-    console.log(`Plan: DROP de kcm_lectura y kcm, luego ${archivos.length} migraciones.`);
+    console.log(`Plan: DROP de ${ESQUEMAS.join(", ")}; luego ${archivos.length} migraciones.`);
     for (const n of archivos) {
       const marcas = [
         SIN_TRANSACCION.has(n) ? "sin transaccion" : null,
@@ -63,8 +85,7 @@ async function main() {
   await client.connect();
   try {
     console.log("Tirando esquemas...");
-    await client.query("DROP SCHEMA IF EXISTS kcm_lectura CASCADE");
-    await client.query("DROP SCHEMA IF EXISTS kcm CASCADE");
+    await client.query(`DROP SCHEMA IF EXISTS ${ESQUEMAS.join(", ")} CASCADE`);
 
     // El historial de Supabase quedaria describiendo una base que ya no existe.
     await client.query(
@@ -87,21 +108,21 @@ async function main() {
 
     const { rows } = await client.query(`
       SELECT
-        (SELECT count(*) FROM kcm.trabajador)                          AS trabajadores,
-        (SELECT count(*) FROM kcm.auditoria)                           AS auditoria,
-        to_regclass('kcm.corrida_piloto')::text                        AS corrida_piloto,
-        obj_description('kcm'::regnamespace)                           AS comentario_esquema,
-        (SELECT rolbypassrls FROM pg_roles WHERE rolname = 'kcm_app')  AS kcm_app_bypassrls,
+        (SELECT count(*) FROM organizacion.trabajador)                   AS trabajadores,
+        (SELECT count(*) FROM sistema.bitacora_auditoria)                AS auditoria,
+        to_regclass('sistema.corrida_piloto')::text                      AS corrida_piloto,
+        obj_description('comun'::regnamespace)                           AS comentario_esquema,
+        (SELECT rolbypassrls FROM pg_roles WHERE rolname = 'kcm_app')    AS kcm_app_bypassrls,
         (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE n.nspname = 'kcm' AND c.relkind = 'r'
+          WHERE n.nspname = ANY ($1::text[]) AND c.relkind = 'r'
             AND NOT EXISTS (SELECT 1 FROM pg_policies p
-                             WHERE p.schemaname = 'kcm' AND p.tablename = c.relname
-                               AND p.policyname = 'app_acceso_total'))  AS tablas_sin_politica,
-        has_table_privilege('kcm_app','kcm.nonce_puente','INSERT')      AS nonce_insert,
-        has_table_privilege('kcm_app','kcm.nonce_puente','DELETE')      AS nonce_delete,
-        to_regclass('kcm_lectura.cobertura_dnc')::text                  AS cobertura_dnc,
-        to_regclass('kcm_lectura.resumen_dnc_trabajador')::text         AS resumen_dnc
-    `);
+                             WHERE p.schemaname = n.nspname AND p.tablename = c.relname
+                               AND 'kcm_app' = ANY (p.roles)))       AS tablas_sin_politica,
+        has_table_privilege('kcm_app','seguridad.nonce','INSERT')        AS nonce_insert,
+        has_table_privilege('kcm_app','seguridad.nonce','DELETE')        AS nonce_delete,
+        to_regclass('lectura.cobertura_dnc')::text                       AS cobertura_dnc,
+        to_regclass('lectura.resumen_dnc_trabajador')::text              AS resumen_dnc
+    `, [ESQUEMAS_CON_TABLAS]);
 
     console.log("\nVerificacion:");
     console.table(rows[0]);
@@ -109,9 +130,9 @@ async function main() {
     const v = rows[0];
     const fallas = [];
     if (Number(v.trabajadores) !== 0) fallas.push("quedaron trabajadores");
-    if (v.corrida_piloto !== null) fallas.push("kcm.corrida_piloto sigue existiendo");
+    if (v.corrida_piloto !== null) fallas.push("sistema.corrida_piloto sigue existiendo");
     if (v.kcm_app_bypassrls !== false) fallas.push("kcm_app puede saltarse la RLS");
-    if (Number(v.tablas_sin_politica) !== 0) fallas.push("hay tablas sin app_acceso_total");
+    if (Number(v.tablas_sin_politica) !== 0) fallas.push("hay tablas sin politica para kcm_app");
     if (!v.nonce_insert || !v.nonce_delete) fallas.push("faltan privilegios del nonce del puente");
     if (!v.cobertura_dnc || !v.resumen_dnc) fallas.push("faltan las vistas de cobertura DNC");
 

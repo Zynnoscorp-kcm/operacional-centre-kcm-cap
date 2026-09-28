@@ -18,7 +18,7 @@ import {
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
-const SIN_BASE = "Sin base de datos conectada no hay esquema que consultar.";
+const SIN_BASE = "Sin conexión con la base de datos: no hay tablas que consultar.";
 
 // -----------------------------------------------------------------------------
 // Campos declarados
@@ -36,18 +36,13 @@ export function renderDeclaredFieldsPage(input: {
   const contenido = html`<section class="tarjeta">
       <div class="seccion-cabecera">
         <h2>Campos declarados</h2>
-        <p>
-          Los valores se guardan por trabajador en <code>atributo_declarado</code>, con procedencia
-          y vigencia.
-        </p>
+        <p>Datos adicionales por trabajador, cada uno con su origen y su vigencia.</p>
       </div>
 
       ${input.notice ? html`<p class="aviso">${input.notice}</p>` : ""}
       ${input.error ? html`<p class="aviso-error" role="alert">${input.error}</p>` : ""}
 
-      <p class="miga-de-pan">
-        Esta pantalla no ejecuta DDL: no crea columnas ni altera el esquema.
-      </p>
+      <p class="texto-nota">Declarar un campo no cambia la estructura de la base de datos.</p>
 
       <div class="kpi-tira">
         ${renderKpi("Campos declarados", input.fields.length)}
@@ -84,8 +79,7 @@ export function renderDeclaredFieldsPage(input: {
     <section class="tarjeta">
       <h2>Declarar un campo nuevo</h2>
       <p class="texto-secundario">
-        El campo nace sin aprobar: se captura y se consulta, pero no alimenta reglas DNC ni
-        cobertura hasta que se autorice.
+        El campo se crea sin aprobar. No se usa en reglas DNC ni en cobertura hasta su aprobación.
       </p>
 
       <form class="formulario" method="post" action="/campos">
@@ -132,8 +126,9 @@ export function renderDeclaredFieldsPage(input: {
         ${
           input.requiereSesion
             ? html`<p class="texto-secundario">
-                Declarar requiere sesión iniciada en
-                <a href="/acceso?destino=/campos">/acceso</a>. El nombre queda en la bitácora.
+                Declarar un campo requiere
+                <a href="/acceso?destino=/campos">iniciar sesión</a>; queda registrado quién lo
+                hizo.
               </p>`
             : ""
         }
@@ -194,13 +189,13 @@ export function renderTableCatalogPage(input: {
 
   const contenido = html`<section class="tarjeta">
     <div class="seccion-cabecera">
-      <h2>Explorador del esquema <code>kcm</code></h2>
-      <p>Tablas del esquema y su contenido.</p>
+      <h2>Tablas de la plataforma</h2>
+      <p>Consulta de sólo lectura de lo que guarda la base de datos.</p>
     </div>
 
-    <p class="miga-de-pan">
-      Sólo lectura: las consultas corren en transacción <code>READ ONLY</code> y no admiten SQL
-      escrito a mano. Las tablas con secretos no se listan.
+    <p class="texto-nota">
+      Nada de lo que se consulta aquí cambia los datos. Las tablas con datos sensibles no se listan,
+      y las columnas delicadas salen ocultas.
     </p>
 
     <div class="kpi-tira">
@@ -233,7 +228,7 @@ export function renderTableCatalogPage(input: {
                         ${
                           tabla.appendOnly
                             ? html`<br /><span class="insignia insignia-declarada"
-                                  >Sólo agrega</span
+                                  >Sólo se agregan renglones</span
                                 >`
                             : ""
                         }
@@ -253,7 +248,7 @@ export function renderTableCatalogPage(input: {
 
   return renderLayout({
     titulo: "Explorador de la base",
-    subtitulo: "Tablas y renglones del esquema kcm",
+    subtitulo: "Tablas de la plataforma, en sólo lectura",
     rutaActiva: "/base",
     entorno: input.config.environment,
     contenido,
@@ -281,7 +276,7 @@ export function renderTablePreviewPage(input: {
       Renglones ${preview.total === 0 ? 0 : preview.offset + 1}–${hasta} de ${preview.total}.
       ${
         preview.maskedColumns.length > 0
-          ? html`Columnas enmascaradas: <code>${preview.maskedColumns.join(", ")}</code>.`
+          ? html`Columnas ocultas: <code>${preview.maskedColumns.join(", ")}</code>.`
           : ""
       }
     </p>
@@ -307,7 +302,7 @@ export function renderTablePreviewPage(input: {
                       ${fila.map(
                         (celda) =>
                           html`<td class="celda-mono">
-                            ${celda === null ? html`<span class="texto-atenuado">null</span>` : celda}
+                            ${celda === null ? html`<span class="texto-atenuado" title="Sin valor">—</span>` : celda}
                           </td>`,
                       )}
                     </tr>`,
@@ -341,7 +336,7 @@ export function renderTablePreviewPage(input: {
 
   return renderLayout({
     titulo: `Tabla ${preview.table}`,
-    subtitulo: "Lectura en transacción de sólo lectura",
+    subtitulo: "Consulta de sólo lectura",
     rutaActiva: "/base",
     entorno: input.config.environment,
     contenido,

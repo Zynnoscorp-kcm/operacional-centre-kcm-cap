@@ -50,6 +50,7 @@ const PANTALLAS = [
   "/matriz",
   "/padron",
   "/cargas",
+  "/cambios",
   "/trabajadores",
   "/trabajadores/cobertura",
   "/salas",
@@ -60,6 +61,7 @@ const PANTALLAS = [
   "/campos",
   "/base",
   "/dc3",
+  "/ocupaciones",
   "/excel",
 ] as const;
 
@@ -71,7 +73,6 @@ const APIS = [
   "/api/auditoria/sesiones",
   "/api/campos",
   "/api/base/tablas",
-  "/api/dc3/status",
 ] as const;
 
 /**

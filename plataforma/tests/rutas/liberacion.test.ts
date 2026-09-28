@@ -100,8 +100,10 @@ describe("E10 · rutas de liberación", () => {
     });
 
     assert.equal(respuesta.statusCode, 200);
-    assert.match(respuesta.body, /Validación previa · sesión/);
-    assert.match(respuesta.body, /NO_OVERWRITE/);
+    assert.match(respuesta.body, /Validación previa/);
+    // La política se dice en palabras, no con su clave.
+    assert.match(respuesta.body, /No sobrescribe fechas/);
+    assert.doesNotMatch(respuesta.body, /NO_OVERWRITE/);
     assert.match(respuesta.body, /name="requestId" value="[0-9a-f-]{36}"/i);
     await app.close();
   });
@@ -114,7 +116,7 @@ describe("E10 · rutas de liberación", () => {
     });
 
     assert.equal(respuesta.statusCode, 200);
-    assert.match(respuesta.body, /Validación previa · sesión/);
+    assert.match(respuesta.body, /Validación previa/);
     await app.close();
   });
 

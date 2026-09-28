@@ -12,9 +12,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
 import type { WorkbenchService } from "../domain/preliberacion/banco-de-trabajo.ts";
+import type { MatrixDeliveryService } from "../domain/liberacion/entregas.ts";
 import type { ReleaseService } from "../domain/liberacion/servicio.ts";
 import type { ActorIdentity } from "../domain/quiosco/tipos.ts";
-import { DomainError } from "../domain/errores.ts";
+import { DomainError } from "../domain/comun/errores.ts";
 import { badRequest } from "../server/errors.ts";
 import { renderReleasePage } from "../web/pages/liberacion.ts";
 
@@ -22,10 +23,23 @@ export interface ReleaseRouteDeps {
   readonly config: AppConfig;
   readonly releaseService: ReleaseService;
   readonly workbenchService: WorkbenchService;
+  /**
+   * El tablero de entregas. Ausente sin base conectada: entonces el subpanel lo
+   * dice, en vez de enseñar una bandeja vacía que se leería como «nada espera».
+   */
+  readonly deliveries?: MatrixDeliveryService;
 }
 
 export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDeps): void {
   const { config, releaseService, workbenchService } = deps;
+
+  /**
+   * A dónde vuelve el botón de ocultar. Conserva el tablero desplegado y el
+   * ancla: quien quita una entrega sigue mirando la lista, no la cabecera de la
+   * pantalla.
+   */
+  const deVueltaAlTablero = (aviso: string): string =>
+    `/liberacion?entregas=1&aviso=${encodeURIComponent(aviso)}#entregas`;
 
   // Control de acceso: hasta que E3 entregue sesión de usuario, la identidad es
   // fija y declarada. Queda explícito para que sustituirla sea un cambio de una
@@ -40,12 +54,22 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
     const { sessionId, aviso } = (req.query ?? {}) as { sessionId?: string; aviso?: string };
 
     if (!sessionId) {
-      const sessions = await workbenchService.listReleaseQueue(identidadPorOmision);
-      return reply
-        .type("text/html; charset=utf-8")
-        .send(
-          renderReleasePage({ entorno: config.environment, sessions, ...(aviso ? { aviso } : {}) }),
-        );
+      // Las dos listas se piden a la vez: son independientes y esperarlas en
+      // fila duplicaría la espera de una pantalla que se abre muchas veces al día.
+      const [sessions, deliveries] = await Promise.all([
+        workbenchService.listReleaseQueue(identidadPorOmision),
+        deps.deliveries?.list(),
+      ]);
+      const { entregas } = (req.query ?? {}) as { entregas?: string };
+      return reply.type("text/html; charset=utf-8").send(
+        renderReleasePage({
+          entorno: config.environment,
+          sessions,
+          ...(deliveries ? { deliveries } : {}),
+          entregasAbiertas: entregas === "1",
+          ...(aviso ? { aviso } : {}),
+        }),
+      );
     }
 
     try {
@@ -74,6 +98,45 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
       throw error;
     }
   });
+
+  /**
+   * POST /liberacion/entregas/:batchId/ocultar — quita una entrega del tablero.
+   *
+   * Es `POST` porque deja huella: ocultar asienta un evento en la bitácora con
+   * quién la quitó y cuándo. Nada se borra —la liberación y su acuse siguen en
+   * auditoría— y por eso el servicio sólo admite ocultar lo que Excel ya
+   * confirmó: quitar de la vista algo que todavía se espera sería perderlo justo
+   * mientras es lo que hay que vigilar.
+   */
+  app.post(
+    "/liberacion/entregas/:batchId/ocultar",
+    async (req: FastifyRequest<{ Params: { batchId: string } }>, reply: FastifyReply) => {
+      if (!deps.deliveries) {
+        return reply.redirect(
+          deVueltaAlTablero("Sin conexión con la base de datos: no hay tablero que modificar."),
+          303,
+        );
+      }
+
+      try {
+        const entrega = await deps.deliveries.hide({
+          batchId: req.params.batchId,
+          actor: identidadPorOmision.actor,
+          requestId: String(req.id),
+        });
+        req.log.info({ lote: entrega.batchId }, "entrega retirada del tablero");
+        return reply.redirect(
+          deVueltaAlTablero(
+            `La entrega de ${entrega.sessionCode} salió del tablero. Sigue en auditoría.`,
+          ),
+          303,
+        );
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        return reply.redirect(deVueltaAlTablero(error.message), 303);
+      }
+    },
+  );
 
   // GET /api/release/preview/:sessionId — preflight sin ningún efecto
   app.get("/api/release/preview/:sessionId", async (req: FastifyRequest, reply: FastifyReply) => {

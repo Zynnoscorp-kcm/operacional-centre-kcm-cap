@@ -106,14 +106,14 @@ export interface AuditWindow {
 // -----------------------------------------------------------------------------
 
 /**
- * Tipos que admite `kcm.campo_declarado`. La lista está fijada por un CHECK del
+ * Tipos que admite `organizacion.atributo_definicion`. La lista está fijada por un CHECK del
  * esquema; duplicarla aquí es lo que permite rechazar el valor en la pantalla y
  * no como una violación de restricción a media escritura.
  */
 export const TIPOS_DE_CAMPO = ["TEXTO", "NUMERO", "FECHA", "BOOLEANO", "JSON"] as const;
 export type TipoDeCampo = (typeof TIPOS_DE_CAMPO)[number];
 
-/** Valores del enum `kcm.origen_fuente`. */
+/** Valores del enum `comun.origen_fuente`. */
 export const ORIGENES_DE_CAMPO = [
   "MATRIZ_XLSB",
   "TSV_DNC",
@@ -185,19 +185,30 @@ export const LIMITE_MAXIMO_DE_FILAS = 200;
 export const LIMITE_POR_OMISION = 50;
 
 /**
+ * Esquemas del dominio que el previsualizador recorre. `comun` sólo guarda
+ * tipos y `lectura` vistas: ninguno tiene tablas que enseñar.
+ */
+export const ESQUEMAS_DEL_DOMINIO: readonly string[] = [
+  "organizacion",
+  "catalogo",
+  "operacion",
+  "matriz",
+  "dnc",
+  "dc3",
+  "seguridad",
+  "sistema",
+];
+
+/**
  * Tablas que el previsualizador nunca lista ni abre.
  *
- * No es una cortesía: `secreto_operacion` guarda los secretos con los que se
- * valida el quiosco, `credencial_equipo` las credenciales de las estaciones y
- * `nonce_puente` los nonces con los que el puente VBA prueba que una petición
- * no es un reenvío. Enseñarlos en una pantalla de consulta convertiría un
- * visor en una fuga.
+ * No es una cortesía: `secreto` guarda los secretos con los que se valida el
+ * quiosco, `credencial_equipo` las credenciales de las estaciones y `nonce`
+ * los nonces con los que el puente VBA prueba que una petición no es un
+ * reenvío. Enseñarlos en una pantalla de consulta convertiría un visor en una
+ * fuga. Los nombres de tabla son únicos entre esquemas, así que basta el nombre.
  */
-export const TABLAS_VEDADAS: readonly string[] = [
-  "secreto_operacion",
-  "credencial_equipo",
-  "nonce_puente",
-];
+export const TABLAS_VEDADAS: readonly string[] = ["secreto", "credencial_equipo", "nonce"];
 
 /**
  * Columnas que se enseñan enmascaradas dondequiera que aparezcan.
@@ -209,7 +220,8 @@ export const TABLAS_VEDADAS: readonly string[] = [
 export const COLUMNAS_ENMASCARADAS: readonly string[] = [
   "curp",
   "marcador",
-  "journal_mac",
+  "firma_hmac",
+  "hmac",
   "mac",
   "secreto",
   "hash_fuente",

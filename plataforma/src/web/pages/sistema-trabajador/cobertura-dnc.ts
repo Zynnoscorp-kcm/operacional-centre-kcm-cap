@@ -1,17 +1,17 @@
 /**
- * Tablero DNC: cobertura por trabajador con filtros y panel de concordancia.
+ * Cobertura DNC: cuántos cursos exigibles tiene cubiertos cada trabajador.
  *
- * El panel de arriba es lo que se mira después de cargar una matriz o un padrón
- * nuevos. No reingiere nada —eso lo hacen el puente VBA y el ingestor del
- * padrón—, sólo contesta si las fuentes cuadran, que es la pregunta real: un
- * número de CURP faltantes o de trabajadores sin regla delata al instante un
- * archivo desalineado.
+ * Arriba, el estado de los datos: se mira después de cargar una matriz o un
+ * padrón nuevos, y contesta si las fuentes cuadran. Una CURP faltante o un
+ * trabajador sin cursos asignados delata un archivo desalineado. Debajo, la
+ * lista por trabajador con sus filtros.
  */
 
 import type { EnvironmentName } from "../../../config/environment.ts";
+import type { DncCoverageRow, DncReconciliation } from "../../../ports/sistema-trabajador.port.ts";
+import { fechaCorta } from "../../kit/fechas.ts";
 import { html, type Html } from "../../kit/html.ts";
 import { renderLayout } from "../../layout.ts";
-import type { DncCoverageRow, DncReconciliation } from "../../../ports/sistema-trabajador.port.ts";
 
 export interface DatosCoberturaDnc {
   readonly rows: readonly DncCoverageRow[];
@@ -28,142 +28,180 @@ export interface DatosCoberturaDnc {
   readonly entorno: EnvironmentName;
 }
 
+/** Tope de renglones que devuelve la consulta del tablero. */
+const TOPE_DE_RENGLONES = 2000;
+
 function renderOpciones(valores: readonly string[], elegido?: string): Html {
   return html`${valores.map(
     (v) => html`<option value="${v}" ${v === elegido ? "selected" : ""}>${v}</option>`,
   )}`;
 }
 
-function renderFicha(etiqueta: string, valor: number, alerta = false): Html {
-  return html`
-    <div class="ficha ${alerta && valor > 0 ? "ficha-alerta" : ""}">
-      <span class="ficha-valor">${valor}</span>
-      <span class="ficha-etiqueta">${etiqueta}</span>
-    </div>
-  `;
+function renderKpi(etiqueta: string, cifra: number, pista: string, tono = ""): Html {
+  return html`<div class="kpi ${tono}">
+    <dt class="kpi-etiqueta">${etiqueta}</dt>
+    <dd class="kpi-dato"><span class="kpi-cifra">${cifra}</span></dd>
+    <p class="kpi-pista">${pista}</p>
+  </div>`;
 }
 
 function renderFila(r: DncCoverageRow): Html {
-  return html`
-    <tr>
-      <td class="celda-codigo">
-        <a href="/trabajadores/${r.numeroTrabajador}">${r.numeroTrabajador}</a>
-      </td>
-      <td class="celda-destacada">${r.nombreCompleto}</td>
-      <td>${r.planta}</td>
-      <td>${r.area}</td>
-      <td class="celda-numero">${r.cursosRequeridos}</td>
-      <td class="celda-numero celda-completado">${r.cursosCubiertos}</td>
-      <td class="celda-numero celda-pendiente">${r.cursosFaltantes}</td>
-      <td class="celda-numero">${r.porcentaje}%</td>
-    </tr>
-  `;
+  return html`<tr>
+    <td class="celda-mono">
+      <a class="enlace-nomina" href="/trabajadores/${r.numeroTrabajador}">${r.numeroTrabajador}</a>
+    </td>
+    <td class="celda-persona">
+      <a class="persona-nombre" href="/trabajadores/${r.numeroTrabajador}">${r.nombreCompleto}</a>
+      <span class="persona-meta">${r.area || "Sin área"}</span>
+    </td>
+    <td>${r.planta || "—"}</td>
+    <td>
+      <div class="celda-cobertura">
+        <progress
+          class="cobertura-barra"
+          value="${String(r.cursosCubiertos)}"
+          max="${String(Math.max(1, r.cursosRequeridos))}"
+          title="${r.cursosCubiertos} de ${r.cursosRequeridos} cursos cubiertos"
+        >
+          ${r.cursosCubiertos} de ${r.cursosRequeridos}
+        </progress>
+        <span class="cobertura-cifra">${r.cursosCubiertos}/${r.cursosRequeridos}</span>
+      </div>
+    </td>
+    <td class="celda-numero ${r.cursosFaltantes > 0 ? "celda-alerta" : ""}">
+      ${r.cursosFaltantes}
+    </td>
+  </tr>`;
 }
 
 export function renderDncCoveragePage(datos: DatosCoberturaDnc): string {
   const c = datos.reconciliation;
   const cuadra = c.sinCurp === 0 && c.sinReglaDnc === 0;
+  const { selected } = datos;
+  const hayFiltros = Boolean(selected.planta || selected.area || selected.curso || selected.estado);
 
   const contenido = html`
-    <section class="tarjeta">
-      <h2>Concordancia de fuentes</h2>
-      <p class="texto-nota">
-        ${
-          cuadra
-            ? "Las fuentes cuadran: todo trabajador activo tiene CURP y regla aplicable."
-            : "Hay trabajadores sin CURP o sin regla DNC. Suele indicar matriz o padrón desactualizados."
-        }
-      </p>
-      <div class="rejilla-fichas">
-        ${renderFicha("Trabajadores activos", c.trabajadoresActivos)}
-        ${renderFicha("Con CURP", c.conCurp)} ${renderFicha("Sin CURP", c.sinCurp, true)}
-        ${renderFicha("Sin regla DNC", c.sinReglaDnc, true)}
-        ${renderFicha("Cursos cubiertos", c.paresCubiertos)}
-        ${renderFicha("Cursos faltantes", c.paresFaltantes)}
-        ${renderFicha("Candidatos DC-3", c.candidatosDc3)}
+    <section class="tarjeta" aria-labelledby="titulo-datos">
+      <div class="seccion-cabecera">
+        <h3 id="titulo-datos">Estado de los datos</h3>
+        <p>
+          ${
+            cuadra
+              ? "Las fuentes cuadran: cada trabajador activo tiene CURP y cursos asignados."
+              : "Hay trabajadores sin CURP o sin cursos asignados: la matriz o el padrón pueden estar desactualizados."
+          }
+        </p>
       </div>
-      <p class="texto-nota">
-        Última fecha en HC: ${c.ultimoRegistroHc ?? "—"}. Última carga de inducciones:
-        ${c.ultimaInduccion ?? "—"}.
-      </p>
-      <p class="texto-nota">
-        El padrón semanal se recarga con
-        <code>node scripts/ingest-roster.js &lt;ruta&gt; --aplicar</code>.
+      <dl class="kpi-tira">
+        ${renderKpi("Trabajadores activos", c.trabajadoresActivos, "En el padrón vigente.")}
+        ${renderKpi("Sin CURP", c.sinCurp, "Se completa en el padrón.", c.sinCurp > 0 ? "kpi-alerta" : "kpi-ok")}
+        ${renderKpi(
+          "Sin cursos asignados",
+          c.sinReglaDnc,
+          "Su departamento o área no tiene cursos exigibles.",
+          c.sinReglaDnc > 0 ? "kpi-aviso" : "kpi-ok",
+        )}
+        ${renderKpi("Cursos cubiertos", c.paresCubiertos, "Trabajador y curso, acreditados.", "kpi-ok")}
+        ${renderKpi(
+          "Cursos faltantes",
+          c.paresFaltantes,
+          "Trabajador y curso, sin acreditar.",
+          c.paresFaltantes > 0 ? "kpi-alerta" : "kpi-ok",
+        )}
+      </dl>
+      <p class="texto-nota nota-bajo-tira">
+        Último registro de la matriz: ${fechaCorta(c.ultimoRegistroHc)} · Última inducción
+        registrada: ${fechaCorta(c.ultimaInduccion)}
       </p>
     </section>
 
-    <form class="formulario-filtros" method="get" action="/trabajadores/cobertura">
-      <label
-        >Planta
-        <select name="planta">
-          <option value="">Todas</option>
-          ${renderOpciones(datos.plants, datos.selected.planta)}
-        </select>
-      </label>
-      <label
-        >Área
-        <select name="area">
-          <option value="">Todas</option>
-          ${renderOpciones(datos.areas, datos.selected.area)}
-        </select>
-      </label>
-      <label
-        >Curso
-        <select name="curso">
-          <option value="">Todos</option>
-          ${renderOpciones(datos.courses, datos.selected.curso)}
-        </select>
-      </label>
-      <label
-        >Estado
-        <select name="estado">
-          <option value="">Todos</option>
-          <option value="FALTANTE" ${datos.selected.estado === "FALTANTE" ? "selected" : ""}>
-            Faltante
-          </option>
-          <option value="CUBIERTO" ${datos.selected.estado === "CUBIERTO" ? "selected" : ""}>
-            Cubierto
-          </option>
-        </select>
-      </label>
-      <button type="submit">Filtrar</button>
-      <a href="/trabajadores/cobertura" class="boton-enlace">Limpiar filtros</a>
-    </form>
+    <section class="tarjeta" aria-labelledby="titulo-lista-cobertura">
+      <div class="seccion-cabecera cabecera-fila">
+        <h3 id="titulo-lista-cobertura">Cobertura por trabajador</h3>
+        <p class="texto-nota">
+          ${datos.rows.length} ${datos.rows.length === 1 ? "trabajador" : "trabajadores"}
+        </p>
+      </div>
 
-    ${
-      datos.rows.length === 0
-        ? html`<p class="texto-nota">Sin trabajadores que coincidan con los filtros.</p>`
-        : html`
-            <table class="tabla-datos">
-              <thead>
-                <tr>
-                  <th>Número</th>
-                  <th>Nombre</th>
-                  <th>Planta</th>
-                  <th>Área</th>
-                  <th class="celda-numero">Requeridos</th>
-                  <th class="celda-numero">Cubiertos</th>
-                  <th class="celda-numero">Faltantes</th>
-                  <th class="celda-numero">Avance</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${datos.rows.map(renderFila)}
-              </tbody>
-            </table>
-            <p class="texto-nota">
-              ${datos.rows.length} trabajadores. Listado limitado a 2 000 filas.
-            </p>
-          `
-    }
+      <form class="formulario-busqueda" method="get" action="/trabajadores/cobertura">
+        <div class="campo-busqueda">
+          <label class="etiqueta-formulario" for="cobertura-planta">Planta</label>
+          <select id="cobertura-planta" name="planta" class="select-kcm">
+            <option value="">Todas</option>
+            ${renderOpciones(datos.plants, selected.planta)}
+          </select>
+        </div>
+        <div class="campo-busqueda">
+          <label class="etiqueta-formulario" for="cobertura-area">Área</label>
+          <select id="cobertura-area" name="area" class="select-kcm">
+            <option value="">Todas</option>
+            ${renderOpciones(datos.areas, selected.area)}
+          </select>
+        </div>
+        <div class="campo-busqueda">
+          <label class="etiqueta-formulario" for="cobertura-curso">Curso</label>
+          <select id="cobertura-curso" name="curso" class="select-kcm">
+            <option value="">Todos</option>
+            ${renderOpciones(datos.courses, selected.curso)}
+          </select>
+        </div>
+        <div class="campo-busqueda">
+          <label class="etiqueta-formulario" for="cobertura-estado">Situación</label>
+          <select id="cobertura-estado" name="estado" class="select-kcm">
+            <option value="">Todas</option>
+            <option value="FALTANTE" ${selected.estado === "FALTANTE" ? "selected" : ""}>
+              Con cursos faltantes
+            </option>
+            <option value="CUBIERTO" ${selected.estado === "CUBIERTO" ? "selected" : ""}>
+              Con todo cubierto
+            </option>
+          </select>
+        </div>
+        <div class="acciones-busqueda">
+          <button type="submit" class="boton-kcm">Filtrar</button>
+          ${
+            hayFiltros
+              ? html`<a href="/trabajadores/cobertura" class="boton-secundario">Limpiar</a>`
+              : ""
+          }
+        </div>
+      </form>
+
+      ${
+        datos.rows.length === 0
+          ? html`<p class="texto-vacio">Ningún trabajador coincide con los filtros.</p>`
+          : html`<div class="tabla-contenedor">
+                <table class="tabla-kcm">
+                  <thead>
+                    <tr>
+                      <th scope="col">Nómina</th>
+                      <th scope="col">Trabajador</th>
+                      <th scope="col">Planta</th>
+                      <th scope="col" class="columna-ancha">Cursos cubiertos</th>
+                      <th scope="col" class="celda-numero">Faltantes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${datos.rows.map(renderFila)}
+                  </tbody>
+                </table>
+              </div>
+              ${
+                datos.rows.length >= TOPE_DE_RENGLONES
+                  ? html`<p class="texto-nota">
+                      Se muestran los primeros ${TOPE_DE_RENGLONES}; los filtros acotan la lista.
+                    </p>`
+                  : ""
+              }`
+      }
+    </section>
   `;
 
   return renderLayout({
     titulo: "Cobertura DNC",
     rutaActiva: "/trabajadores/cobertura",
-    subtitulo: "Cursos requeridos, cubiertos y faltantes",
+    subtitulo: "Cursos exigibles cubiertos y faltantes por trabajador",
     entorno: datos.entorno,
     contenido,
-    estado: html`<span class="insignia insignia-curso">${c.paresFaltantes} pendientes</span>`,
   });
 }

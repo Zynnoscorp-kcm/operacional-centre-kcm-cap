@@ -17,7 +17,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { parseWorkerNumber } from "../numero-trabajador.ts";
+import { parseWorkerNumber } from "../comun/numero-trabajador.ts";
 import type { HcRecord } from "../importacion-matriz/tipos.ts";
 import type { MatrixWriteOperation, MatrixWritePort } from "../../ports/liberacion.port.ts";
 import type { DurableContext } from "./journal.ts";
@@ -209,7 +209,7 @@ export class MatrixGateway {
       const workerNumber = parseWorkerNumber(entry.employeeId);
       const existing = await this.#matrix.getHcRecord(workerNumber, entry.trainingId);
       const marker = markerFor(this.#secret, plan, options.context, entry);
-      // `kcm.registro_hc.registro_id` e `historial_id` son UUID en PostgreSQL.
+      // `operacion.historial_capacitacion.registro_id` e `historial_id` son UUID en PostgreSQL.
       // El prefijo que se usaba en memoria era válido allí, pero no puede
       // cruzar la frontera del adaptador Supabase.
       const recordId = existing?.recordId ?? randomUUID();

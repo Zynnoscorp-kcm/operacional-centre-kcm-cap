@@ -18,7 +18,7 @@ import { MemoryPreReleaseRepository } from "../../src/adapters/memoria/prelibera
 import { loadConfig } from "../../src/config/environment.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 import type { AttendanceRecord, SessionRecord } from "../../src/domain/quiosco/tipos.ts";
-import type { WorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type { EmployeeInfo } from "../../src/domain/preliberacion/tipos.ts";
 
 const FIXED_DATE = new Date("2026-08-03T12:00:00.000Z");
@@ -379,6 +379,52 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.equal((await repo.getSessionById("ses-001"))?.status, "CERRADA");
   });
 
+  /**
+   * El atajo de la sesión limpia.
+   *
+   * Su seguridad no está en que la pantalla no dibuje el botón —una sesión puede
+   * ensuciarse entre que se pinta y se pulsa, y un `POST` se puede repetir desde
+   * el historial— sino en que el servidor vuelva a mirar los hallazgos antes de
+   * liberar. Eso es lo que se fija aquí.
+   */
+  it("el atajo de liberar se niega en cuanto hay un hallazgo", async () => {
+    const { app, repo } = await createTestApp({
+      sessions: [makeSession({ authorized: true })],
+    });
+
+    // Un examen reprobado es un hallazgo derivado: la revisión no queda limpia.
+    await app.inject({
+      method: "POST",
+      url: "/api/pre-release/save",
+      headers: FORMULARIO,
+      payload: new URLSearchParams({
+        sessionId: "ses-001",
+        requestId: "req-atajo-001",
+        examen__10001: "EXAMEN_CONFIRMADO",
+        examen__10002: "EXAMEN_REPROBADO",
+        comments: "",
+      }).toString(),
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/pre-release/enter",
+      headers: FORMULARIO,
+      payload: new URLSearchParams({ sessionId: "ses-001" }).toString(),
+    });
+    assert.equal((await repo.getSessionById("ses-001"))?.status, "PRELIBERACION");
+
+    const atajo = await app.inject({
+      method: "POST",
+      url: "/api/pre-release/liberar",
+      headers: FORMULARIO,
+      payload: new URLSearchParams({ sessionId: "ses-001" }).toString(),
+    });
+
+    assert.equal(atajo.statusCode, 400);
+    // Y lo que importa: la sesión no se movió ni un paso.
+    assert.equal((await repo.getSessionById("ses-001"))?.status, "PRELIBERACION");
+  });
+
   it("recorre guardar, entrar y pasar a liberación por formularios", async () => {
     const { app, repo } = await createTestApp({
       sessions: [makeSession({ authorized: true })],
@@ -607,7 +653,7 @@ describe("Rutas HTTP de Preliberación", () => {
       assert.equal(res.statusCode, 303);
       const destino = String(res.headers.location);
       assert.match(destino, /^\/preliberacion\/ses-001\?aviso=/u);
-      assert.match(decodeURIComponent(destino), /Guarde la revisión/u);
+      assert.match(decodeURIComponent(destino), /La revisión tiene que guardarse/u);
     });
 
     it("pasar a liberación sin haber entrado también explica qué falta", async () => {

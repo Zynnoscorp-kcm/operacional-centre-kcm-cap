@@ -18,10 +18,11 @@
  * 1. Tres lecturas por barrido: trabajadores, cursos y registros HC. Es lo
  *    que cuesta la comparación completa, y es exactamente lo que gastaría la
  *    aplicación; no se paga dos veces por preguntar antes de escribir.
- * 2. La revisión vive en el proceso, no en la base. Persistirla exigiría
- *    crear el lote de importación, que es justamente lo que no debe existir
- *    todavía. Si el proceso se reinicia, se vuelve a barrer: cuesta una lectura
- *    de la hoja y ninguna escritura.
+ * 2. La revisión no crea el lote de importación, que es justamente lo que no
+ *    debe existir todavía. Vive en el proceso y, donde hay base, además en
+ *    `sistema.revision_pendiente` (`revisiones`): publicada con varias
+ *    instancias, el «Aplicar» puede llegar a una que no recibió el barrido.
+ *    Si se pierde, se vuelve a barrer: una lectura de la hoja, ninguna escritura.
  * 3. Un barrido a la vez. El snapshot de una matriz de 1,686 filas pesa
  *    varios megabytes; conservar una cola de ellos en memoria no compra nada.
  *    El nuevo sustituye al anterior.
@@ -29,11 +30,19 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { MatrixRepositoryPort } from "../../ports/importacion-matriz.port.ts";
+import type { RevisionesCompartidasPort } from "../../ports/revisiones-compartidas.port.ts";
 import type { BitacoraDeCargas } from "../cargas/bitacora.ts";
 import type { ComparacionConLaAnterior } from "../cargas/tipos.ts";
-import { DomainError } from "../errores.ts";
+import {
+  FECHAS_DETALLADAS,
+  adscripcion,
+  type DetalleDeCambios,
+  type FechaDelCambio,
+  type MovimientoDelCambio,
+} from "../cargas/detalle.ts";
+import { DomainError } from "../comun/errores.ts";
 import { MatrixImportService } from "../importacion-matriz/servicio.ts";
 import {
   normalizeText,
@@ -54,7 +63,6 @@ import {
   type EstadoDeColumna,
   type InformeDeBarrido,
   type MuestrasDeBarrido,
-  type OrdenDeBarrido,
   type ResultadoDeBarrido,
 } from "./tipos.ts";
 
@@ -80,6 +88,17 @@ export interface MatrixScanDeps {
    * aplica, pero nadie puede saber después qué libro se aplicó ni quién lo pidió.
    */
   readonly bitacora?: BitacoraDeCargas;
+  /**
+   * Sin él la revisión sólo vive en este proceso, que es lo correcto en una
+   * máquina y en las pruebas. Con él, cualquier instancia puede aplicarla.
+   */
+  readonly revisiones?: RevisionesCompartidasPort;
+}
+
+/** Lo que se comparte entre instancias: la revisión y su comparación ya resuelta. */
+interface BarridoCompartido {
+  readonly barrido: BarridoGuardado;
+  readonly comparacion?: ComparacionConLaAnterior;
 }
 
 export class MatrixScanService {
@@ -87,8 +106,8 @@ export class MatrixScanService {
   readonly #imports: MatrixImportService;
   readonly #clock: Clock;
   readonly #bitacora: BitacoraDeCargas | undefined;
+  readonly #revisiones: RevisionesCompartidasPort | undefined;
 
-  #orden: OrdenDeBarrido | undefined;
   #barrido: BarridoGuardado | undefined;
   #resultado: ResultadoDeBarrido | undefined;
   /** Resuelta al recibir el barrido, no al pintarlo. Ver el padrón: mismo motivo. */
@@ -99,56 +118,35 @@ export class MatrixScanService {
     this.#imports = deps.imports ?? new MatrixImportService(deps.repository);
     this.#clock = deps.clock;
     this.#bitacora = deps.bitacora;
+    this.#revisiones = deps.revisiones;
+  }
+
+  /**
+   * Trae la revisión compartida, si la hay. Las rutas la llaman antes de leer
+   * el estado: sin almacén compartido no hace nada y todo queda en memoria.
+   *
+   * El almacén manda. Si otra instancia aplicó o descartó, aquí se olvida la
+   * copia local para no ofrecer un «Aplicar» que ya no existe.
+   */
+  async sincronizar(): Promise<void> {
+    if (!this.#revisiones) return;
+    const vigente = await this.#revisiones.vigente("BARRIDO_MATRIZ");
+    if (vigente !== undefined && this.#barrido?.informe.barridoId === vigente) return;
+    const guardada =
+      vigente === undefined ? undefined : await this.#revisiones.leer("BARRIDO_MATRIZ");
+    if (!guardada) {
+      this.#barrido = undefined;
+      this.#comparacion = undefined;
+      return;
+    }
+    const compartido = guardada.contenido as BarridoCompartido;
+    this.#barrido = compartido.barrido;
+    this.#comparacion = compartido.comparacion;
   }
 
   /** Lo que se sabe de la carga anterior, para la revisión que está en pantalla. */
   comparacion(): ComparacionConLaAnterior | undefined {
     return this.#comparacion;
-  }
-
-  // ------------------------------------------------------------- la orden
-
-  /**
-   * Deja encargado un barrido. No lo ejecuta: la plataforma no abre Excel.
-   *
-   * Reencargarlo mientras hay una orden viva devuelve la misma, para que dos
-   * clics no produzcan dos lecturas completas del libro.
-   */
-  solicitar(actor: string): OrdenDeBarrido {
-    const vigente = this.ordenVigente();
-    if (vigente) return vigente;
-
-    const ahora = this.#clock.now().getTime();
-    const orden: OrdenDeBarrido = {
-      ordenId: randomUUID(),
-      solicitadaEn: this.#clock.nowIso(),
-      solicitadaPor: actor,
-      venceEn: new Date(ahora + VIGENCIA_MS).toISOString(),
-    };
-    this.#orden = orden;
-    void this.#bitacora?.registrar({
-      tipo: "MATRIZ",
-      hecho: "ENCARGADA",
-      actor,
-      archivo: "(pendiente de entrega)",
-      sha256: "",
-      solicitudId: orden.ordenId,
-      resumen: {},
-    });
-    return orden;
-  }
-
-  /** La orden viva, o `undefined` si nunca se pidió o ya venció. */
-  ordenVigente(): OrdenDeBarrido | undefined {
-    if (this.#orden && new Date(this.#orden.venceEn).getTime() <= this.#clock.now().getTime()) {
-      this.#orden = undefined;
-    }
-    return this.#orden;
-  }
-
-  /** Retira la orden sin haberla atendido. */
-  cancelar(): void {
-    this.#orden = undefined;
   }
 
   // ------------------------------------------------------------ el barrido
@@ -251,7 +249,8 @@ export class MatrixScanService {
       trabajadoresAusentes: ausentes.slice(0, MUESTRA_DE_BARRIDO),
       cambiosDeAdscripcion: adscripciones.slice(0, MUESTRA_DE_BARRIDO),
       columnasNuevas: columnasNuevas.map((columna) => columna.nombre).slice(0, MUESTRA_DE_BARRIDO),
-      columnasRetiradas: retiradas.slice(0, MUESTRA_DE_BARRIDO),
+      // Completa: son pocos cursos y la revisión los enseña todos.
+      columnasRetiradas: retiradas,
       conflictos: reconciliado.conflicts
         .slice(0, MUESTRA_DE_BARRIDO)
         .map(
@@ -259,6 +258,52 @@ export class MatrixScanService {
             `${conflicto.workerNumber} · ${conflicto.trainingId}: la matriz trae ` +
             `${conflicto.snapshotDate} y la plataforma liberó ${conflicto.existingDate}`,
         ),
+    };
+
+    // El detalle, persona por persona, con nombre y adscripción. Los nombres de
+    // quien entra salen del libro; los de quien ya no aparece, de la base.
+    const nombreEnLibro = new Map(
+      snapshot.employees.map((empleado) => [empleado.employeeId as string, empleado.displayName]),
+    );
+    const nombreDe = (nomina: string): string =>
+      nombreEnLibro.get(nomina) ?? enBase.get(nomina)?.displayName ?? "";
+    const nombreDeCurso = new Map<string, string>([
+      ...cursos.map((curso) => [curso.trainingId, curso.sourceName] as const),
+      ...reconciliado.coursesToUpsert.map((curso) => [curso.trainingId, curso.sourceName] as const),
+    ]);
+    const nuevosEnLibro = new Set(nuevos);
+    const fechas: FechaDelCambio[] = reconciliado.historyEntriesToInsert
+      .filter((cambio) => cambio.changeType !== "SOBRESCRITA")
+      .map((cambio) => ({
+        nomina: cambio.workerNumber,
+        nombre: nombreDe(cambio.workerNumber),
+        curso: nombreDeCurso.get(cambio.trainingId) ?? cambio.trainingId,
+        antes: cambio.changeType === "ALTA" ? null : cambio.previousCompletionDate,
+        ahora: cambio.changeType === "RETIRADA" ? null : cambio.completionDate,
+      }));
+    const detalle: DetalleDeCambios = {
+      altas: snapshot.employees
+        .filter((empleado) => nuevosEnLibro.has(empleado.employeeId))
+        .map((empleado) => ({
+          nomina: empleado.employeeId,
+          nombre: empleado.displayName,
+          adscripcion: adscripcion(empleado.position, empleado.area, empleado.department),
+        })),
+      // Se da de baja sólo quien tampoco estuvo en el último padrón (0046).
+      bajas: ausentes.map((nomina) => {
+        const fila = enBase.get(nomina);
+        const baja = fila?.seenInRoster === false;
+        return {
+          nomina,
+          nombre: fila?.displayName ?? "",
+          adscripcion: adscripcion(fila?.position, fila?.area, fila?.department),
+          nota: baja ? "Se da de baja" : "Sigue activo: está en el padrón",
+          ...(baja ? {} : { soloAviso: true }),
+        };
+      }),
+      movimientos: this.#datosQueCambian(snapshot, enBase),
+      fechas: fechas.slice(0, FECHAS_DETALLADAS),
+      fechasOmitidas: Math.max(0, fechas.length - FECHAS_DETALLADAS),
     };
 
     const sinCambios =
@@ -287,6 +332,7 @@ export class MatrixScanService {
       columnas,
       cuadre,
       muestras,
+      detalle,
       sinCambios,
       bloqueado: reconciliado.conflicts.length > 0,
       incidencias: snapshot.diagnostics.issues.map((incidencia) => ({
@@ -296,16 +342,23 @@ export class MatrixScanService {
     };
 
     this.#barrido = { informe, snapshot, requestId: input.requestId };
-    // La orden queda atendida por este barrido, venga de ella o de una
-    // pulsación en Excel: en ambos casos lo que se pidió ya está en pantalla.
-    this.#orden = undefined;
 
     this.#comparacion = await this.#bitacora?.comparar(
       "MATRIZ",
       informe.fuente.sha256,
       informe.fuente.nombreArchivo,
     );
-    void this.#bitacora?.registrar({
+    // Se espera: si la respuesta saliera antes de guardar, un «Aplicar» rápido
+    // en otra instancia no encontraría la revisión.
+    await this.#revisiones?.guardar("BARRIDO_MATRIZ", {
+      id: barridoId,
+      contenido: {
+        barrido: this.#barrido,
+        ...(this.#comparacion ? { comparacion: this.#comparacion } : {}),
+      } satisfies BarridoCompartido,
+      venceEn: informe.venceEn,
+    });
+    await this.#bitacora?.registrar({
       tipo: "MATRIZ",
       hecho: "REVISADA",
       actor: input.cliente,
@@ -316,6 +369,16 @@ export class MatrixScanService {
         hoja: informe.fuente.hoja,
         trabajadoresEnMatriz: cuadre.trabajadoresEnMatriz,
         columnasEnMatriz: cuadre.columnasEnMatriz,
+        // Lo que lee Control de cambios: quién entra, quién falta y quién se
+        // movió. Las nóminas van de muestra, las mismas doce de la revisión.
+        trabajadoresNuevos: cuadre.trabajadoresNuevos,
+        muestraNuevos: informe.muestras.trabajadoresNuevos.join(", "),
+        trabajadoresAusentes: cuadre.trabajadoresAusentes,
+        muestraAusentes: informe.muestras.trabajadoresAusentes.join(", "),
+        cambiosDePuesto: cuadre.cambiosDePuesto,
+        cambiosDeArea: cuadre.cambiosDeArea,
+        cambiosDeDepartamento: cuadre.cambiosDeDepartamento,
+        columnasNuevas: cuadre.columnasNuevas,
         fechasNuevas: cuadre.fechasNuevas,
         fechasCorregidas: cuadre.fechasCorregidas,
         fechasRetiradas: cuadre.fechasRetiradas,
@@ -338,8 +401,10 @@ export class MatrixScanService {
     return this.#resultado;
   }
 
-  descartar(): void {
+  /** Olvida la revisión aquí y, si lo hay, en el almacén compartido. */
+  descartar(): Promise<void> {
     this.#barrido = undefined;
+    return this.#revisiones?.descartar("BARRIDO_MATRIZ") ?? Promise.resolve();
   }
 
   // ---------------------------------------------------------- la escritura
@@ -357,7 +422,7 @@ export class MatrixScanService {
     if (!guardado || guardado.informe.barridoId !== barridoId) {
       throw new DomainError(
         "BARRIDO_NO_DISPONIBLE",
-        "La revisión ya no está disponible. Solicite otro barrido para confirmar qué cambiaría.",
+        "La revisión ya no está disponible: un barrido nuevo vuelve a mostrar qué cambiaría.",
       );
     }
     if (guardado.informe.bloqueado) {
@@ -365,7 +430,7 @@ export class MatrixScanService {
       // conflictos es precisamente el hecho que hay que poder consultar después,
       // cuando alguien pregunte por qué la matriz y la plataforma dejaron de
       // coincidir esa semana.
-      void this.#bitacora?.registrar({
+      await this.#bitacora?.registrar({
         tipo: "MATRIZ",
         hecho: "RECHAZADA",
         actor,
@@ -379,15 +444,22 @@ export class MatrixScanService {
       });
       throw new DomainError(
         "BARRIDO_BLOQUEADO",
-        "El barrido contradice fechas que la plataforma liberó. Resuelva los conflictos en la " +
+        "El barrido contradice fechas que la plataforma liberó. Los conflictos se resuelven en la " +
           "matriz antes de aplicarlo: una importación no puede pisar una sesión ya liberada.",
       );
     }
 
     // Se retira antes de escribir: un doble clic no debe volverse dos
     // transacciones. La aplicación es idempotente por `requestId`, pero el
-    // acuse que se enseña dejaría de ser cierto.
+    // acuse que se enseña dejaría de ser cierto. Con almacén compartido el
+    // retiro es atómico en la base: de dos instancias, sólo una lo gana.
     this.#barrido = undefined;
+    if (this.#revisiones && !(await this.#revisiones.retirar("BARRIDO_MATRIZ", barridoId))) {
+      throw new DomainError(
+        "BARRIDO_NO_DISPONIBLE",
+        "La revisión ya no está disponible: un barrido nuevo vuelve a mostrar qué cambiaría.",
+      );
+    }
 
     const aplicado = await this.#imports.importSnapshot({
       requestId: guardado.requestId,
@@ -405,7 +477,7 @@ export class MatrixScanService {
       conteos: aplicado.counts,
     };
     this.#resultado = resultado;
-    void this.#bitacora?.registrar({
+    await this.#bitacora?.registrar({
       tipo: "MATRIZ",
       hecho: "APLICADA",
       actor,
@@ -486,6 +558,54 @@ export class MatrixScanService {
    * una escritura real, y esconderla haría que el acuse enseñara cambios que la
    * revisión nunca anunció.
    */
+  /**
+   * Cada dato del trabajador que la aplicación reescribiría, sólo si cambia.
+   *
+   * Son los mismos campos que el reconciliador actualiza —nombre, alta, nómina,
+   * puesto, área, departamento, planta y reactivación—, comparados sin
+   * mayúsculas ni espacios de más: un cambio que sólo es de formato no se
+   * enseña, porque no cambia nada que alguien vaya a leer.
+   */
+  #datosQueCambian(
+    snapshot: MatrixSnapshot,
+    enBase: ReadonlyMap<string, WorkerCatalogEntry>,
+  ): MovimientoDelCambio[] {
+    const cambios: MovimientoDelCambio[] = [];
+    for (const empleado of snapshot.employees) {
+      const actual = enBase.get(empleado.employeeId);
+      if (!actual) continue;
+      const campos: readonly (readonly [string, string | null, string | null])[] = [
+        ["Nombre", actual.displayName, empleado.displayName],
+        ["Fecha de alta", actual.hireDate, empleado.hireDate],
+        ["Nómina", actual.payrollType, empleado.payrollType],
+        ["Puesto", actual.position, empleado.position],
+        ["Área", actual.area, empleado.area],
+        ["Departamento", actual.department, empleado.department],
+        ["Planta", actual.plant, empleado.plant],
+      ];
+      for (const [campo, antes, ahora] of campos) {
+        if (clave(antes) === clave(ahora)) continue;
+        cambios.push({
+          nomina: empleado.employeeId,
+          nombre: empleado.displayName,
+          campo,
+          antes: textoVisible(antes),
+          ahora: textoVisible(ahora),
+        });
+      }
+      if (!actual.active) {
+        cambios.push({
+          nomina: empleado.employeeId,
+          nombre: empleado.displayName,
+          campo: "Estado",
+          antes: "Inactivo",
+          ahora: "Activo",
+        });
+      }
+    }
+    return cambios;
+  }
+
   #compararAdscripciones(
     snapshot: MatrixSnapshot,
     trabajadores: readonly WorkerCatalogEntry[],

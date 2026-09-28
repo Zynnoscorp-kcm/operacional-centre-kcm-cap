@@ -27,7 +27,7 @@ import { ReleaseService, splitEligibility } from "../../src/domain/liberacion/se
 import { releaseIdempotencyKey } from "../../src/domain/liberacion/plan-de-escritura.ts";
 import { MAX_ENTRIES_PER_BATCH } from "../../src/domain/liberacion/tipos.ts";
 import { blockingReasons } from "../../src/domain/preliberacion/servicio.ts";
-import { parseWorkerNumber } from "../../src/domain/numero-trabajador.ts";
+import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import {
   CAPACITACION,
   MAPPING_VERSION,

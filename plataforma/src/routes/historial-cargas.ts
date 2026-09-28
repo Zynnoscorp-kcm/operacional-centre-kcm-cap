@@ -15,6 +15,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
 import type { BitacoraDeCargas } from "../domain/cargas/bitacora.ts";
+import type { UltimoLoteAplicado } from "../domain/excel/tipos.ts";
 import { renderLoadHistoryPage } from "../web/pages/historial-cargas.ts";
 
 /**
@@ -31,16 +32,23 @@ export interface LoadHistoryRouteDeps {
   readonly bitacora: BitacoraDeCargas;
   /** Falso cuando la bitácora escribe en la base; verdadero cuando es la de memoria. */
   readonly enMemoria: boolean;
+  /** El último envío chico de fechas que Excel confirmó haber escrito. */
+  readonly ultimoLote?: () => Promise<UltimoLoteAplicado | undefined>;
 }
 
 export function registerLoadHistoryRoutes(app: FastifyInstance, deps: LoadHistoryRouteDeps): void {
   app.get("/cargas", async (_peticion: FastifyRequest, respuesta: FastifyReply) => {
-    const asientos = await deps.bitacora.listar(TOPE);
+    const [asientos, ultimoLote] = await Promise.all([
+      deps.bitacora.listar(TOPE),
+      // Una falla aquí no debe tumbar el historial: el lote es un dato de más.
+      deps.ultimoLote?.().catch(() => undefined),
+    ]);
     return respuesta.type("text/html; charset=utf-8").send(
       renderLoadHistoryPage({
         entorno: deps.config.environment,
         asientos,
         enMemoria: deps.enMemoria,
+        ...(ultimoLote ? { ultimoLote } : {}),
       }),
     );
   });

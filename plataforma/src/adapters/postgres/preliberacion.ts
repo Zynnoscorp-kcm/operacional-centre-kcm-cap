@@ -2,18 +2,18 @@
  * Adaptador PostgreSQL / Supabase para Preliberación (Función 4).
  *
  * Mapea a las tablas del esquema `kcm`:
- * - `kcm.sesion`, `kcm.asistencia`, `kcm.auditoria` (compartidas con quiosco)
- * - `kcm.revision_preliberacion` (una fila vigente por sesión)
- * - `kcm.evidencia` (reportes archivados, inmutables)
- * - `kcm.trabajador`, `kcm.puesto`, `kcm.area`, `kcm.capacitacion` (lectura)
+ * - `operacion.sesion`, `operacion.asistencia`, `sistema.bitacora_auditoria` (compartidas con quiosco)
+ * - `operacion.preliberacion_revision` (una fila vigente por sesión)
+ * - `operacion.sesion_evidencia` (reportes archivados, inmutables)
+ * - `organizacion.trabajador`, `organizacion.puesto`, `organizacion.area`, `catalogo.capacitacion` (lectura)
  *
  * Los bytes del reporte no viven en la base: la fila de evidencia guarda la ruta
  * y el archivo va al almacén de objetos, que se inyecta. La razón es la de
- * siempre con archivos binarios en PostgreSQL, y además `kcm.evidencia` está
+ * siempre con archivos binarios en PostgreSQL, y además `operacion.sesion_evidencia` está
  * diseñada con `ruta_almacenamiento` y sin columna de contenido.
  */
 
-import { parseWorkerNumber, type WorkerNumber } from "../../domain/numero-trabajador.ts";
+import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   AttendanceRecord,
   AuditEventRecord,
@@ -107,7 +107,7 @@ interface FilaEvidencia {
   sesion_id: string;
   nombre_archivo: string;
   sha256: string;
-  tamanio_bytes: number | string;
+  bytes: number | string;
   ruta_almacenamiento: string;
   autor_nombre: string | null;
   creada_en: string | Date;
@@ -168,7 +168,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
   async updateSessionStatus(sessionId: string, status: string): Promise<SessionRecord> {
     const res = await this.db.query<{ sesion_id: string }>(
-      `UPDATE kcm.sesion SET estado = $2 WHERE sesion_id = $1 RETURNING sesion_id;`,
+      `UPDATE operacion.sesion SET estado = $2 WHERE sesion_id = $1 RETURNING sesion_id;`,
       [sessionId, status],
     );
     if (res.rows.length === 0) {
@@ -193,7 +193,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
   async listAttendancesBySession(sessionId: string): Promise<readonly AttendanceRecord[]> {
     const res = await this.db.query<FilaAsistencia>(
-      `SELECT * FROM kcm.asistencia WHERE sesion_id = $1 ORDER BY numero_trabajador_capturado;`,
+      `SELECT * FROM operacion.asistencia WHERE sesion_id = $1 ORDER BY numero_trabajador_capturado;`,
       [sessionId],
     );
     return res.rows.map((r) => this.mapAttendance(r));
@@ -204,7 +204,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     workerNumber: WorkerNumber,
   ): Promise<AttendanceRecord | null> {
     const res = await this.db.query<FilaAsistencia>(
-      `SELECT * FROM kcm.asistencia WHERE sesion_id = $1 AND numero_trabajador_capturado = $2;`,
+      `SELECT * FROM operacion.asistencia WHERE sesion_id = $1 AND numero_trabajador_capturado = $2;`,
       [sessionId, String(workerNumber)],
     );
     const row = res.rows[0];
@@ -213,14 +213,14 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
   async createAttendance(attendance: AttendanceRecord): Promise<AttendanceRecord> {
     await this.db.query(
-      `INSERT INTO kcm.asistencia (
+      `INSERT INTO operacion.asistencia (
          asistencia_id, sesion_id, trabajador_id, numero_trabajador_capturado, ruta, origen,
          identidad_validada, asistencia_comprobada, estado_examen, estado,
          excluida_de_liberacion, motivo_exclusion, liberada, solicitud_id,
          creada_en, actualizada_en, version
        ) VALUES (
          $1, $2,
-         (SELECT trabajador_id FROM kcm.trabajador WHERE numero_trabajador = $3 LIMIT 1),
+         (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3 LIMIT 1),
          $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
        );`,
       [
@@ -268,7 +268,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     const claves = Object.keys(columnas);
     if (claves.length === 0) {
       const actual = await this.db.query<FilaAsistencia>(
-        `SELECT * FROM kcm.asistencia WHERE asistencia_id = $1;`,
+        `SELECT * FROM operacion.asistencia WHERE asistencia_id = $1;`,
         [attendanceId],
       );
       const row = actual.rows[0];
@@ -278,7 +278,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
     const asignaciones = claves.map((clave, indice) => `${clave} = $${indice + 2}`).join(", ");
     const res = await this.db.query<FilaAsistencia>(
-      `UPDATE kcm.asistencia SET ${asignaciones} WHERE asistencia_id = $1 RETURNING *;`,
+      `UPDATE operacion.asistencia SET ${asignaciones} WHERE asistencia_id = $1 RETURNING *;`,
       [attendanceId, ...claves.map((clave) => columnas[clave])],
     );
     const row = res.rows[0];
@@ -301,7 +301,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
   async countAttendancesBySession(sessionId: string): Promise<number> {
     const res = await this.db.query<{ total: number }>(
-      `SELECT count(*)::int AS total FROM kcm.asistencia WHERE sesion_id = $1;`,
+      `SELECT count(*)::int AS total FROM operacion.asistencia WHERE sesion_id = $1;`,
       [sessionId],
     );
     return Number(res.rows[0]?.total ?? 0);
@@ -314,8 +314,8 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
   async getLatestReview(sessionId: string): Promise<PreReleaseReviewRecord | null> {
     const res = await this.db.query<FilaRevision>(
       `SELECT r.*, a.nombre_visible AS revisor_nombre
-         FROM kcm.revision_preliberacion r
-         LEFT JOIN kcm.actor a ON a.actor_id = r.revisado_por
+         FROM operacion.preliberacion_revision r
+         LEFT JOIN seguridad.actor a ON a.actor_id = r.revisado_por
         WHERE r.sesion_id = $1;`,
       [sessionId],
     );
@@ -327,13 +327,13 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     // `sesion_id` es UNIQUE en el DDL: una sola revisión vigente por sesión, y
     // corregir una marca no acumula historial paralelo. El rastro va en auditoría.
     await this.db.query(
-      `INSERT INTO kcm.revision_preliberacion (
+      `INSERT INTO operacion.preliberacion_revision (
          revision_id, sesion_id, total_padron, total_confirmados, total_reprobados,
          total_faltantes, total_excluidos, hallazgos, comentarios, estado,
          revisado_por, revisado_en
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
-         (SELECT actor_id FROM kcm.actor WHERE identificador = $11 OR nombre_visible = $11 LIMIT 1),
+         (SELECT actor_id FROM seguridad.actor WHERE identificador = $11 OR nombre_visible = $11 LIMIT 1),
          $12
        )
        ON CONFLICT (sesion_id) DO UPDATE SET
@@ -371,7 +371,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
   async isWorkerActive(workerNumber: WorkerNumber): Promise<boolean> {
     const res = await this.db.query<{ activo: boolean }>(
-      `SELECT activo FROM kcm.trabajador WHERE numero_trabajador = $1;`,
+      `SELECT activo FROM organizacion.trabajador WHERE numero_trabajador = $1;`,
       [String(workerNumber)],
     );
     return Boolean(res.rows[0]?.activo);
@@ -382,9 +382,9 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
       `SELECT t.numero_trabajador, t.nombre_completo, t.activo,
               COALESCE(ar.nombre, '') AS area_nombre,
               COALESCE(p.nombre, '') AS puesto_nombre
-         FROM kcm.trabajador t
-         LEFT JOIN kcm.area ar ON ar.area_id = t.area_id
-         LEFT JOIN kcm.puesto p ON p.puesto_id = t.puesto_id
+         FROM organizacion.trabajador t
+         LEFT JOIN organizacion.area ar ON ar.area_id = t.area_id
+         LEFT JOIN organizacion.puesto p ON p.puesto_id = t.puesto_id
         WHERE t.numero_trabajador = $1;`,
       [String(workerNumber)],
     );
@@ -401,7 +401,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
   async getTrainingById(trainingId: string): Promise<TrainingCatalogItem | null> {
     const res = await this.db.query<FilaCapacitacion>(
-      `SELECT capacitacion_id, nombre, activa FROM kcm.capacitacion WHERE capacitacion_id = $1;`,
+      `SELECT capacitacion_id, nombre, activa FROM catalogo.capacitacion WHERE capacitacion_id = $1;`,
       [trainingId],
     );
     const row = res.rows[0];
@@ -427,13 +427,13 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     await this.store.put(record.storagePath, content, record.mimeType);
 
     await this.db.query(
-      `INSERT INTO kcm.evidencia (
-         evidencia_id, sesion_id, tipo, nombre_archivo, mime_type, sha256,
-         tamanio_bytes, ruta_almacenamiento, inmutable,
+      `INSERT INTO operacion.sesion_evidencia (
+         evidencia_id, sesion_id, tipo, nombre_archivo, tipo_mime, sha256,
+         bytes, ruta_almacenamiento, inmutable,
          creada_por, creada_en
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, true,
-         (SELECT actor_id FROM kcm.actor WHERE identificador = $9 OR nombre_visible = $9 LIMIT 1),
+         (SELECT actor_id FROM seguridad.actor WHERE identificador = $9 OR nombre_visible = $9 LIMIT 1),
          $10
        );`,
       [
@@ -456,8 +456,8 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
   async listReportsBySession(sessionId: string): Promise<readonly ReportEvidenceRecord[]> {
     const res = await this.db.query<FilaEvidencia>(
       `SELECT e.*, a.nombre_visible AS autor_nombre
-         FROM kcm.evidencia e
-         LEFT JOIN kcm.actor a ON a.actor_id = e.creada_por
+         FROM operacion.sesion_evidencia e
+         LEFT JOIN seguridad.actor a ON a.actor_id = e.creada_por
         WHERE e.sesion_id = $1 AND e.tipo = $2
         ORDER BY e.creada_en DESC;`,
       [sessionId, REPORT_KIND],
@@ -468,8 +468,8 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
   async getReportById(evidenceId: string): Promise<ReportEvidenceRecord | null> {
     const res = await this.db.query<FilaEvidencia>(
       `SELECT e.*, a.nombre_visible AS autor_nombre
-         FROM kcm.evidencia e
-         LEFT JOIN kcm.actor a ON a.actor_id = e.creada_por
+         FROM operacion.sesion_evidencia e
+         LEFT JOIN seguridad.actor a ON a.actor_id = e.creada_por
         WHERE e.evidencia_id = $1 AND e.tipo = $2;`,
       [evidenceId, REPORT_KIND],
     );
@@ -491,7 +491,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     event: Omit<AuditEventRecord, "eventId" | "occurredAt">,
   ): Promise<AuditEventRecord> {
     const res = await this.db.query<FilaAuditoria>(
-      `INSERT INTO kcm.auditoria (
+      `INSERT INTO sistema.bitacora_auditoria (
          actor, rol, entidad_tipo, entidad_id, accion,
          estado_anterior, estado_nuevo, motivo, sesion_id,
          solicitud_id, procedencia, contrato_version
@@ -551,7 +551,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
     const donde = condiciones.length > 0 ? `WHERE ${condiciones.join(" AND ")}` : "";
     const res = await this.db.query<FilaAuditoria>(
-      `SELECT * FROM kcm.auditoria ${donde} ORDER BY secuencia LIMIT 1;`,
+      `SELECT * FROM sistema.bitacora_auditoria ${donde} ORDER BY secuencia LIMIT 1;`,
       valores,
     );
     const row = res.rows[0];
@@ -657,7 +657,7 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
       fileName: r.nombre_archivo,
       mimeType: REPORT_MIME_TYPE,
       sha256: r.sha256,
-      byteSize: Number(r.tamanio_bytes ?? 0),
+      byteSize: Number(r.bytes ?? 0),
       storagePath: r.ruta_almacenamiento,
       immutable: true,
       createdBy: r.autor_nombre ?? "",
@@ -688,9 +688,9 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
 
 const SESSION_SELECT = `
   SELECT s.*, a.nombre_visible AS capacitador_nombre, cr.nombre_visible AS creador_nombre
-    FROM kcm.sesion s
-    LEFT JOIN kcm.actor a ON a.actor_id = s.capacitador_id
-    LEFT JOIN kcm.actor cr ON cr.actor_id = s.creada_por
+    FROM operacion.sesion s
+    LEFT JOIN seguridad.actor a ON a.actor_id = s.capacitador_id
+    LEFT JOIN seguridad.actor cr ON cr.actor_id = s.creada_por
 `;
 
 /**

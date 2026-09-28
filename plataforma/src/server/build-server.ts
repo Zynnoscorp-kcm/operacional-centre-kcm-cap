@@ -6,29 +6,31 @@
  * que llama a `listen`.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Writable } from "node:stream";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import type { Clock } from "../ports/reloj.ts";
-import { systemClock } from "../adapters/reloj-sistema.ts";
+import type { Clock } from "../ports/reloj.port.ts";
+import { systemClock } from "../adapters/sistema/reloj-sistema.ts";
 import { buildLoggerOptions } from "../observability/logging.ts";
 import { registerAccessRoutes } from "../routes/acceso.ts";
 import { registerAgendaRoutes } from "../routes/agenda.ts";
 import { registerAssetRoutes } from "../routes/estaticos.ts";
 import { registerHealthRoute } from "../routes/salud.ts";
 import { registerHomeRoute } from "../routes/inicio.ts";
+import { apagadoPorOmision, programarApagado, registerShutdownRoutes } from "../routes/apagado.ts";
 import { registerWorkerSystemRoutes } from "../routes/sistema-trabajador.ts";
 import { renderErrorPage } from "../web/pages/error.ts";
 import { ConsoleSessionCodec } from "./sesion-consola.ts";
 import { notFound, toPublicError, type ErrorPublico } from "./errors.ts";
+import { registrarDominiosDedicados } from "./dominios.ts";
 import { registrarGuardiaDeConsola } from "./guardia.ts";
 import type { WorkerSystemRepositoryPort } from "../ports/sistema-trabajador.port.ts";
 import { MemoryWorkerSystemRepository } from "../adapters/memoria/sistema-trabajador.ts";
 import type { KioskSessionRepositoryPort } from "../ports/quiosco.port.ts";
 import { MemoryKioskSessionRepository } from "../adapters/memoria/quiosco.ts";
-import { leerCatalogoDeSemilla } from "../adapters/semilla-catalogo.ts";
+import { leerCatalogoDeSemilla } from "../adapters/memoria/semilla-catalogo.ts";
 import { SessionService } from "../domain/quiosco/sesiones.ts";
 import { KioskAuthService } from "../domain/quiosco/autenticacion.ts";
 import { KioskService } from "../domain/quiosco/registro.ts";
@@ -43,6 +45,8 @@ import type { MatrixWritePort, ReleaseRepositoryPort } from "../ports/liberacion
 import { MemoryReleaseRepository } from "../adapters/memoria/liberacion.ts";
 import { MatrixGateway } from "../domain/liberacion/pasarela-matriz.ts";
 import { ReleaseService } from "../domain/liberacion/servicio.ts";
+import { MatrixDeliveryService } from "../domain/liberacion/entregas.ts";
+import type { MatrixDeliveryPort } from "../ports/entregas-matriz.port.ts";
 import { registerReleaseRoutes } from "../routes/liberacion.ts";
 import type { RoomReservationRepository } from "../domain/salas/tipos.ts";
 import { MemoryRoomReservationRepository } from "../adapters/memoria/salas.ts";
@@ -57,7 +61,7 @@ import { registerExcelRoutes } from "../routes/excel.ts";
 import { MatrixScanService } from "../domain/barrido-matriz/servicio.ts";
 import { registerMatrixScanRoutes } from "../routes/barrido-matriz.ts";
 import { registerLoadHistoryRoutes } from "../routes/historial-cargas.ts";
-import { Dc3JobService } from "../domain/dc3/tarea.ts";
+import { registerChangeControlRoutes } from "../routes/control-de-cambios.ts";
 import { Dc3CertificateService } from "../domain/dc3/constancia.ts";
 import type { Dc3CertificatePort } from "../ports/dc3-constancia.port.ts";
 import { registerDc3Routes } from "../routes/dc3.ts";
@@ -70,14 +74,21 @@ import { registerInternalConsoleRoutes } from "../routes/consola-interna.ts";
 import type { ConsoleDirectoryPort } from "../ports/directorio-consola.port.ts";
 import { ConsoleDirectoryService } from "../domain/acceso/directorio-consola.ts";
 import type { RosterRepositoryPort } from "../ports/padron.port.ts";
+import type { RevisionesCompartidasPort } from "../ports/revisiones-compartidas.port.ts";
 import type { RosterExtractorPort } from "../domain/padron/tipos.ts";
-import { RosterExtractorAdapter } from "../adapters/extractor-padron.ts";
+import { RosterExtractorAdapter } from "../adapters/archivos/extractor-padron.ts";
 import { RosterIngestService } from "../domain/padron/ingesta.ts";
 import { BitacoraDeCargas } from "../domain/cargas/bitacora.ts";
 import { MemoryLoadLog } from "../adapters/memoria/bitacora-cargas.ts";
 import type { LoadLogPort } from "../ports/bitacora-cargas.port.ts";
 
 import { registerRosterRoutes } from "../routes/padron.ts";
+import type { ServicioDeOcupacionesPort } from "../domain/ocupaciones/servicio.ts";
+import type { PuertaDeOcupacionesPort } from "../domain/ocupaciones/puerta.ts";
+import { registerOccupationRoutes } from "../routes/ocupaciones.ts";
+import type { SincroniaPort } from "../ports/sincronia.port.ts";
+import { SincroniaService } from "../domain/sincronia/servicio.ts";
+import { registerSyncRoutes } from "../routes/sincronia.ts";
 
 export interface ServerDeps {
   readonly config: AppConfig;
@@ -101,20 +112,28 @@ export interface ServerDeps {
   readonly excelRepository?: ExcelRepository;
   /** Repositorio de staging de matriz para cargas de Excel. */
   readonly excelMatrixRepository?: MatrixRepositoryPort;
-  /** Sustituto verificable del runner DC-3 en pruebas. */
-  readonly dc3Runner?: ConstructorParameters<typeof Dc3JobService>[0]["runner"];
   /**
-   * Raíz desde la que se resuelve la configuración privada del DC-3. Es
-   * inyectable por la misma razón que el reloj: las pruebas necesitan una raíz
-   * propia con datos sintéticos, y leer la del proceso las ataría a que la
-   * máquina tenga material que no vive en el repositorio.
+   * Cómo se apaga la instancia local. Inyectable para que una prueba pueda
+   * pulsar el botón sin matar al proceso que corre las pruebas.
+   */
+  readonly apagar?: () => void;
+  /**
+   * Raíz desde la que se resuelve el material privado del reporte de
+   * preliberación. Es inyectable por la misma razón que el reloj: las pruebas
+   * necesitan una raíz propia con datos sintéticos, y leer la del proceso las
+   * ataría a que la máquina tenga material que no vive en el repositorio.
    */
   readonly projectRoot?: string;
   /**
-   * Padrón para la emisión individual de constancias. Sin él, `/dc3` conserva el
-   * lote y explica que no hay de dónde emitir una por trabajador.
+   * Padrón para emitir constancias DC-3. Sin él, `/dc3` explica que no hay de
+   * dónde emitir.
    */
   readonly dc3CertificateRepository?: Dc3CertificatePort;
+  /**
+   * Tablero de entregas a la matriz. Sin base no hay lotes que seguir, así que
+   * su ausencia es un estado normal y la pantalla lo explica.
+   */
+  readonly matrixDeliveryRepository?: MatrixDeliveryPort;
   /** Auditoría por secciones, campos declarados y explorador de la base. */
   readonly internalConsoleRepository?: InternalConsolePort;
   /**
@@ -124,13 +143,40 @@ export interface ServerDeps {
   readonly consoleDirectory?: ConsoleDirectoryPort;
   /** Padrón semanal. Sin él la pantalla `/padron` explica que no hay base. */
   readonly rosterRepository?: RosterRepositoryPort;
+  /**
+   * Dónde esperan el barrido y el padrón entre «leer» y «Aplicar». Sin él
+   * esperan en la memoria del proceso, que sólo sirve con una instancia.
+   */
+  readonly sharedReviews?: RevisionesCompartidasPort;
+  /**
+   * Llave de las cookies de la consola. Sin ella se sortea al arrancar, que
+   * basta con un proceso; con varias instancias todas deben compartirla o cada
+   * una rechazaría las sesiones que emitió otra.
+   */
+  readonly sessionSecret?: string;
   /** Lector del XLSX. Se sustituye en pruebas para no depender de un libro real. */
   readonly rosterExtractor?: RosterExtractorPort;
+  /**
+   * Cotejo entre la matriz guardada y el padrón aplicado. Sin él la pestaña
+   * `/sincronia` explica que no hay base: los dos lados que compara son tablas.
+   */
+  readonly sincroniaRepository?: SincroniaPort;
   /**
    * Dónde se asientan las cargas de matriz y padrón. Sin base cae a memoria: el
    * historial dura lo que dure el proceso y la pantalla lo dice.
    */
   readonly loadLog?: LoadLogPort;
+  /**
+   * Agente de ocupaciones. Ausente sin llave de proveedor, y entonces su ruta
+   * responde 503 explicando por qué. Es una función que arma el servicio la
+   * primera vez: LangGraph no se carga hasta que alguien pide una sugerencia.
+   */
+  readonly occupationService?: () => Promise<ServicioDeOcupacionesPort>;
+  /**
+   * El botón «Clasificar faltantes» del libro de Excel, por el puente. Ausente
+   * sin llave de proveedor; entonces las dos acciones responden por qué.
+   */
+  readonly occupationGateway?: () => Promise<PuertaDeOcupacionesPort>;
   /**
    * Destino de la bitácora. Por omisión la salida estándar. Redirigirlo es lo
    * que permite comprobar en una prueba que lo que sale ya viene saneado.
@@ -284,7 +330,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const sessionService = new SessionService({ repository: kioskSessionRepository, clock });
 
   /**
-   * Contraseñas del quiosco durante el piloto. `kcm.secreto_operacion` está
+   * Contraseñas del quiosco durante el piloto. `seguridad.secreto` está
    * vacía en la base de la corrida, así que sin esto ni el desbloqueo ni la
    * apertura de sesión pueden aceptar ningún PIN. Un solo
    * `KCM_PILOT_KIOSK_PIN` sirve para los dos alcances; declarar
@@ -311,6 +357,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     repository: preReleaseRepository,
     workbench: workbenchService,
     clock,
+    // De aquí sale el logotipo del membrete, igual que el de la DC-3.
+    projectRoot: deps.projectRoot ?? process.cwd(),
   });
 
   // Liberación (Función 5). El secreto autentica el journal y los marcadores por
@@ -354,6 +402,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     repository: excelMatrixRepository,
     clock,
     bitacora: bitacoraDeCargas,
+    ...(deps.sharedReviews ? { revisiones: deps.sharedReviews } : {}),
   });
   /**
    * El padrón sólo existe con base: sin repositorio la pantalla se registra
@@ -368,7 +417,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         extractor: deps.rosterExtractor ?? new RosterExtractorAdapter(),
         clock,
         bitacora: bitacoraDeCargas,
+        ...(deps.sharedReviews ? { revisiones: deps.sharedReviews } : {}),
       })
+    : undefined;
+  /**
+   * El cotejo de sincronía. No lleva bitácora ni estado: es una lectura que se
+   * corre al abrir la pestaña y no deja rastro, así que no hay nada que
+   * conservar entre peticiones.
+   */
+  const sincroniaService = deps.sincroniaRepository
+    ? new SincroniaService({ port: deps.sincroniaRepository, clock })
     : undefined;
   const excelService = new ExcelIntegrationService({
     repository: excelRepository,
@@ -376,6 +434,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     clock,
     scans: matrixScanService,
     ...(rosterService ? { roster: rosterService } : {}),
+    ...(deps.occupationGateway ? { ocupaciones: deps.occupationGateway } : {}),
+    // El apagado desde Excel sólo existe en la computadora del departamento.
+    ...(config.role === "local"
+      ? { apagarLocal: () => programarApagado(deps.apagar ?? apagadoPorOmision) }
+      : {}),
     logger: app.log,
   });
   // Consola interna. Sin base cae al adaptador en memoria, que sostiene los
@@ -389,13 +452,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const declaredFieldService = new DeclaredFieldService({ repository: internalConsoleRepository });
   const dataPreviewService = new DataPreviewService({ repository: internalConsoleRepository });
 
-  const projectRoot = deps.projectRoot ?? process.cwd();
-
-  const dc3Service = new Dc3JobService({
-    clock,
-    projectRoot,
-    ...(deps.dc3Runner ? { runner: deps.dc3Runner } : {}),
-  });
+  // Una sola instancia para la consola DC-3 y para la cola de Inicio: guarda en
+  // caché los logotipos del membrete, y dos instancias los leerían dos veces.
+  const dc3Certificates = deps.dc3CertificateRepository
+    ? new Dc3CertificateService({ repository: deps.dc3CertificateRepository })
+    : undefined;
 
   registerHealthRoute(app, config, clock);
   registerHomeRoute(app, {
@@ -404,7 +465,23 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     sessionService,
     roomService,
     workbenchService,
+    ...(dc3Certificates
+      ? {
+          dc3PorEmitir: async () => {
+            const plan = await dc3Certificates.summarizePlan({
+              emission: "pendientes",
+              period: "desde-corte",
+            });
+            return plan.ready + plan.incomplete;
+          },
+        }
+      : {}),
+    ...(deps.apagar ? { apagar: deps.apagar } : {}),
   });
+  // Apagado de la instancia local. Con `KCM_ROLE=nube` las dos rutas responden
+  // 404: un proceso publicado que exponga su propio apagado es un botón de
+  // denegación de servicio.
+  registerShutdownRoutes(app, { config, ...(deps.apagar ? { apagar: deps.apagar } : {}) });
   registerWorkerSystemRoutes(app, config, workerSystemRepository);
   registerKioskRoutes(app, { config, kioskService, sessionService, authService });
   registerSessionRoutes(app, {
@@ -418,31 +495,42 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     config,
     workbenchService,
     reportService: preReleaseReportService,
+    // El atajo de la sesión limpia necesita liberar desde preliberación. Es el
+    // mismo servicio que usa `/liberacion`, no una segunda ruta de escritura.
+    releaseService,
   });
-  registerReleaseRoutes(app, { config, releaseService, workbenchService });
-  registerRoomRoutes(app, { config, service: roomService });
-  registerDc3Routes(app, {
+  registerReleaseRoutes(app, {
     config,
-    service: dc3Service,
-    workers: workerSystemRepository,
-    ...(deps.dc3CertificateRepository
+    releaseService,
+    workbenchService,
+    ...(deps.matrixDeliveryRepository
       ? {
-          certificates: new Dc3CertificateService({
-            repository: deps.dc3CertificateRepository,
-            projectRoot,
-          }),
+          deliveries: new MatrixDeliveryService({ repository: deps.matrixDeliveryRepository }),
         }
       : {}),
   });
-  // Una sola instancia: la llave se sortea al construirla, así que dos códecs
-  // distintos emitirían cookies que el otro no puede leer. `/acceso` la emite y
-  // la consola interna la verifica para saber con qué nombre firmar la
-  // bitácora.
-  const consoleSessions = new ConsoleSessionCodec();
+  registerRoomRoutes(app, { config, service: roomService });
+  // Una sola instancia: dos códecs con llaves distintas emitirían cookies que el
+  // otro no puede leer. `/acceso` la emite, y la consola interna y el módulo
+  // DC-3 la verifican para saber con qué nombre firmar la bitácora. Con llave
+  // declarada, todas las instancias publicadas leen las cookies de todas.
+  const consoleSessions = deps.sessionSecret
+    ? new ConsoleSessionCodec(createHash("sha256").update(deps.sessionSecret).digest())
+    : new ConsoleSessionCodec();
+  registerDc3Routes(app, {
+    config,
+    workers: workerSystemRepository,
+    sessions: consoleSessions,
+    clock,
+    ...(dc3Certificates ? { certificates: dc3Certificates } : {}),
+  });
 
   // Nadie entra sin sesión salvo la lista blanca de `guardia.ts`. Se registra
   // antes que las rutas para que se lea como lo que es: la puerta, no un
   // detalle de cada pantalla.
+  // Antes que la guardia: en el dominio del quiosco o de la agenda, una ruta
+  // ajena vuelve a su pantalla en vez de llevar a la puerta de la consola.
+  registrarDominiosDedicados(app, config);
   registrarGuardiaDeConsola(app, { config, clock, sessions: consoleSessions });
 
   registerExcelRoutes(app, {
@@ -481,6 +569,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     sessions: consoleSessions,
     ...(rosterService ? { service: rosterService } : {}),
   });
+  registerOccupationRoutes(app, {
+    config,
+    ...(deps.occupationService ? { servicio: deps.occupationService } : {}),
+  });
 
   // El barrido sólo se ofrece con un repositorio de matriz declarado. Con el de
   // memoria la pantalla compararía contra un catálogo vacío y anunciaría que
@@ -491,6 +583,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     sessions: consoleSessions,
     ...(deps.excelMatrixRepository ? { service: matrixScanService } : {}),
   });
+  // La sincronía se registra siempre, con base o sin ella: sin base la pantalla
+  // explica por qué no puede cotejar. Ausente, la pestaña daría 404 y se leería
+  // como una función retirada.
+  registerSyncRoutes(app, {
+    config,
+    clock,
+    sessions: consoleSessions,
+    cargas: bitacoraDeCargas,
+    ...(sincroniaService ? { service: sincroniaService } : {}),
+  });
   // El historial se registra siempre, también sin base: con la bitácora en
   // memoria enseña lo que ocurrió en este proceso y lo dice en pantalla. Una
   // pantalla ausente se leería como «no hubo cargas», que es lo contrario de lo
@@ -499,7 +601,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     config,
     bitacora: bitacoraDeCargas,
     enMemoria: deps.loadLog === undefined,
+    ultimoLote: () => excelRepository.lastAppliedReleaseBatch(),
   });
+  registerChangeControlRoutes(app, { config, clock, bitacora: bitacoraDeCargas });
   registerInternalConsoleRoutes(app, {
     config,
     clock,

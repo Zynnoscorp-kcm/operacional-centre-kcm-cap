@@ -27,7 +27,10 @@ import type {
   ImportScope,
   MatrixSnapshot,
 } from "./tipos.ts";
-import type { MatrixRepositoryPort, XlsbExtractorPort } from "../../ports/importacion-matriz.port.ts";
+import type {
+  MatrixRepositoryPort,
+  XlsbExtractorPort,
+} from "../../ports/importacion-matriz.port.ts";
 
 export interface ImportSnapshotInput {
   readonly requestId: string;
@@ -234,6 +237,9 @@ export class MatrixImportService {
       recordsToInsert: reconciled.recordsToInsert,
       recordsToUpdate: reconciled.recordsToUpdate,
       historyEntriesToInsert: reconciled.historyEntriesToInsert,
+      ...(batch.scope === "FULL"
+        ? { workersSeen: snapshot.employees.map((empleado) => empleado.employeeId as string) }
+        : {}),
     });
 
     const validation: BatchValidationResult = {

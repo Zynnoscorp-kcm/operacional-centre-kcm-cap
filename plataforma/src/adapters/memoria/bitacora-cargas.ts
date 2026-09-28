@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AsientoDeCarga, CargaRegistrada, TipoDeCarga } from "../../domain/cargas/tipos.ts";
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { LoadLogPort } from "../../ports/bitacora-cargas.port.ts";
 
 const TOPE = 500;

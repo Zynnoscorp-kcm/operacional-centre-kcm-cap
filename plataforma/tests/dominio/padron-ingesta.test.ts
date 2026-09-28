@@ -544,8 +544,9 @@ describe("Padrón · rutas", () => {
 
     const formulario = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
     assert.equal(formulario.statusCode, 200);
-    // Las dos puertas están, y la manual no desapareció al añadir el barrido.
-    assert.match(formulario.body, /Solicitar barrido/u);
+    // El barrido se dispara desde Excel; la carga manual sigue siendo la otra
+    // puerta y no desapareció al retirar el encargo desde la consola.
+    assert.doesNotMatch(formulario.body, /Leer no cambia nada/u);
     assert.match(formulario.body, /Carga manual del archivo/u);
     assert.match(formulario.body, /enctype="multipart\/form-data"/u);
 
@@ -556,8 +557,8 @@ describe("Padrón · rutas", () => {
       payload: subida("sem 30 CAP.xlsx").payload,
     });
     assert.equal(revision.statusCode, 200);
-    assert.match(revision.body, /Revisión de sem 30 CAP\.xlsx/u);
-    assert.match(revision.body, /Aplicar a la base/u);
+    assert.match(revision.body, /sem 30 CAP\.xlsx · /u);
+    assert.match(revision.body, /Aplicar los cambios/u);
     assert.match(revision.body, /Revisión sin aplicar/u);
   });
 
@@ -593,7 +594,7 @@ describe("Padrón · rutas", () => {
     const cookie = await sesion(app);
 
     const pantalla = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
-    assert.match(pantalla.body, /Sin base de datos conectada/u);
+    assert.match(pantalla.body, /Sin conexión con la base de datos/u);
 
     const res = await app.inject({
       method: "POST",

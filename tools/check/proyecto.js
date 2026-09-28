@@ -54,7 +54,7 @@ if (vba.status !== 0) failures.push(`Analisis VBA con hallazgos:\n${vba.stderr.t
 
 const rastreadoPrivado = spawnSync(
   "git",
-  ["ls-files", "referencias/", "*.xlsb", "*.xlsm", "config/dc3-generator.local.json"],
+  ["ls-files", "referencias/", "*.xlsb", "*.xlsm"],
   { encoding: "utf8" }
 );
 if (rastreadoPrivado.stdout.trim()) {

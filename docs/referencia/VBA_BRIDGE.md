@@ -27,14 +27,16 @@ entre los dos vive en `KcmPlataforma`:
 | `KcmMatrixSync` | crea `HC_SNAPSHOT_V1` y transmite los cambios |
 | `KcmBridgeHttp` | el protocolo: cuerpo, reintento idempotente, regla de HTTPS, respuesta y TSV |
 | `KcmBridgeCore` | configuración, normalización, JSON, lecturas en bloque y ledger oculto |
-| `KcmCoordinator` | ciclo completo y ejecución programada |
-| `KcmConfigButtons` | botones de `KCM_CONFIG`; sin lógica propia |
+| `KcmConfigButtons` | `KCM_CONFIG` como página: revisa cada clave con las reglas del panel, completa las que faltan y guarda un respaldo de un paso |
 | `KcmPanel` | **la cara del libro**: hoja `KCM_PANEL` con el estilo de la consola, campos rotulados y botones agrupados |
-| `KcmMatrixPanel` | verificación, **barrido** y transmisión de la matriz, etapa por etapa, en `KCM_ESTADO` |
+| `KcmMatrixPanel` | verificación, **barrido** y transmisión de la matriz, etapa por etapa, en `KCM_ESTADO`; `KcmAbrirEstado` la redibuja sin correr nada |
 | `KcmPadronSync` | **barrido del padrón semanal**: entrega el `sem NN CAP.xlsx` sin interpretarlo |
-| `KcmOrdenBarrido` | recoge los barridos encargados desde la plataforma; vigilancia opcional |
 | `KcmAsistente` | puesta en marcha guiada de un equipo: credencial, ruta y detección de columnas |
 | `KcmPruebas` | la autoprueba: ocho etapas que ejercitan el puerto y escriben su reporte |
+| `KcmJornada` | los gestos de la jornada: qué se manda a diario, qué una vez al día y qué cada semana |
+| `KcmEntradas` | el subpanel de sesiones entrantes: elegir cuáles se escriben en la matriz |
+| `KcmAvisos` | **la voz del cliente**: el único sitio donde se abre un cuadro de diálogo |
+| `KcmActualizador` | la actualización del cliente en un paso: quita e importa todos los módulos de la carpeta nueva y retira los que ya no existen |
 
 No son macros monolíticas ni dos instalaciones. Comparten configuración y
 transporte, pero un fallo del snapshot no revierte una liberación ya guardada.
@@ -46,9 +48,7 @@ escrito dentro de `#If Mac` no se manifiesta al compilar en Windows, ni al revé
 Esa asimetría es la que gobierna el diseño, y de ella sale una regla dura: **el
 código que depende del sistema operativo vive en `KcmPlataforma` y en ningún otro
 módulo**. `npm run lint:vba` falla si aparece un `#If Mac` fuera de ahí, y
-`tests/unit/vba-client-contract.test.js` lo fija también desde las pruebas. La
-única excepción declarada es `KcmDiagHash`, el diagnóstico temporal, que existe
-justamente para interrogar lo que cada sistema hace distinto.
+`tests/unit/vba-client-contract.test.js` lo fija también desde las pruebas.
 
 Cuanto más chica sea esa superficie, más dice la prueba hecha en un sistema sobre
 el otro. Por eso tres dependencias de Windows no se resolvieron con una rama más
@@ -57,18 +57,24 @@ sino **eliminándolas**: `Scripting.Dictionary`, `ADODB.Stream` y
 políticas corporativas pueden bloquear en Windows. Se sustituyeron por
 `KcmDiccionario` y `KcmCodec`, que corren igual en los dos.
 
-**La emisión DC-3 no vive aquí.** La resuelve el generador Node
-(`npm run dc3:generate`), que hace el cruce, valida identidad, lleva su propio
-ledger y compone el PDF de una página; ver [DC3_AUTOMATIZACION.md](DC3_AUTOMATIZACION.md).
+**La emisión DC-3 no vive aquí.** Se hace en la consola, en `/dc3`, que cruza,
+valida identidad, registra en la bitácora y compone el PDF de una página; ver
+[DC3_AUTOMATIZACION.md](DC3_AUTOMATIZACION.md).
 Dos rutas de emisión compartiendo la plantilla oficial podrían emitir dos
 constancias del mismo curso al mismo trabajador, cada una con su propio folio, y
 ningún ledger vería a la otra. El cliente VBA conserva sólo lo que exige estar
 del lado de Excel: escribir en el XLSB maestro y leerlo.
 
-`clients/excel/vba/` contiene además `KcmDiagHash`, que **no forma parte del cliente**: es
-una herramienta de despliegue que aísla las etapas de `KcmFileSha256` y se
-importa sólo mientras se diagnostica un fallo de huella. Ver
-[Diagnóstico de la huella SHA-256](#diagnóstico-de-la-huella-sha-256).
+`clients/excel/vba/` trae sólo lo que se importa: diecisiete módulos, todos en uso.
+Los que ninguna persona ejecuta a mano —`KcmBridgeCore`, `KcmBridgeHttp`,
+`KcmCodec`, `KcmPlataforma`, `KcmAvisos`, `KcmMatrixSync`, `KcmPadronSync` y
+`KcmReleaseSync`— llevan `Option Private Module`: sus rutinas siguen al alcance
+del resto del libro, pero no aparecen en Herramientas › Macros, donde sólo
+quedan las de los botones y las que se ejecutan a mano. El 2026-09-25 se
+retiraron `KcmCoordinator` (la corrida programada, que nunca se habilitó y
+aplicaba la matriz completa sin revisión), `KcmDiagHash` (el diagnóstico
+temporal de la huella, que ya cubre la autoprueba) y cuatro rutinas que nada
+llamaba; los dos módulos siguen en el historial del repositorio.
 
 ## Flujo efectivo
 
@@ -101,8 +107,9 @@ sigue siendo la verdad, pero ya no es donde trabaja una persona.
 `KcmAbrirPanel` dibuja **`KCM_PANEL`**, con el mismo lenguaje visual de la
 consola: banda de marca en `#224C9F`, lienzo `#EEF1F7` sin retícula, un campo por
 clave con su rótulo legible y su ayuda al lado, y los botones repartidos en
-cuatro grupos —configuración, revisar y cargar, liberaciones, vigilancia y
-mantenimiento— en vez de una columna de once rectángulos iguales. Bajo la banda
+cuatro grupos —configuración, revisar y cargar, liberaciones y mantenimiento— en
+vez de una columna de once rectángulos iguales. El grupo de
+liberaciones abre además el subpanel de sesiones entrantes, descrito abajo. Bajo la banda
 hay una línea de estado que dice si el equipo puede operar o qué le falta,
 comprobado **sin salir de la máquina**: dirección vacía, credencial sin declarar
 en la variable de entorno, o una ruta que no apunta a ningún archivo.
@@ -151,8 +158,8 @@ Cuatro reglas más cubren fallos que de otro modo sólo aparecerían al compilar
 Excel, que es donde ya no hay evidencia local:
 
 - **`#If Mac` sólo en el puerto.** Es la garantía de que la superficie
-  dependiente del sistema no se mueva sin que nadie lo note. Únicos autorizados:
-  `KcmPlataforma.bas` y `KcmDiagHash.bas`.
+  dependiente del sistema no se mueva sin que nadie lo note. Único autorizado:
+  `KcmPlataforma.bas`.
 - **Ningún procedimiento con el nombre de su módulo.** VBA lo rechaza con
   "Name conflicts with existing module" y el proyecto entero deja de compilar.
 - **`Exit Sub` en un `Sub` y `Exit Function` en una `Function`.** Salir con la
@@ -173,8 +180,10 @@ y la O acentuada de los nombres oficiales de curso.
 ## Frontera de despliegue vigente
 
 El endpoint vive en la misma aplicación Node/Fastify y acepta únicamente las
-ocho acciones del contrato: las cinco originales más `MATRIX_SCAN_V1`,
-`ROSTER_SCAN_V1` y `SCAN_ORDERS_V1`, que son de sólo lectura. La plataforma emite una credencial por
+acciones del contrato: las cinco originales más `MATRIX_SCAN_V1`,
+`ROSTER_SCAN_V1` y `RELEASE_SESSIONS_V1`, que son de sólo lectura, y las dos de
+«Clasificar faltantes», `OCCUPATION_PLAN_V1` y `OCCUPATION_STEP_V1`, que
+tampoco escriben en la base. La plataforma emite una credencial por
 instalación con alcance `PUENTE_VBA`; almacena sólo `scrypt(hash + salt)` y
 revalida en cada llamada principal, perfil, equipo, alcance, recurso, caducidad
 y revocación.
@@ -194,14 +203,49 @@ El servidor exige HTTPS en producción. Para la instalación:
 
 El cliente habla directamente con la plataforma Node; no hay intermediario.
 
+### Una sola dirección; lo grande sale en partes
+
+`KCM_CONFIG` lleva **un renglón** de dirección, `ENDPOINT`, que escribe el
+asistente de conexión. El alojamiento corta cada petición en 4.5 MB, y tres
+acciones suben el libro completo: `MATRIX_IMPORT_V1`, `MATRIX_SCAN_V1` y
+`ROSTER_SCAN_V1`. Hoy caben (el barrido completo ronda 2 MB), pero un libro que
+crezca no debe depender de encender nada en ninguna computadora.
+
+**Lo decide `KcmHttpPost`, no la persona.** Si el cuerpo codificado pasa de
+`KCM_PARTE_MAXIMA` (3 000 000 caracteres), lo parte y manda cada pedazo con la
+acción `UPLOAD_PART_V1`, con la acción original en `target`, su número en
+`part`, el total en `parts` y el largo completo en `length`, todas con el mismo
+`requestId` y cada una con sus reintentos. La plataforma guarda las partes en
+`sistema.envio_parte` hasta que llega la última, comprueba que sumen el largo
+anunciado y procesa el envío con la acción y el `requestId` originales: la
+respuesta es la misma que si hubiera salido de una vez. Repetir la última parte
+no duplica nada, las partes de dos equipos no se mezclan y las de un envío
+interrumpido vencen en una hora.
+
+Excel manda las partes en orden, así que la parte 1 siempre abre un envío: lo
+que haya guardado con la misma llave es de uno anterior y se descarta. Así un
+segundo barrido del mismo libro dentro de la hora no mezcla sus partes con las
+viejas ni se procesa antes de llegar completo. Mientras faltan partes sólo se
+cuenta cuáles hay; el contenido se lee de la base una sola vez, al juntar.
+
+A la respuesta se le agrega `envioPartes`, y `KcmDescribirEnvio` la dice en
+palabras —«envío normal» o «envío en 3 partes»—: es lo que el barrido, la
+actualización completa y el padrón avisan al terminar.
+
+Hasta el 2026-09-25 lo grande salía por una segunda dirección, `ENDPOINT_LOCAL`,
+con la plataforma encendida en la computadora del departamento desde Excel. En
+macOS eso no puede funcionar con la plataforma en el Escritorio —el sistema le
+niega esa carpeta a lo que Excel ejecuta— y obligaba a instalar la plataforma
+en cada equipo que mandara archivos grandes. Se retiró entero: botones, módulo
+`KcmEnvioLocal` y claves.
+
 ## Instalación en Excel
 
 1. Crear un libro controlador vacío `KCM_Bridge.xlsm`; no insertar las macros
    dentro del XLSB maestro.
-2. Importar desde el editor VBA los **quince** módulos del cliente que están en
-   `clients/excel/vba/`: catorce `.bas` y el módulo de clase `KcmDiccionario.cls`, que se
-   importa con el mismo `File > Import File`. `KcmDiagHash` no se importa en una
-   instalación normal.
+2. Importar desde el editor VBA los **diecisiete** módulos del cliente que están en
+   `clients/excel/vba/`: dieciséis `.bas` y el módulo de clase `KcmDiccionario.cls`, que se
+   importa con el mismo `File > Import File`.
 3. **Sólo en macOS**, instalar el guion del puente:
 
    ```bash
@@ -225,8 +269,8 @@ El cliente habla directamente con la plataforma Node; no hay intermediario.
 7. Ejecutar `KcmAbrirPanel` una vez: dibuja `KCM_PANEL` y deja a la vista lo
    que el asistente acaba de guardar. Es la hoja desde la que se opera de aquí
    en adelante.
-8. Ejecutar por separado `KcmApplyPendingReleases` y `KcmTransmitirMatriz`
-   sobre copias antes de habilitar `KcmRunFullCycle`.
+8. Probar **Actualizar** y **Actualización completa** sobre una copia de la
+   matriz antes de usar el libro real.
 
 ### Actualizar un libro ya instalado
 
@@ -240,9 +284,19 @@ cliente, en el editor VBA (`Alt+F11`):
 2. `File > Import File` y elegir el `.bas`.
 3. `Debug > Compile` y guardar el libro.
 
+**Con `KcmActualizador` en el libro, todo eso es una macro.** `KcmActualizarModulos`
+(Macros › Ejecutar) toma todos los `.bas` y `.cls` de `KCM-VBA-CRLF` en el
+escritorio —o de la carpeta de cualquier módulo que se elija, si no está ahí—,
+quita cada uno con su mismo nombre, importa el nuevo y retira los módulos que
+el cliente ya no usa. Sólo quedan `Debug > Compile` y guardar. Necesita, una
+vez por equipo, confiar en el acceso al modelo de objetos de proyectos de VBA
+(Windows: Archivo › Opciones › Centro de confianza › Configuración de macros;
+macOS: Excel › Preferencias › Seguridad). El actualizador no se reemplaza a sí
+mismo: si cambia, se importa a mano.
+
 Con la entrega del 2026-08-19 el cliente **corre en los dos sistemas** y eso
 cambia todos los módulos, así que la actualización es completa: quitar los que
-haya y volver a importar los quince. Son nuevos `KcmPlataforma.bas`,
+haya y volver a importar los diecisiete. Son nuevos `KcmPlataforma.bas`,
 `KcmCodec.bas`, `KcmPruebas.bas` y `KcmDiccionario.cls`. Después, `KcmAbrirPanel`
 una vez para redibujar la hoja —ahora trae el botón **Probar este equipo**—; es
 idempotente y puede repetirse sin acumular botones.
@@ -251,10 +305,8 @@ idempotente y puede repetirse sin acumular botones.
 usuario; en macOS pasa al llavero del sistema. El asistente lo dice en pantalla y
 la autoprueba informa dónde vive, de modo que nadie tenga que recordarlo.
 
-Para una tarea programada puede copiarse
-`excel/run-kcm-vba-cycle.vbs.example` fuera del repositorio y pasarle como
-único argumento la ruta del controlador `.xlsm`. El argumento `True` ejecuta
-el ciclo sin cuadros de diálogo.
+No hay corrida programada: cada entrega la dispara una persona con su botón.
+La que existía (`KcmRunFullCycle` y su guion `.vbs`) se retiró el 2026-09-25.
 
 ## Configuración
 
@@ -282,8 +334,7 @@ que se elige en el cuadro de Abrir.
 
 `ROSTER_PATH` es la ruta completa del `sem NN CAP.xlsx` de la semana en curso y
 la usa **sólo** el barrido del padrón. Se instala vacía a propósito: cambia cada
-semana y adivinarla mandaría un libro viejo. `SCAN_POLL_MINUTES` es el intervalo
-de la vigilancia, opcional, cinco por omisión.
+semana y adivinarla mandaría un libro viejo.
 
 ## Garantías de liberación
 
@@ -322,6 +373,64 @@ de la vigilancia, opcional, cinco por omisión.
   crea una segunda fecha ni se borra un valor preexistente. Antes se exigía además
   que la nota fuera idéntica al marcador, y eso convertía en conflicto un renglón
   ya aplicado al que alguien le había agregado una anotación.
+
+## El subpanel de sesiones entrantes
+
+`KcmEntradasAbrir` dibuja **`KCM_ENTRADAS`**, la hoja donde se ve qué llegó de la
+consola y se escoge qué se escribe.
+
+Antes de ella el libro sabía contestar dos cosas y ninguna era «cuáles»:
+*Consultar pendientes* devolvía una cifra —«12 liberaciones listas para
+aplicar»— y *Recibir lotes de fechas* aplicaba las doce. No había forma de ver
+de qué sesiones eran, ni de escribir unas y dejar otras, ni de confirmar desde
+el libro que una sesión recién liberada en la consola había llegado.
+
+Ahora cada sesión es un renglón con su **código legible**, su curso, su fecha y
+cuántas fechas le faltan por escribir. Se marca con una equis la que se quiera
+recibir y *Recibir marcadas* escribe **sólo ésas**.
+
+El botón *Recibir lotes de fechas* —el que aplicaba todo lo pendiente sin
+enseñar qué— **se retiró del panel y de `KCM_CONFIG`**. Lo mismo se consigue con
+*Marcar todas* y *Recibir marcadas*, que enseña qué se va a escribir y pregunta
+antes. Dos caminos al mismo efecto, con uno de ellos ciego, es como se escribe
+algo por accidente. `KcmApplyPendingReleases` sigue siendo pública: la usan el
+subpanel y el botón **Actualizar**.
+
+- **`RELEASE_SESSIONS_V1`** es la acción que lo alimenta: la misma lectura que
+  `RELEASE_PULL_V1` —las mismas reglas de qué está pendiente— agrupada por
+  sesión, con `sessionId`, `sessionCode`, `trainingId`, `completionDate` y
+  `pending`. El TSV de doce columnas de `RELEASE_PULL_V1` **no se toca**: el
+  código de sesión se recoge con un `LEFT JOIN` en el adaptador, no cambiando la
+  firma de `lectura.obtener_liberaciones_pendientes`.
+- **El filtro se aplica sobre lo descargado, no sobre lo pedido.**
+  `KcmApplyPendingReleases` acepta una lista opcional de identificadores de
+  sesión y descarta las filas que no pertenezcan a ellas. Pedir por sesión habría
+  significado una llamada por sesión escogida para obtener los mismos renglones.
+  **Sin lista, escribe todo**: el botón **Actualizar** conserva su comportamiento
+  exacto.
+- **El lote sigue siendo la unidad atómica.** Filtrar por sesión no parte lotes:
+  una sesión produce lotes enteros, y cada lote se aplica todo o nada con su
+  preflight completo delante.
+- **Se actualiza pulsando, nunca solo.** No hay `Application.OnTime` en ningún
+  módulo del cliente desde que se retiró la vigilancia de barridos. Una
+  liberación no espera nada del libro hasta que una persona decide escribirla, y
+  un reloj serían cientos de lecturas diarias contra el presupuesto de la base
+  para contestar casi siempre lo mismo.
+- **La lista se acumula.** Actualizar mezcla en vez de repintar: una sesión que
+  la plataforma ya no reporta pendiente pasa a **Escrita** y se queda a la vista,
+  porque desaparecer en silencio es indistinguible de no haber llegado nunca. Se
+  retiran con *Quitar las escritas*, no solas.
+
+El módulo es **aditivo**, como `KcmPanel` y `KcmMatrixPanel`: no implementa
+lógica de matriz, encadena `KcmHttpPost` y `KcmApplyPendingReleases`, y quitarlo
+entero deja el ciclo como estaba.
+
+Del lado de la consola le corresponde el **tablero de entregas** de
+`/liberacion`: el mismo hecho visto desde el otro extremo. Ahí cada lote
+liberado lleva un foco rojo mientras el libro no acusa la escritura y verde
+cuando ya la acusó, con su propio botón de actualizar —por la misma razón— y una
+equis que retira de la vista las ya confirmadas asentando el acto en la
+bitácora. Lo retirado sigue entero en `/auditoria/liberaciones`.
 
 ## Sincronización hacia Sheets
 
@@ -426,13 +535,49 @@ cuando la emisión DC-3 salió del cliente; ahora existe otra vez con otro motiv
 y `tests/unit/vba-client-contract.test.js` fija que sólo la conozcan el
 instalador y el módulo de barrido.
 
-## Las órdenes: una sola consulta para los dos barridos
+## Clasificar faltantes
 
-`SCAN_ORDERS_V1` responde `matrixPending`, `matrixOrderId`, `rosterPending` y
-`rosterOrderId`. Es la llamada que hace el vigilante en cada vuelta, así que es
-la más frecuente del puente y la más barata: no toca la base más allá de la
-credencial y el nonce. Preguntar por cada barrido en su propia acción habría
-duplicado ese costo para siempre.
+El botón de la tarjeta «Padrón de la semana» llena la clave de ocupación de los
+trabajadores que no la tienen. Por dentro son dos acciones y ninguna escribe en
+la base:
+
+- `OCCUPATION_PLAN_V1` recibe el padrón con el mismo sobre que `ROSTER_SCAN_V1`.
+  El servidor lo lee con el extractor de siempre y devuelve tres cosas:
+  - una tabla con hoja, renglón, número, columna de la clave, columna del
+    número y caso por cada trabajador sin clave;
+  - el estado inicial del lote en `lote`;
+  - las cuentas: combinaciones, trabajadores con clave, celdas con texto que
+    no es una clave (`withText`, que no se tocan), omitidos y hojas sin columna;
+  - lo que no cupo en la corrida (`pendingCases`, `pendingRows`): entran
+    primero las combinaciones con más trabajadores, y las demás se quedan con
+    la celda vacía para la siguiente.
+- `OCCUPATION_STEP_V1` recibe el estado del lote y trabaja hasta que se le
+  acaba el tiempo del paso (95 s). Devuelve el estado nuevo, y `done=true` con
+  una fila por caso cuando termina: estado, código, descripción, subárea,
+  confianza, alternativa, código del verificador y razón.
+
+El libro manda el padrón, repite el paso hasta terminar y escribe en una
+**copia** junto al original, `sem NN CAP (ocupaciones).xlsx`. Si el padrón, o
+un libro con su mismo nombre, está abierto en Excel, se detiene antes de mandar
+nada. Si ya hay una copia clasificada más reciente del mismo padrón, pregunta
+antes de clasificar otro archivo, y con «No» sigue sobre la copia. Cada paso se
+reintenta hasta seis veces, con esperas de 2 a 50 s: el estado viaja completo,
+así que repetirlo no pierde nada. Después:
+- abre el padrón sin vínculos y de sólo lectura, y lo guarda como la copia antes
+  de tocar nada;
+- escribe cada clave sólo si el número del renglón coincide y la celda sigue
+  vacía, con la misma regla que la plataforma: los espacios, incluido el duro,
+  no cuentan como contenido;
+- pinta la celda (verde sugerida, amarillo a revisar, rojo sin respuesta) y le
+  deja una nota con el motivo. La nota de una corrida anterior se sustituye; la
+  de una persona se conserva arriba.
+
+Al terminar, `ROSTER_PATH` apunta a la copia: «Padrón de la semana» envía la
+versión revisada. El estado del lote sólo lleva puestos, centros de costos y lo
+decidido, y el servidor lo valida entero cada vez que regresa. El agente está
+descrito en [`AGENTE_OCUPACIONES.md`](AGENTE_OCUPACIONES.md).
+
+## Los barridos
 
 `MATRIX_SCAN_V1` y `ROSTER_SCAN_V1` sólo entregan carga; no tienen forma de
 cuerpo vacío.
@@ -441,35 +586,28 @@ cuerpo vacío.
 
 La plataforma **no puede abrir Excel**: el XLSB y el `sem NN CAP.xlsx` viven en
 las PC del departamento y el puente siempre va de esas máquinas hacia el
-servidor. Los botones de `/matriz` y `/padron` por tanto no ejecutan el barrido,
-**lo encargan**, y la orden espera media hora. El cliente la recoge por
-cualquiera de las dos vías:
+servidor. Los barridos se disparan por tanto desde Excel, con los botones
+*Barrer matriz* (`KcmBarrerMatriz`) y *Barrer padrón* (`KcmBarrerPadron`) de
+`KCM_CONFIG`. El primero es lo que conviene pulsar en lugar de *Transmitir
+matriz* cuando alguien va a revisar lo que cambió; el segundo no tiene
+equivalente de «transmitir», porque no existe ninguna vía que aplique el padrón
+sin revisión.
 
-- **A mano.** Los botones *Barrer matriz* (`KcmBarrerMatriz`) y *Barrer padrón*
-  (`KcmBarrerPadron`) de `KCM_CONFIG` barren siempre, haya orden o no. El primero
-  es lo que conviene pulsar en lugar de *Transmitir matriz* cuando alguien va a
-  revisar lo que cambió; el segundo no tiene equivalente de «transmitir», porque
-  no existe ninguna vía que aplique el padrón sin revisión.
-- **Con vigilancia.** `KcmIniciarVigilancia` consulta cada `SCAN_POLL_MINUTES`
-  minutos —cinco por omisión, piso de uno— con `Application.OnTime`, mientras
-  Excel siga abierto. Es lo que hace que los botones de las pantallas se sientan
-  inmediatos. Se detiene con `KcmDetenerVigilancia` o al cerrar Excel.
+**Hasta el 2026-09-05 las pantallas `/matriz` y `/padron` tenían además un botón
+que encargaba el barrido**, y un vigilante en Excel recogía la orden cada pocos
+minutos. Se retiró entero —orden, vigilancia y la acción `SCAN_ORDERS_V1` que
+las servía— porque en la práctica quien barre es quien está frente a la PC de
+Excel, y sin la vigilancia encendida ese botón no producía nada visible y
+caducaba solo a la media hora. El padrón recibió su botón propio en `KCM_CONFIG`
+en el mismo movimiento: antes no lo tenía porque lo disparaba justamente esa
+orden.
 
-Si hay las dos órdenes se atienden las dos, y la matriz va primero a propósito:
-un padrón cuyos números la matriz no conoce se queda fuera de la carga, así que
-conviene que la matriz esté al día cuando el padrón se revise.
+### Estado de la revisión
 
-La vigilancia es **opcional a propósito**. Cada consulta cuesta la credencial,
-el nonce y nada más, pero a cinco minutos son 288 llamadas al día contra un
-presupuesto que se vigila; sin ella todo sigue funcionando y sólo cambia cuándo
-aparece el resultado. Una instalación que no la active no necesita cambiar nada.
-
-### Estado de la orden y de la revisión
-
-Las dos viven en la memoria del proceso Node, no en la base, por la misma razón
-que el plan del padrón semanal: persistir la revisión exigiría crear el lote de
+Vive en la memoria del proceso Node, no en la base, por la misma razón que el
+plan del padrón semanal: persistir la revisión exigiría crear el lote de
 importación, que es justamente lo que todavía no debe existir. Un reinicio del
-servidor pierde ambas y obliga a barrer de nuevo, lo que cuesta una lectura de la
+servidor la pierde y obliga a barrer de nuevo, lo que cuesta una lectura de la
 hoja y ninguna escritura. **Consecuencia declarada:** repartir tráfico entre
 varios procesos Node exigiría bajarlas a la base antes; con un solo proceso
 detrás del túnel —lo declarado hoy— no hace falta.
@@ -519,7 +657,6 @@ Consecuencias para una instalación existente:
 - La hoja oculta `KCM_DC3_LEDGER` de una instalación anterior **no se borra**.
   Es evidencia de lo ya emitido y se conserva; el instalador simplemente dejó de
   crearla.
-- `KcmRunFullCycle` tiene dos etapas: liberaciones y snapshot.
 - El puente conserva `DC3_REPORT_V1` y la hoja `VBA_DC3_EVENTOS`.
   Ya nadie los invoca desde Excel; retirarlos es una decisión aparte, del lado
   del servidor, y no se tomó aquí.
@@ -629,23 +766,13 @@ lugar de fallar.
 ## Diagnóstico de la huella SHA-256
 
 Un fallo de `KcmFileSha256` tiene dos causas que no se parecen —que el sistema no
-entregue SHA-256, o que el archivo no se pueda leer— y el mensaje de error las
-resume en una sola línea. `KcmDiagHash` las separa. Es el segundo escalón después
-de la autoprueba, para cuando la etapa 6 falla y hace falta saber por qué:
-
-1. Importar `clients/excel/vba/KcmDiagHash.bas` y compilar.
-2. En la ventana Inmediato, **sin signo de interrogación**:
-   `KcmDiagSha256 "C:\ruta\completa\Matriz.xlsb"`.
-3. Leer las tres etapas que imprime y quitar el módulo del proyecto.
-
-La primera etapa calcula la huella de la cadena `abc`, cuyo valor es público y
-fijo: si coincide, lo que resuelve la huella en ese equipo está sano y el
-problema es de acceso al archivo. En Windows recorre la cadena de proveedores
-criptográficos e informa el código real de cada fallo; en macOS informa por qué
-vía se ejecuta y avisa si el guion no está instalado. La segunda examina la ruta
-comprobación por comprobación —dirección web, atributos, `Dir$`, `Open`— en lugar
-de resumirlas. La tercera repite la llamada real y muestra número y descripción
-completos.
+entregue SHA-256, o que el archivo no se pueda leer—. La autoprueba
+(**Autoprueba del equipo**) las separa: calcula la huella de un archivo con el
+contenido `abc`, cuyo valor es público y fijo; si coincide, lo que resuelve la
+huella en ese equipo está sano y un fallo posterior es de acceso al archivo.
+El diagnóstico más fino que recorría proveedor por proveedor (`KcmDiagHash`) se
+retiró del cliente el 2026-09-25; si alguna vez hace falta, está en el historial
+del repositorio.
 
 Aun así conviene comprobar la huella antes del primer
 `KcmApplyPendingReleases` real: sin ella el lote se aplica y se guarda, pero el
@@ -658,12 +785,12 @@ Revisión milimétrica del 2026-08-03, con el esquema ya aplicado en Supabase. E
 contrato está completo de los dos lados; lo que faltaba era **dónde persiste el
 servidor lo que el puente mueve**. La migración `0025` lo cerró:
 
-- `kcm.credencial_equipo` no tenía `client_id`, `recurso` ni la sal del scrypt.
+- `seguridad.credencial_equipo` no tenía `client_id`, `recurso` ni la sal del scrypt.
   El servidor autentica por `(clientId, alcance, recurso)`, así que ninguna
   credencial emitida podía volver a encontrarse; además `algoritmo` declaraba
   argon2id cuando el servicio deriva con scrypt. Un CHECK fija ahora que el
   alcance `PUENTE_VBA` sólo existe con el recurso `bridge`.
-- `useNonce` no tenía tabla. `kcm.nonce_puente` hace del "un solo uso" una llave
+- `useNonce` no tenía tabla. `seguridad.nonce` hace del "un solo uso" una llave
   primaria y no una promesa del proceso.
 - `acuse_liberacion_vba.sha256_xlsb` era obligatorio, de modo que un acuse de
   conflicto —`HEADER_MISMATCH`, `EXISTING_VALUE`, `DESTINATION_MISSING`— no podía
@@ -671,12 +798,12 @@ servidor lo que el puente mueve**. La migración `0025` lo cerró:
   `APPLIED` y `RECOVERED`, con un índice único que impide dos acuses efectivos
   de la misma clave idempotente, y una columna `detalle` conserva el conflicto.
 - `MATRIX_IMPORT_V1` conserva el snapshot entre vista previa y aprobación:
-  `kcm.snapshot_importacion`.
+  `matriz.importacion_contenido`.
 - `STATUS_V1` lee eventos DC-3 del puente y la tabla no existía:
-  `kcm.evento_dc3_vba`, append-only. El cliente ya no la alimenta; se conserva
+  `dc3.evento_excel`, append-only. El cliente ya no la alimenta; se conserva
   para no romper la lectura y para lo que reportara una instalación anterior.
 - `RELEASE_PULL_V1` se resuelve con
-  `kcm_lectura.obtener_liberaciones_pendientes(limite)`: liberaciones efectivas
+  `lectura.obtener_liberaciones_pendientes(limite)`: liberaciones efectivas
   sin acuse aplicado, unidas al mapeo vigente y al destino activo, con las doce
   columnas del TSV en su orden. Una liberación sin mapeo activo **no se
   entrega**: escribir a un destino no declarado sigue prohibido.
@@ -696,7 +823,7 @@ puente corre en memoria**: existen `SupabaseKioskSessionRepository`,
 instanciado, no hay variables `KCM_DATABASE_*` en `loadConfig` y no existe un
 `SupabaseExcelRepository`. Consecuencia exacta: la credencial emitida en
 `/excel` desaparece al reiniciar el proceso y ningún acuse llega a
-`kcm.acuse_liberacion_vba`.
+`matriz.liberacion_acuse`.
 
 Eso no impide la **prueba de humo** del puente —el ciclo completo funciona en
 memoria— pero sí impide declararlo operativo.
@@ -716,25 +843,20 @@ memoria— pero sí impide declararlo operativo.
 3. En el equipo Windows, guardar ese secreto como variable de usuario
    `KCM_VBA_BRIDGE_TOKEN` (`setx KCM_VBA_BRIDGE_TOKEN "<secreto>"`) y **reabrir
    Excel**: el proceso lee el entorno al arrancar.
-4. Crear `KCM_Bridge.xlsm` vacío, importar los quince módulos de `clients/excel/vba/`
-   —`KcmBridgeCore`, `KcmBridgeHttp`, `KcmReleaseSync`, `KcmMatrixSync`,
-   `KcmCoordinator`, `KcmConfigButtons`, `KcmPanel`, `KcmMatrixPanel`,
-   `KcmPadronSync`, `KcmOrdenBarrido`, `KcmAsistente`; `KcmDiagHash` no— y
-   `Debug > Compile`
-   antes de ejecutar nada.
-5. `KcmInstallBridge`, y completar en `KCM_CONFIG`: `ENDPOINT` con el valor que
+4. Crear `KCM_Bridge.xlsm` vacío, importar los módulos de `clients/excel/vba/`
+   —los diecisiete, ver [Instalación en Excel](#instalación-en-excel)— y
+   `Debug > Compile` antes de ejecutar nada.
+5. `KcmAsistenteConexion` (crea las hojas técnicas), y completar en `KCM_CONFIG`: `ENDPOINT` con el valor que
    muestra `/excel`, `CLIENT_ID`, `MATRIX_PATH` a una **copia** del XLSB,
    `MATRIX_SHEET`, `EMPLOYEE_COLUMN`, `FIRST_COURSE_COLUMN` y
    `LAST_COURSE_COLUMN`. El cliente exige `https://` con una sola excepción:
    `http://127.0.0.1` y `http://localhost`, donde el tráfico no sale de la
    máquina. Un nombre de equipo o una IP de la red local en claro se rechazan,
    porque el token viaja en el cuerpo del POST.
-6. Comprobar la huella antes del primer lote real:
-   `KcmDiagSha256 "C:\ruta\Matriz.xlsb"` desde la ventana Inmediato con
-   `KcmDiagHash` importado temporalmente. Sin huella el lote se aplica pero el
-   acuse no puede enviarse.
-7. Ejecutar `KcmApplyPendingReleases` y `KcmTransmitMatrixSnapshot` por
-   separado, sobre copias, antes de habilitar `KcmRunFullCycle`.
+6. Comprobar la huella antes del primer lote real con **Autoprueba del
+   equipo**. Sin huella el lote se aplica pero el acuse no puede enviarse.
+7. Probar **Actualizar** y **Actualización completa** por separado, sobre
+   copias.
 
 **Fase 2 — persistencia real.** Requiere, en este orden: un `SqlExecutor` sobre
 `pg` contra el proyecto Supabase; `KCM_DATABASE_URL` en `loadConfig`; un
@@ -745,7 +867,7 @@ queda en el ledger.
 
 **Fase 3 — datos.** El pull sólo entrega liberaciones con mapeo vigente, así que
 antes de que el ciclo mueva algo hay que declarar el destino en
-`kcm.destino_matriz` y una fila por curso en `kcm.mapeo_matriz` con hoja,
+`matriz.destino` y una fila por curso en `matriz.mapeo_columna` con hoja,
 columna, encabezado esperado, fila de encabezado y política. Sin eso el puente
 responde correctamente con cero pendientes.
 

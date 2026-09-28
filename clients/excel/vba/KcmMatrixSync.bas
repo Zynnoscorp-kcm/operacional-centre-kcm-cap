@@ -1,38 +1,12 @@
 Attribute VB_Name = "KcmMatrixSync"
 Option Explicit
+Option Private Module
+
+' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
+' en Herramientas > Macros, donde solo quedan las que se usan a mano.
 
 ' Numero maximo de caracteres que el servidor acepta en `sourceKey`.
 Private Const KCM_SOURCE_KEY_LIMIT As Long = 200
-
-Public Sub KcmTransmitMatrixSnapshot(Optional ByVal silent As Boolean = False)
-    Dim master As Workbook
-    Dim snapshot As String
-    Dim sourceHash As String
-    Dim response As KcmDiccionario
-    KcmResetCaches
-    Set master = KcmOpenMaster(True)
-    If Not master.Saved Then Err.Raise vbObjectError + 7300, "KcmTransmitMatrixSnapshot", _
-        "Guarde la matriz antes de transmitir su snapshot"
-    sourceHash = KcmFileSha256(master.FullName)
-    snapshot = KcmBuildHcSnapshot(master, sourceHash)
-    ' El `requestId` deriva de la huella del libro: retransmitir la misma matriz es un no-op.
-    Set response = KcmHttpPost("MATRIX_IMPORT_V1", snapshot, "vba-hc-" & Left$(sourceHash, 24))
-    If Not silent Then MsgBox "Snapshot HC aceptado. Importacion: " & CStr(response.Item("importId")) & _
-        vbLf & "Altas: " & KcmField(response, "inserted") & _
-        vbLf & "Fechas corregidas desde el maestro: " & KcmField(response, "corrected") & _
-        vbLf & "Fechas retiradas: " & KcmField(response, "retired") & _
-        vbLf & "Fechas reactivadas: " & KcmField(response, "reactivated") & _
-        vbLf & "Liberaciones aun no escritas en el maestro: " & KcmField(response, "pendingExcel"), _
-        vbInformation
-End Sub
-
-Private Function KcmField(ByVal response As KcmDiccionario, ByVal key As String) As String
-    If response.Exists(key) Then
-        KcmField = CStr(response.Item(key))
-    Else
-        KcmField = "0"
-    End If
-End Function
 
 ''' Construye `HC_SNAPSHOT_V1` con la misma semantica que `scripts/extract-hc-xlsb.js`.
 ''' Toda lectura de la hoja se hace en bloque: una matriz de 1,686 filas por 34 columnas costaba
@@ -250,18 +224,12 @@ Private Function KcmDecidirCeldasConError(ByVal totalCeldas As Long, ByVal total
     End If
     If politica = "DETENER" Then Exit Function
 
-    KcmDecidirCeldasConError = (MsgBox( _
-        "La matriz tiene " & CStr(totalCeldas) & " celda(s) con error dentro del rango que se " & _
-        "importa:" & vbCrLf & vbCrLf & KcmListaDirecciones(direcciones, truncada) & vbCrLf & vbCrLf & _
-        "Afectan a " & CStr(totalFilas) & " trabajador(es). Una celda de error no se puede leer, " & _
-        "asi que esos renglones se omiten completos: no llegan a la plataforma ni con datos a " & _
-        "medias. El resto se transmite normal y la plataforma queda enterada de cuantos " & _
-        "faltaron y por que." & vbCrLf & vbCrLf & _
-        "Si: transmitir omitiendo a esos trabajadores." & vbCrLf & _
-        "No: cancelar y no transmitir nada." & vbCrLf & vbCrLf & _
-        "Para no volver a preguntar, escriba OMITIR o DETENER en la clave MATRIX_CELDAS_ERROR " & _
-        "de la hoja KCM_CONFIG.", _
-        vbYesNo + vbExclamation, "Celdas con error en la matriz") = vbYes)
+    KcmDecidirCeldasConError = KcmAvisoConfirmar("Celdas con error en la matriz", _
+        "La matriz tiene " & KcmPlural(totalCeldas, "celda con error", "celdas con error") & _
+        " en " & KcmPlural(totalFilas, "trabajador", "trabajadores") & ".", _
+        KcmListaDirecciones(direcciones, truncada) & vbCrLf & vbCrLf & _
+        "Si: se envia la matriz sin esos trabajadores." & vbCrLf & _
+        "No: no se envia nada.")
 End Function
 
 ''' Las direcciones en una linea, separadas por coma. Se listan hasta veinte: la lista existe
@@ -315,7 +283,7 @@ Private Sub KcmAssertNoCoursesBeyondLimit(ByVal sheet As Worksheet, ByVal firstE
                 headerValues, lastCourseColumn + 1)) > 0 Then
                 Err.Raise vbObjectError + 7316, "KcmAssertNoCoursesBeyondLimit", _
                     "La columna " & KcmColumnLetters(columnNumber) & " contiene un encabezado de " & _
-                    "capacitacion fuera del rango autorizado; amplie LAST_COURSE_COLUMN antes de sincronizar"
+                    "capacitacion fuera del rango autorizado; LAST_COURSE_COLUMN no llega hasta ahi"
             End If
         Next rowNumber
     Next columnNumber
@@ -436,7 +404,7 @@ Public Function KcmBuildCourseCatalog(ByVal sheet As Worksheet, ByVal firstEmplo
             If unfoldable > 0 Then Err.Raise vbObjectError + 7319, "KcmBuildCourseCatalog", _
                 "El encabezado de " & KcmColumnLetters(columnNumber) & CStr(rowNumber) & _
                 " contiene el caracter U+" & Right$("0000" & Hex$(unfoldable), 4) & _
-                ", que el cliente y el extractor no normalizan igual; corrija el texto en HC"
+                ", que el cliente y el extractor no normalizan igual; el texto de HC tiene que corregirse"
             slug = KcmSourceSlug(text)
             If Len(slug) > 0 Then
                 ' `Or` en VBA no hace corto circuito: evalua las dos ramas siempre. Escrito en una

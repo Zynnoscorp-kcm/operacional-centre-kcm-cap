@@ -1,13 +1,15 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { MatrixRepositoryPort } from "../../ports/importacion-matriz.port.ts";
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 import { MatrixImportService } from "../importacion-matriz/servicio.ts";
 import type { MatrixSnapshot } from "../importacion-matriz/tipos.ts";
 import type { MatrixScanService } from "../barrido-matriz/servicio.ts";
 import type { RosterIngestService } from "../padron/ingesta.ts";
+import type { PuertaDeOcupacionesPort } from "../ocupaciones/puerta.ts";
 import type {
+  BridgeAction,
   BridgeRequest,
   Dc3BridgeEvent,
   DeviceCredential,
@@ -16,6 +18,8 @@ import type {
   ExcelReleaseAck,
   ExcelRepository,
   PendingExcelRelease,
+  PendingReleaseSession,
+  UploadPart,
 } from "./tipos.ts";
 
 const PROTOCOL = "KCM_VBA_BRIDGE_V1";
@@ -23,13 +27,42 @@ const ACTIONS = new Set([
   "MATRIX_IMPORT_V1",
   "MATRIX_SCAN_V1",
   "ROSTER_SCAN_V1",
-  "SCAN_ORDERS_V1",
   "RELEASE_PULL_V1",
+  "RELEASE_SESSIONS_V1",
   "RELEASE_ACK_V1",
   "DC3_REPORT_V1",
   "STATUS_V1",
+  "LOCAL_SHUTDOWN_V1",
+  "UPLOAD_PART_V1",
+  "OCCUPATION_PLAN_V1",
+  "OCCUPATION_STEP_V1",
 ]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+
+/**
+ * Lo que puede llegar en partes: las acciones que suben datos. Las que sólo
+ * preguntan no traen cuerpo que partir.
+ */
+const PARTIBLES = new Set([
+  "MATRIX_IMPORT_V1",
+  "MATRIX_SCAN_V1",
+  "ROSTER_SCAN_V1",
+  "RELEASE_ACK_V1",
+  "DC3_REPORT_V1",
+  "OCCUPATION_PLAN_V1",
+  "OCCUPATION_STEP_V1",
+]);
+/** Techo de partes por envío: 64 de ~3 MB son casi 200 MB, muy por encima de cualquier libro. */
+const MAXIMO_DE_PARTES = 64;
+const LARGO_MAXIMO = 200_000_000;
+/** Las partes de un envío interrumpido se borran solas pasada una hora. */
+const VIGENCIA_DE_PARTES_MS = 3_600_000;
+const BASE64_WEB = /^[A-Za-z0-9_-]+$/;
+
+function enteroDeParte(valor: string | undefined): number {
+  const texto = (valor ?? "").trim();
+  return /^\d{1,10}$/.test(texto) ? Number(texto) : Number.NaN;
+}
 const SHA = /^[a-f0-9]{64}$/;
 
 function hashCredential(secret: string, salt: string): string {
@@ -46,6 +79,59 @@ function required(value: string, name: string, max = 300): string {
     throw new DomainError("INVALID_EXCEL_REQUEST", `${name} no es válido.`);
   return result;
 }
+
+/**
+ * El padrón como lo manda Excel: nombre, huella y bytes en base64. Lo comparten
+ * «Padrón de la semana» y «Clasificar faltantes», que reciben el mismo archivo.
+ */
+function leerSobreDePadron(payload: string): { nombreArchivo: string; archivo: Buffer } {
+  let sobre: { fileName?: unknown; sha256?: unknown; content?: unknown };
+  try {
+    sobre = JSON.parse(payload) as typeof sobre;
+  } catch {
+    throw new DomainError("INVALID_EXCEL_REQUEST", "El sobre del padrón no es JSON válido.");
+  }
+
+  const nombreArchivo = required(
+    typeof sobre.fileName === "string" ? sobre.fileName : "",
+    "El nombre del archivo",
+    200,
+  );
+  if (typeof sobre.content !== "string" || sobre.content === "")
+    throw new DomainError("INVALID_EXCEL_REQUEST", "El sobre del padrón no trae el archivo.");
+
+  const archivo = Buffer.from(sobre.content, "base64");
+  if (archivo.length === 0)
+    throw new DomainError("INVALID_EXCEL_REQUEST", "El archivo del padrón llegó vacío.");
+
+  // La huella la calcula el cliente sobre el archivo en disco y el servidor
+  // sobre lo que recibió. Compararlas es lo que distingue «el libro cambió»
+  // de «el traslado lo corrompió», que se ven igual desde el extractor.
+  if (typeof sobre.sha256 === "string" && SHA.test(sobre.sha256)) {
+    const recibida = createHash("sha256").update(archivo).digest("hex");
+    if (recibida !== sobre.sha256)
+      throw new DomainError(
+        "EXCEL_ROSTER_CHECKSUM",
+        "El padrón llegó con una huella distinta a la que calculó el cliente: se dañó en el traslado.",
+      );
+  }
+  return { nombreArchivo, archivo };
+}
+
+/** Encabezados del plan: dónde escribe Excel cada clave. */
+const COLUMNAS_DEL_PLAN = ["hoja", "fila", "numero", "columna", "columnaNumero", "caso"] as const;
+/** Encabezados del resultado: una fila por caso. */
+const COLUMNAS_DEL_RESULTADO = [
+  "caso",
+  "estado",
+  "codigo",
+  "descripcion",
+  "subarea",
+  "confianza",
+  "alternativa",
+  "verificador",
+  "razon",
+] as const;
 
 /** El índice parcial de PostgreSQL impide dos credenciales vigentes para la
  * misma instalación. Traducirlo aquí evita que un conflicto esperado se vea
@@ -134,6 +220,14 @@ export class ExcelIntegrationService {
   readonly #scans: MatrixScanService | undefined;
   /** Padrón semanal. Opcional por el mismo motivo que el barrido de matriz. */
   readonly #roster: RosterIngestService | undefined;
+  readonly #ocupaciones: (() => Promise<PuertaDeOcupacionesPort>) | undefined;
+  /**
+   * Apagado de la plataforma local, pedido desde Excel. Sólo se entrega en la
+   * computadora del departamento: en la nube no existe y la acción se rechaza.
+   * Pasa por el puente para heredar su autenticación —credencial del equipo y
+   * nonce—, de modo que ninguna página web ni proceso ajeno puede apagarla.
+   */
+  readonly #apagarLocal: (() => void) | undefined;
   readonly #logger:
     | {
         error(bindings: Record<string, unknown>, message: string): void;
@@ -146,6 +240,12 @@ export class ExcelIntegrationService {
     clock: Clock;
     scans?: MatrixScanService;
     roster?: RosterIngestService;
+    /**
+     * El botón «Clasificar faltantes». Es una función porque el agente se arma
+     * la primera vez que se usa: LangGraph no se carga al arrancar.
+     */
+    ocupaciones?: () => Promise<PuertaDeOcupacionesPort>;
+    apagarLocal?: () => void;
     logger?: { error(bindings: Record<string, unknown>, message: string): void };
   }) {
     this.#repository = input.repository;
@@ -154,6 +254,8 @@ export class ExcelIntegrationService {
     this.#clock = input.clock;
     this.#scans = input.scans;
     this.#roster = input.roster;
+    this.#ocupaciones = input.ocupaciones;
+    this.#apagarLocal = input.apagarLocal;
     this.#logger = input.logger;
   }
 
@@ -194,7 +296,7 @@ export class ExcelIntegrationService {
       if (isActiveCredentialConflict(error)) {
         throw new DomainError(
           "EXCEL_CREDENTIAL_ALREADY_ACTIVE",
-          "Ya existe una credencial activa para este Client ID, alcance y recurso. Revóquela antes de emitir otra.",
+          "Ya existe una credencial activa para este Client ID, alcance y recurso. La anterior se revoca antes de emitir otra.",
         );
       }
       throw error;
@@ -265,8 +367,10 @@ export class ExcelIntegrationService {
         ))
       )
         throw new DomainError("UNAUTHORIZED_EXCEL", "La solicitud ya fue recibida.");
-      const payload = decodePayload(request.payload);
-      const fields = await this.#dispatch(request, payload);
+      const fields =
+        request.action === "UPLOAD_PART_V1"
+          ? await this.#receivePart(request, now)
+          : await this.#dispatch(request, decodePayload(request.payload));
       return response("OK", { requestId: request.requestId, ...fields });
     } catch (error) {
       // Un rechazo de dominio —credencial inválida, nonce repetido, acuse que no
@@ -296,6 +400,84 @@ export class ExcelIntegrationService {
         requestId: request.requestId || randomUUID(),
       });
     }
+  }
+
+  /**
+   * Una parte de un envío grande.
+   *
+   * Cada parte se autentica como cualquier petición y se guarda; mientras falten
+   * partes la respuesta sólo dice cuántas van. Con la última se junta el envío,
+   * se comprueba que mida lo que anunció y se procesa con la acción y el
+   * `requestId` originales, así que el resultado es el mismo que si hubiera
+   * llegado de una vez. Las partes no se borran al juntarse: si la respuesta de
+   * la última se pierde y Excel la repite, el envío se vuelve a juntar y la
+   * acción, que ya es idempotente por `requestId`, responde lo mismo.
+   *
+   * Excel manda las partes en orden, así que la parte 1 siempre abre un envío.
+   * Lo que haya guardado con la misma llave es de uno anterior, interrumpido o
+   * ya procesado, y se descarta: un reenvío dentro de la hora no mezcla sus
+   * partes con las viejas ni se procesa antes de llegar completo.
+   *
+   * Mientras falten partes sólo se cuentan cuáles hay; el contenido se lee una
+   * vez, al juntar.
+   */
+  async #receivePart(
+    request: BridgeRequest,
+    now: number,
+  ): Promise<Record<string, string | number | boolean>> {
+    const target = (request.target ?? "").trim();
+    const part = enteroDeParte(request.part);
+    const parts = enteroDeParte(request.parts);
+    const length = enteroDeParte(request.length);
+    if (!PARTIBLES.has(target))
+      throw new DomainError("INVALID_EXCEL_REQUEST", "La parte no dice a qué envío pertenece.");
+    if (
+      !(parts >= 2 && parts <= MAXIMO_DE_PARTES && part >= 1 && part <= parts) ||
+      !(length > 0 && length <= LARGO_MAXIMO) ||
+      !BASE64_WEB.test(request.payload) ||
+      request.payload.length > length
+    )
+      throw new DomainError("INVALID_EXCEL_REQUEST", "La parte no es válida.");
+
+    const ahora = new Date(now).toISOString();
+    const envio = {
+      clientId: request.clientId,
+      requestId: request.requestId,
+      totalCharacters: length,
+    };
+    const guardada: UploadPart = {
+      ...envio,
+      partNumber: part,
+      totalParts: parts,
+      action: target,
+      content: request.payload,
+      expiresAt: new Date(now + VIGENCIA_DE_PARTES_MS).toISOString(),
+    };
+    if (part === 1) await this.#repository.discardUploadParts(envio);
+    await this.#repository.saveUploadPart(guardada, ahora);
+
+    const deEsteEnvio = (p: { totalParts: number; action: string }) =>
+      p.totalParts === parts && p.action === target;
+    const presentes = (await this.#repository.listUploadPartNumbers(envio, ahora)).filter(
+      deEsteEnvio,
+    );
+    if (new Set(presentes.map((p) => p.partNumber)).size < parts) {
+      return { uploadPart: part, uploadParts: parts, uploadComplete: false };
+    }
+    const vigentes = (await this.#repository.listUploadParts(envio, ahora))
+      .filter(deEsteEnvio)
+      .sort((a, b) => a.partNumber - b.partNumber);
+    const completo = vigentes.map((p) => p.content).join("");
+    if (completo.length !== length)
+      throw new DomainError("INVALID_EXCEL_REQUEST", "Las partes no suman el envío completo.");
+
+    const original: BridgeRequest = {
+      ...request,
+      action: target as BridgeAction,
+      payload: completo,
+    };
+    const fields = await this.#dispatch(original, decodePayload(completo));
+    return { ...fields, uploadParts: parts, uploadComplete: true };
   }
 
   async #dispatch(
@@ -335,11 +517,45 @@ export class ExcelIntegrationService {
         ),
       };
     }
+    if (request.action === "RELEASE_SESSIONS_V1") {
+      // El mismo dato que `RELEASE_PULL_V1`, agrupado. Cuesta una lectura, la
+      // misma que costaría enumerar las filas, y evita que el panel del libro
+      // se descargue quinientos renglones para enseñar cuatro codigos.
+      const sesiones = await this.pendingReleaseSessions();
+      const headers = ["sessionId", "sessionCode", "trainingId", "completionDate", "pending"];
+      return {
+        count: sesiones.length,
+        payload: encodePayload(
+          tsv(
+            headers,
+            sesiones.map((fila) => [
+              fila.sessionId,
+              fila.sessionCode,
+              fila.trainingId,
+              fila.completionDate,
+              String(fila.pending),
+            ]),
+          ),
+        ),
+      };
+    }
+    if (request.action === "LOCAL_SHUTDOWN_V1") {
+      if (!this.#apagarLocal) {
+        throw new DomainError(
+          "ACCION_SOLO_LOCAL",
+          "Esta acción sólo existe en la computadora del departamento.",
+        );
+      }
+      // El acuse sale antes del cierre: `apagarLocal` lo programa con margen.
+      this.#apagarLocal();
+      return { shutdown: true };
+    }
     if (request.action === "RELEASE_ACK_V1") return this.#acknowledge(request, payload);
     if (request.action === "DC3_REPORT_V1") return this.#reportDc3(request, payload);
-    if (request.action === "SCAN_ORDERS_V1") return this.#scanOrders();
     if (request.action === "MATRIX_SCAN_V1") return this.#scan(request, payload);
     if (request.action === "ROSTER_SCAN_V1") return this.#rosterScan(request, payload);
+    if (request.action === "OCCUPATION_PLAN_V1") return this.#planDeOcupaciones(payload);
+    if (request.action === "OCCUPATION_STEP_V1") return this.#pasoDeOcupaciones(payload);
     if (request.action === "MATRIX_IMPORT_V1") {
       const snapshot = JSON.parse(payload) as MatrixSnapshot;
       const preview = await this.receiveImport(
@@ -405,23 +621,89 @@ export class ExcelIntegrationService {
     };
   }
 
+  async #puertaDeOcupaciones(): Promise<PuertaDeOcupacionesPort> {
+    if (!this.#ocupaciones)
+      throw new DomainError(
+        "EXCEL_OCUPACIONES_APAGADAS",
+        "El agente de ocupaciones está apagado: no hay llave de proveedor en el entorno.",
+      );
+    return this.#ocupaciones();
+  }
+
   /**
-   * Qué barridos encargó la consola. Una sola llamada para los dos.
-   *
-   * Es la que hace el vigilante del libro en cada vuelta, así que es la más
-   * frecuente del puente y la más barata: no toca la base más allá de la
-   * credencial y el nonce. Preguntar por la matriz y por el padrón en dos
-   * acciones distintas habría duplicado ese costo para siempre.
+   * «Clasificar faltantes», primer acto. El padrón llega igual que en
+   * `ROSTER_SCAN_V1` y regresa el plan: una fila por trabajador sin clave, con la
+   * celda donde irá su respuesta, y el estado inicial del lote. No toca la base.
    */
-  #scanOrders(): Record<string, string | number | boolean> {
-    const matriz = this.#scans?.ordenVigente();
-    const padron = this.#roster?.ordenVigente();
+  async #planDeOcupaciones(payload: string): Promise<Record<string, string | number | boolean>> {
+    const puerta = await this.#puertaDeOcupaciones();
+    const { archivo } = leerSobreDePadron(payload);
+    const { plan, lote } = await puerta.planear(archivo);
     return {
-      matrixPending: matriz !== undefined,
-      matrixOrderId: matriz?.ordenId ?? "",
-      rosterPending: padron !== undefined,
-      rosterOrderId: padron?.ordenId ?? "",
+      cases: plan.casos.length,
+      rows: plan.filas.length,
+      withKey: plan.conClave,
+      withText: plan.conTextoNoClave,
+      skipped: plan.omitidos,
+      sheetsWithoutColumn: plan.hojasSinColumna.join("|"),
+      pendingCases: plan.pendientes.casos,
+      pendingRows: plan.pendientes.trabajadores,
+      lote,
+      payload: encodePayload(
+        tsv(
+          COLUMNAS_DEL_PLAN,
+          plan.filas.map((fila) => [
+            fila.hoja,
+            fila.fila,
+            fila.numero,
+            fila.columna,
+            fila.columnaDelNumero,
+            fila.caso,
+          ]),
+        ),
+      ),
     };
+  }
+
+  /**
+   * «Clasificar faltantes», un paso. Recibe el estado del lote, trabaja hasta
+   * que se acaba el tiempo del paso y lo devuelve. Al terminar trae además una
+   * fila por caso con la clave, el estado y la razón.
+   */
+  async #pasoDeOcupaciones(payload: string): Promise<Record<string, string | number | boolean>> {
+    const puerta = await this.#puertaDeOcupaciones();
+    const avance = await puerta.avanzar(payload);
+    const campos: Record<string, string | number | boolean> = {
+      done: avance.terminado,
+      queries: avance.consultas,
+      cases: avance.casos,
+      proposed: avance.conPropuesta,
+      lote: avance.lote,
+    };
+    if (avance.resultados) {
+      campos.payload = encodePayload(
+        tsv(
+          COLUMNAS_DEL_RESULTADO,
+          avance.resultados.map((resultado) => {
+            const propuesta = resultado.sugerencia;
+            return [
+              resultado.id,
+              resultado.estado,
+              propuesta?.codigo ?? "",
+              propuesta?.descripcion ?? "",
+              propuesta ? `${propuesta.subarea} ${propuesta.denominacionDeSubarea}` : "",
+              propuesta?.confianza ?? "",
+              propuesta?.alternativa
+                ? `${propuesta.alternativa.codigo} ${propuesta.alternativa.descripcion}`
+                : "",
+              resultado.verificador?.codigo ?? "",
+              resultado.razon,
+            ];
+          }),
+        ),
+      );
+    }
+    return campos;
   }
 
   /**
@@ -503,36 +785,7 @@ export class ExcelIntegrationService {
         "Esta instalación no tiene base conectada: el padrón no tiene a dónde aplicarse.",
       );
 
-    let sobre: { fileName?: unknown; sha256?: unknown; content?: unknown };
-    try {
-      sobre = JSON.parse(payload) as typeof sobre;
-    } catch {
-      throw new DomainError("INVALID_EXCEL_REQUEST", "El sobre del padrón no es JSON válido.");
-    }
-
-    const nombreArchivo = required(
-      typeof sobre.fileName === "string" ? sobre.fileName : "",
-      "El nombre del archivo",
-      200,
-    );
-    if (typeof sobre.content !== "string" || sobre.content === "")
-      throw new DomainError("INVALID_EXCEL_REQUEST", "El sobre del padrón no trae el archivo.");
-
-    const archivo = Buffer.from(sobre.content, "base64");
-    if (archivo.length === 0)
-      throw new DomainError("INVALID_EXCEL_REQUEST", "El archivo del padrón llegó vacío.");
-
-    // La huella la calcula el cliente sobre el archivo en disco y el servidor
-    // sobre lo que recibió. Compararlas es lo que distingue «el libro cambió»
-    // de «el traslado lo corrompió», que se ven igual desde el extractor.
-    if (typeof sobre.sha256 === "string" && SHA.test(sobre.sha256)) {
-      const recibida = createHash("sha256").update(archivo).digest("hex");
-      if (recibida !== sobre.sha256)
-        throw new DomainError(
-          "EXCEL_ROSTER_CHECKSUM",
-          "El padrón llegó con una huella distinta a la que calculó el cliente: se dañó en el traslado.",
-        );
-    }
+    const { nombreArchivo, archivo } = leerSobreDePadron(payload);
 
     const plan = await this.#roster.previsualizar(archivo, nombreArchivo, {
       tipo: "PUENTE_VBA",
@@ -581,6 +834,31 @@ export class ExcelIntegrationService {
    */
   pendingReleases(): Promise<readonly PendingExcelRelease[]> {
     return this.#repository.listPendingReleases();
+  }
+
+  /**
+   * Las mismas liberaciones pendientes, agrupadas por sesión.
+   *
+   * El agrupamiento vive aquí y no en SQL porque la lectura de pendientes ya
+   * está resuelta —con su mapeo vigente y su tope— y volver a consultarla desde
+   * otra consulta daría dos definiciones de «pendiente» que un día discreparían.
+   *
+   * El orden es el del código de sesión: es como se leen en la consola y como se
+   * buscan en una lista.
+   */
+  async pendingReleaseSessions(): Promise<readonly PendingReleaseSession[]> {
+    const porSesion = new Map<string, PendingReleaseSession>();
+    for (const fila of await this.#repository.listPendingReleases()) {
+      const previa = porSesion.get(fila.sessionId);
+      porSesion.set(fila.sessionId, {
+        sessionId: fila.sessionId,
+        sessionCode: fila.sessionCode || fila.sessionId,
+        trainingId: fila.trainingId,
+        completionDate: fila.completionDate,
+        pending: (previa?.pending ?? 0) + 1,
+      });
+    }
+    return [...porSesion.values()].sort((a, b) => a.sessionCode.localeCompare(b.sessionCode));
   }
 
   /**

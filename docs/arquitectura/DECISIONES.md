@@ -83,9 +83,9 @@ denuncia en pantalla en lugar de resolverse por escritura silenciosa.
 
 ## 5. Seguridad por fila forzada, con lectura a través de funciones
 
-**Decisión.** Todas las tablas del esquema `kcm` tienen `ROW LEVEL SECURITY`
+**Decisión.** Todas las tablas de los esquemas de dominio tienen `ROW LEVEL SECURITY`
 forzada y sin políticas permisivas. La lectura no ocurre contra las tablas sino
-contra funciones `SECURITY DEFINER` del esquema `kcm_lectura`, que proyectan
+contra funciones `SECURITY DEFINER` del esquema `lectura`, que proyectan
 únicamente las columnas autorizadas. La aplicación se conecta con el rol
 `kcm_app`, creado `NOBYPASSRLS`.
 
@@ -303,3 +303,91 @@ requería, y el quiosco resuelve el mismo problema en el origen.
 
 **Consecuencia.** Ni el motor ni sus dependencias nativas forman parte del
 sistema. Si vuelve a plantearse, es un proyecto nuevo y no una reactivación.
+
+---
+
+## 19. Un esquema por dominio en la base
+
+**Decisión.** Las tablas viven en ocho esquemas —`organizacion`, `catalogo`,
+`operacion`, `matriz`, `dnc`, `dc3`, `seguridad` y `sistema`—; los tipos
+compartidos en `comun` y la superficie de consulta en `lectura`. Cada tabla se
+nombra en singular y en español, con la entidad principal primero
+(`liberacion_lote`, no `lote_liberacion`). El código siempre escribe
+`esquema.tabla` calificado.
+
+**Motivo.** Con todo en un solo esquema, los nombres cargaban la historia del
+proyecto (`registro_hc`, `acuse_liberacion_vba`, `evaluacion_dnc_snapshot`) y
+había que conocerla para leer la base. El esquema dice de qué dominio es una
+tabla antes de abrirla.
+
+**Consecuencia.** Los nombres de tabla son únicos entre esquemas, y el
+previsualizador de la consola depende de eso para abrirlas por nombre. Una tabla
+nueva va al esquema de su dominio con el mismo patrón de nombre, y la misma
+migración que la crea le activa la RLS y la política `app_acceso_total`; ningún esquema nuevo se
+agrega sin actualizar `ESQUEMAS_DEL_DOMINIO` y `tools/db/reset-base.js`.
+
+---
+
+## 20. Nada que la nube necesite vive sólo en la memoria del proceso
+
+**Decisión.** Publicada, la plataforma corre en varias instancias. La llave de
+las cookies se declara (`KCM_SESSION_SECRET`); la revisión del barrido y el
+plan del padrón esperan su «Aplicar» en `sistema.revision_pendiente`, y el
+retiro es atómico en la base; los asientos que se escriben al cargar se esperan
+antes de responder.
+
+**Motivo.** Con una sola máquina, un proceso es todo el sistema. Con varias
+instancias, la petición siguiente puede caer en otra, y lo que sólo estaba en
+memoria se convierte en una sesión perdida o en un «la revisión ya no está
+disponible» que nadie provocó.
+
+**Consecuencia.** Todo estado nuevo que tenga que sobrevivir entre dos
+peticiones va a la base o a un secreto compartido, nunca a un campo del
+servicio. Los cachés de sólo lectura (logotipos, catálogos) pueden seguir en
+memoria: perderlos cuesta una lectura, no un dato.
+
+## 21. Lo que no cabe en una petición sale en partes
+
+**Decisión.** Excel manda entero todo envío de hasta 3 MB codificados; lo que
+pase de ahí lo parte y lo manda con `UPLOAD_PART_V1`, una parte tras otra y con
+el mismo `requestId`. La plataforma guarda las partes en `sistema.envio_parte`
+y, con la última, procesa el envío con la acción original. Al terminar, Excel
+avisa «envío normal» o «envío en N partes». El envío local —encender la
+plataforma en una computadora del departamento desde Excel— se retiró.
+
+**Motivo.** El alojamiento corta cada petición en 4.5 MB. El envío local
+resolvía el tamaño a cambio de instalar la plataforma en cada equipo que
+mandara archivos grandes, y en macOS ni siquiera podía funcionar con la
+plataforma en el Escritorio: el sistema le niega esa carpeta a lo que Excel
+ejecuta, sin preguntar. Partir el envío no pide nada a nadie y funciona igual
+en los dos sistemas, porque es la misma conexión de siempre.
+
+**Consecuencia.** Una sola dirección en `KCM_CONFIG`. La respuesta de un envío
+en partes es la misma que la de un envío entero, así que ningún flujo cambia
+por su tamaño. Las partes vencen en una hora; repetir la última no duplica
+nada, porque la acción ya es idempotente por `requestId`. La plataforma local
+sigue existiendo para desarrollo, encendida a mano, pero ningún flujo del
+departamento depende de ella.
+
+## 22. Se da de baja quien falta en el padrón y en la matriz
+
+**Decisión.** Un trabajador se da de baja (`activo = false`) cuando no aparece
+ni en el último padrón aplicado ni en la última matriz completa aplicada. Cada
+fuente anota en el trabajador si lo trajo (`visto_en_padron`,
+`visto_en_matriz`, migración `0046`) y la que se aplica después decide con las
+dos marcas. Nada se borra. Quien vuelve a aparecer en cualquiera de las dos se
+reactiva. El padrón además guarda y compara todas sus columnas: RFC, IMSS,
+centro de costos, dirección, código postal, estado civil y sexo se escriben;
+nombre, puesto, planta y tipo de nómina sólo se avisan, porque ahí manda la
+matriz.
+
+**Motivo.** El departamento lo pidió el 2026-09-25: el padrón pesa más, pero se
+suben en días distintos y no hay un momento en que las dos estén a la vista.
+Guardar una marca por fuente cuesta dos sentencias por carga y no obliga a
+conservar ni releer el archivo de la otra.
+
+**Consecuencia.** Las marcas nacen en verdadero: hasta que cada fuente se
+aplique una vez con esta regla, nadie se da de baja. El panel de cambios
+enseña en rojo a quien se da de baja, en gris a quien falta en una sola fuente
+y en gris punteado lo que se avisa sin escribirse. La antigüedad del padrón no
+se guarda: se calcula de la fecha de alta y cambiaría a diario.

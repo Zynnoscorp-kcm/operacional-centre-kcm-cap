@@ -20,7 +20,8 @@ const TOKENS = {
   COLOR_BLANCO: "--kcm-surface",
   COLOR_OK: "--kcm-ok",
   COLOR_AVISO: "--kcm-warn",
-  COLOR_ALERTA: "--kcm-danger"
+  COLOR_ALERTA: "--kcm-danger",
+  COLOR_MARCA_SUAVE: "--kcm-brand-sky-soft"
 };
 
 // Los modulos que pintan. Ninguno debe llevar un color suelto: si hace falta uno nuevo, se

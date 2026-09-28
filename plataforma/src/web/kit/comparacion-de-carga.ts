@@ -26,6 +26,7 @@
  */
 
 import type { ComparacionConLaAnterior } from "../../domain/cargas/tipos.ts";
+import { momento } from "./fechas.ts";
 import { html, type Html } from "./html.ts";
 
 /**
@@ -37,7 +38,7 @@ import { html, type Html } from "./html.ts";
 const DIAS_PARA_COMENTAR = 14;
 
 function fecha(iso: string): string {
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+  return momento(iso);
 }
 
 /** Concuerda el sustantivo con la cifra. */

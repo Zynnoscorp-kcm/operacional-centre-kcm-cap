@@ -22,20 +22,22 @@ export interface DatosPantallaError {
 export function renderErrorPage(datos: DatosPantallaError): string {
   const contenido = html`
     <section class="tarjeta" aria-labelledby="titulo-error">
-      <p class="error-codigo">${datos.statusCode} · ${datos.codigo}</p>
+      <p class="error-codigo">Error ${datos.statusCode}</p>
       <h2 id="titulo-error">${datos.mensaje}</h2>
-      <p>Identificador de la petición para seguimiento en bitácora.</p>
+      <p>Si el problema continúa, estos datos ayudan a soporte a encontrar lo que pasó.</p>
       <dl class="definiciones">
-        <dt>Petición</dt>
+        <dt>Folio</dt>
         <dd>${datos.requestId}</dd>
+        <dt>Código</dt>
+        <dd>${datos.codigo}</dd>
       </dl>
       <p><a href="/">Volver al inicio</a></p>
     </section>
   `;
 
   return renderLayout({
-    titulo: "Error",
-    subtitulo: "Administración de capacitación",
+    titulo: "No se pudo completar",
+    subtitulo: "La solicitud no llegó a su destino",
     entorno: datos.entorno,
     contenido,
   });

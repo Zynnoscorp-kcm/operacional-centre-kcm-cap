@@ -25,9 +25,9 @@
  * es de consulta.
  */
 
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { AuditReadPort } from "../../ports/consola-interna.port.ts";
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 import {
   VENTANA_AUDITORIA_DIAS,
   type AuditWindow,

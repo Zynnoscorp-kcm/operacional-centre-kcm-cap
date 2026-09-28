@@ -61,7 +61,7 @@ seiscientas filas —`ECATEPEC I`, `ECATEPEC II`, `MANTTO INGENIERIA`— y es la
 **planta**, no el área operativa. El área de la matriz tiene treinta y ocho
 valores como `SERVILLETAS Y FACIALES`. Compararlas porque comparten rótulo
 produciría mil seiscientas divergencias falsas. Se lee como `plant` y se
-contrasta contra `kcm.trabajador.planta`.
+contrasta contra `organizacion.trabajador.planta`.
 
 ## 3. Los cursos unificados
 
@@ -86,8 +86,10 @@ están cargadas**, aunque el motor las compila.
 178 claves, agente capacitador, los tres firmantes, y la razón social y el RFC
 **del patrón** —no del trabajador—.
 
-**Cómo entra:** captura humana en `referencias/privado/dc3-config.json` y en
-`kcm.metadato_curso_dc3`. Es la única de las cuatro que no viene de un archivo
+**Cómo entra:** captura humana en `dc3.curso_configuracion` (duración, área
+temática, agente capacitador y periodo de cada curso). La razón social, el RFC
+y los firmantes van horneados en las leyendas del formato oficial, iguales en
+cualquier equipo. Es la única de las cuatro que no viene de un archivo
 entregado: se decide y se escribe.
 
 **Estado:** los tres cursos tienen duración y área temática; **falta el agente
@@ -115,9 +117,9 @@ en silencio entre dos fuentes es exactamente lo que no debe hacer una carga.
 - **Foto del trabajador.** Ni la matriz ni el padrón la traen. La ficha no la
   muestra.
 - **Escolaridad.** Sin fuente. Se declaró un valor por omisión que **nunca se
-  cargó**: `kcm.atributo_declarado` está en cero filas. No alimenta ninguna regla
+  cargó**: `organizacion.trabajador_atributo` está en cero filas. No alimenta ninguna regla
   ni ningún porcentaje.
-- **Cualquier campo nuevo** entra por `kcm.campo_declarado`, que exige aprobación
+- **Cualquier campo nuevo** entra por `organizacion.atributo_definicion`, que exige aprobación
   antes de que una regla pueda usarlo. Hoy está vacía.
 
 ## Lo que nace dentro de la plataforma y no es «fuente de verdad»

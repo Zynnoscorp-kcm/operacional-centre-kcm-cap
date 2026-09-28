@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
-import type { Clock } from "../ports/reloj.ts";
+import type { Clock } from "../ports/reloj.port.ts";
 import type { RoomReservationService } from "../domain/salas/reservaciones.ts";
 import { igualEnTiempoConstante } from "../server/sesion-consola.ts";
 import { renderAgendaPage } from "../web/pages/agenda.ts";
@@ -88,7 +88,9 @@ export function registerAgendaRoutes(
    * está abierta a quien pase enfrente. Sin contraseña declarada —o con el
    * acceso abierto del piloto— no se pide nada y el campo no se dibuja.
    */
-  const claveDeSala = deps.config.pilot.openAccess ? undefined : deps.config.pilot.roomPassword;
+  const claveDeSala = deps.config.pilot.openAccess
+    ? undefined
+    : (deps.config.roomPassword ?? deps.config.pilot.roomPassword);
   const requiereClave = claveDeSala !== undefined;
 
   const pintar = async (

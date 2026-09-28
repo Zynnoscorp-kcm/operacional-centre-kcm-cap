@@ -13,6 +13,7 @@
 
 import type { EnvironmentName } from "../../config/environment.ts";
 import { etiquetaDeEstadoDeSesion } from "../kit/etiquetas.ts";
+import { fechaCorta } from "../kit/fechas.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 import type {
@@ -62,7 +63,7 @@ export function renderPreReleaseInboxPage(datos: DatosBandejaPreliberacion): str
         <h2 id="titulo-revisables">Sesiones en revisión</h2>
         <p class="seccion-subtitulo">Sesiones cerradas o en preliberación.</p>
       </div>
-      ${renderTablaSesiones(revisables, "Sin sesiones en etapa revisable.")}
+      ${renderTablaSesiones(revisables, "Sin sesiones por revisar.")}
     </section>
   `;
 
@@ -491,13 +492,18 @@ function renderTransiciones(estado: WorkbenchState, requestId: string): Html {
   const enPreliberacion = sesion.status === "PRELIBERACION";
   const enBandeja = sesion.status === "LISTA_PARA_LIBERAR";
   const revisionGuardada = Boolean(estado.review.reviewedAt);
+  // Limpia es sin un solo hallazgo, ni de los que el revisor declara ni de los
+  // que la revisión deriva sola. Es la condición del atajo, y se calcula aquí
+  // igual que en la ruta para que la pantalla y el servidor no discrepen.
+  const sinHallazgos = estado.findings.length === 0 && estado.derivedFindings.length === 0;
 
   return html`
     <section class="tarjeta" aria-labelledby="titulo-transiciones">
       <div class="seccion-cabecera">
         <h2 id="titulo-transiciones">Confirmaciones</h2>
         <p class="seccion-subtitulo">
-          Cada paso se confirma por separado. El servidor revalida estado, autorización y exámenes.
+          Cada paso se confirma por separado; antes de avanzar se vuelven a comprobar la
+          autorización y los exámenes.
         </p>
       </div>
 
@@ -531,14 +537,33 @@ function renderTransiciones(estado: WorkbenchState, requestId: string): Html {
             : ""
         }
         ${
+          // Dos caminos y uno solo visible a la vez, según lo que la sesión traiga.
+          //
+          // Limpia: un botón que revisa y libera en el mismo acto. La segunda
+          // revisión de una sesión sin hallazgos no es un control —nada exige que
+          // la firme otra persona— sino una ceremonia que cuesta dos pantallas.
+          //
+          // Con hallazgos: el camino de siempre, en dos pasos, porque ahí la
+          // segunda mirada sí tiene algo que mirar. El atajo no se ofrece, y el
+          // servidor lo vuelve a comprobar por si la sesión se ensució entre que
+          // se pintó esta pantalla y alguien pulsó.
           enPreliberacion
-            ? html`
-                <form method="POST" action="/api/pre-release/submit">
-                  <input type="hidden" name="sessionId" value="${sesion.sessionId}" />
-                  <input type="hidden" name="requestId" value="${requestId}" />
-                  <button class="boton-kcm" type="submit">Pasar a liberación</button>
-                </form>
-              `
+            ? sinHallazgos
+              ? html`
+                  <form method="POST" action="/api/pre-release/liberar">
+                    <input type="hidden" name="sessionId" value="${sesion.sessionId}" />
+                    <input type="hidden" name="requestId" value="${requestId}" />
+                    <button class="boton-kcm" type="submit">Liberar</button>
+                  </form>
+                  <p class="texto-atenuado">Sin hallazgos: se libera desde aquí.</p>
+                `
+              : html`
+                  <form method="POST" action="/api/pre-release/submit">
+                    <input type="hidden" name="sessionId" value="${sesion.sessionId}" />
+                    <input type="hidden" name="requestId" value="${requestId}" />
+                    <button class="boton-kcm" type="submit">Pasar a liberación</button>
+                  </form>
+                `
             : ""
         }
         ${
@@ -589,9 +614,7 @@ function renderReportes(sesion: SessionHeader, reportes: readonly ReportEvidence
                       <th scope="col">Archivo</th>
                       <th scope="col">Archivado</th>
                       <th scope="col">Por</th>
-                      <th scope="col">Bytes</th>
-                      <th scope="col">SHA-256</th>
-                      <th scope="col">Abrir</th>
+                      <th scope="col"><span class="solo-lectores">Descargar</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -599,10 +622,10 @@ function renderReportes(sesion: SessionHeader, reportes: readonly ReportEvidence
                       (r) => html`
                         <tr>
                           <td>${r.fileName}</td>
-                          <td class="celda-mono">${r.createdAt}</td>
+                          <td class="celda-fecha" title="Huella ${r.sha256}">
+                            ${fechaCorta(r.createdAt)}
+                          </td>
                           <td>${r.createdBy}</td>
-                          <td class="celda-numero">${r.byteSize}</td>
-                          <td class="celda-mono">${r.sha256.slice(0, 16)}…</td>
                           <td>
                             <a class="boton-enlace" href="/preliberacion/reporte/${r.evidenceId}">
                               Descargar

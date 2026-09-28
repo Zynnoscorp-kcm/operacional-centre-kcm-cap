@@ -68,15 +68,13 @@ npm run db:padron     # carga del padrón semanal
 
 ### Constancias DC-3
 
-```bash
-npm run dc3:plan          # sólo conteos y huellas; no genera archivos
-npm run dc3:vista-previa  # banco de pruebas en 127.0.0.1:4175, identidad inventada
-npm run dc3:generar -- --config referencias/privado/dc3-config.json
-```
-
-El planificador es deliberadamente incapaz de inventar duración, área temática o
-agente capacitador: esos campos se capturan en configuración privada, y hasta
-entonces la emisión falla cerrada.
+Se emiten desde la consola, en `/dc3`, desde cualquier instancia —local o en la
+nube— y con una sola bitácora. Cuentan los cursos desde el 1 de enero de 2026;
+los de años anteriores se consultan y se emiten con el filtro «Años
+anteriores». La duración, el área temática y el agente capacitador salen del
+catálogo de cursos en la base: lo que falte ahí sale en blanco, y la pantalla lo
+dice antes de emitir. El detalle está en
+[`docs/referencia/DC3_AUTOMATIZACION.md`](docs/referencia/DC3_AUTOMATIZACION.md).
 
 ## Estructura
 
@@ -88,8 +86,9 @@ packages/       módulos compartidos entre el servicio y las herramientas
 clients/        lo que corre en la máquina de otra persona
 database/       el esquema: migraciones, semilla y reconstrucción
 infra/          cómo se empaqueta y se levanta
+api/            punto de entrada del perfil de nube (lo exige el alojamiento)
+public/         lo único que la nube sirve como archivo; lo demás pasa por la plataforma
 tools/          herramientas de línea de comandos
-config/         configuración de ejemplo
 docs/           arquitectura, operación y referencia
 ```
 
@@ -98,19 +97,20 @@ docs/           arquitectura, operación y referencia
 | `plataforma/src/` | Dominio, puertos, adaptadores, servidor, rutas y capa web |
 | `plataforma/tests/` | Pruebas agrupadas por tipo: dominio, rutas, caracterización, armazón, estilo y regresiones |
 | `packages/dnc/` | Catálogo unificado y motor de reglas DNC en dos niveles |
-| `packages/dc3/` | Planificador, compositor PDF sin dependencias y ledger idempotente |
+| `packages/dc3/` | Compositor PDF de la constancia, sin dependencias, y lector del padrón activo |
 | `packages/xlsb/` | Lector ZIP/BIFF12 del libro maestro, sólo lectura |
 | `packages/contracts/` | Contratos versionados y máquina de estados |
 | `packages/core/` | Núcleo de referencia para las pruebas de caracterización |
 | `packages/tests/` | Banco de pruebas de los módulos compartidos |
 | `clients/excel/vba/` | Cliente Excel, único escritor del libro. Corre en Windows y en macOS |
 | `clients/excel/mac/` | Guion del puente para Excel en macOS y su instalador de un paso |
-| `database/migrations/` | 42 migraciones DDL con RLS forzada |
+| `database/migrations/` | 45 migraciones DDL con RLS forzada; desde `0043` una tabla por esquema de dominio (ver `database/README.md`) |
 | `database/seed/` | Compatibilidad de roles y semilla sintética para desarrollo |
 | `infra/docker/` | Imagen de producción y de desarrollo |
 | `infra/compose.yaml` | Pila local completa: PostgreSQL, migraciones y plataforma |
+| `infra/local/` | Lanzadores de un clic para encender la plataforma en Mac y Windows |
 | `tools/db/` | Migraciones, reconstrucción, alta de cuentas y carga del padrón |
-| `tools/build/` | Generadores: semilla de catálogo, mapeo de matriz y DC-3 |
+| `tools/build/` | Generadores: semilla de catálogo y mapeo de matriz |
 | `tools/check/` | Verificaciones que ESLint no cubre: proyecto, VBA e imagen |
 
 ## Documentación
@@ -130,6 +130,10 @@ docs/           arquitectura, operación y referencia
 
 **Operación**
 
+- [`DESPLIEGUE_VERCEL.md`](docs/operacion/DESPLIEGUE_VERCEL.md) — publicación,
+  medidas que la sostienen y pruebas finales.
+- [`PROTOCOLO_NUBE_Y_EQUIPO.md`](docs/operacion/PROTOCOLO_NUBE_Y_EQUIPO.md) — el
+  manual del departamento: trabajo diario y envíos grandes en partes.
 - [`DESARROLLO_DOCKER.md`](docs/operacion/DESARROLLO_DOCKER.md) — entorno
   completo en contenedores.
 - [`MIGRACION_SERVIDORES_INTERNOS.md`](docs/operacion/MIGRACION_SERVIDORES_INTERNOS.md)

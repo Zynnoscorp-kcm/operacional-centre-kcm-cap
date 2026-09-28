@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Alta de una cuenta nominal de consola en `kcm.credencial_consola`.
+ * Alta de una cuenta nominal de consola en `seguridad.credencial_consola`.
  *
  * Existe porque la plataforma verifica cuentas pero no las crea: la puerta de
  * `/acceso` sólo lee el directorio. Tras el reset del piloto la tabla queda
@@ -55,10 +55,10 @@ async function main() {
   await client.connect();
   try {
     const { rows } = await client.query(
-      `INSERT INTO kcm.credencial_consola
+      `INSERT INTO seguridad.credencial_consola
          (usuario, nombre_visible, credencial_hash, sal, algoritmo, emitida_por)
        SELECT $1, $2, $3, $4, 'scrypt', a.actor_id
-         FROM kcm.actor a
+         FROM seguridad.actor a
         WHERE a.identificador = 'sistema.configuracion'
        RETURNING credencial_id, usuario;`,
       [usuario, nombreVisible, hash, sal],

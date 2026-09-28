@@ -20,11 +20,22 @@
  * No se retiró ninguna función; se dejaron de listar todas a la vez.
  */
 
-import type { EnvironmentName } from "../config/environment.ts";
+import type { DeploymentRole, EnvironmentName } from "../config/environment.ts";
 import { hojaDeEstilos, simboloKcm } from "./estaticos.ts";
 import { html, rawHtml, renderDocument, type Html } from "./kit/html.ts";
 
 const NOMBRE_DE_LA_PLATAFORMA = "Plataforma KCM";
+
+/**
+ * Cómo se dice el entorno en la barra. En producción no se dice nada: es lo
+ * normal. En los otros dos se avisa en palabras, para que nadie confunda una
+ * instalación de pruebas con la real.
+ */
+const ENTORNO_VISIBLE: Readonly<Record<EnvironmentName, string>> = {
+  production: "",
+  staging: "Entorno de ensayo",
+  development: "Entorno de pruebas",
+};
 
 /** Oscuro para la sala y la agenda pública; claro para la consola central. */
 export type TemaVisual = "plataforma" | "quiosco";
@@ -34,6 +45,16 @@ export interface OpcionesDeDiseno {
   readonly titulo: string;
   readonly subtitulo: string;
   readonly entorno: EnvironmentName;
+  /**
+   * En qué máquina está parada la persona. Se enseña porque el reparto entre
+   * nube y equipo del departamento sólo es manejable si se ve antes de
+   * intentar algo: quien abre `/padron` un lunes necesita saber, sin leer
+   * documentación, si está en la computadora que puede cargar el archivo.
+   *
+   * Opcional para no obligar a las veinte pantallas a declararlo: lo pasan las
+   * que tienen operaciones repartidas.
+   */
+  readonly papel?: DeploymentRole;
   readonly contenido: Html;
   /**
    * Título del documento. Por omisión es «título · Plataforma KCM»; una
@@ -49,7 +70,15 @@ export interface OpcionesDeDiseno {
    * `href` de cada sección y de cada sub-pestaña.
    */
   readonly rutaActiva?: string;
-  /** Deja el lienzo sin menú lateral y a lo ancho completo. */
+  /**
+   * Deja el lienzo sin menú lateral y a lo ancho completo.
+   *
+   * Cambia también la clase del cuerpo, y no es un detalle: la rejilla de la
+   * consola declara dos columnas —244 px para el menú y el resto para el
+   * lienzo—, así que al quitar el menú sin decírselo a la rejilla el lienzo
+   * caía en la columna de 244 px y la pantalla entera se dibujaba dentro de esa
+   * franja. Con `consola-sola` la rejilla pasa a una sola columna.
+   */
   readonly sinRail?: boolean;
   /**
    * Segundos entre recargas automáticas de la pantalla.
@@ -64,6 +93,25 @@ export interface OpcionesDeDiseno {
    * `default-src 'none'` sin `script-src`.
    */
   readonly recargaCada?: number;
+  /**
+   * Barra propia de un módulo, en lugar de la tira genérica de sub-pestañas.
+   *
+   * La usan las secciones que son una aplicación dentro de la consola —hoy,
+   * DC-3—: su navegación lleva iconos, cifras y un buscador que la tira
+   * genérica no sabe dibujar. El lateral sigue encendiendo la sección por su
+   * prefijo.
+   */
+  readonly modulo?: Html;
+  /**
+   * Dirección que el navegador descarga al llegar la página.
+   *
+   * Es un `<meta http-equiv="refresh">` hacia una respuesta marcada como
+   * adjunto: el navegador la baja y la página se queda donde está. Lo usa la
+   * emisión, que vuelve a la lista con sus filtros y deja que el documento baje
+   * solo; sin guiones no hay otra manera de hacer las dos cosas con un clic.
+   * Excluye `recargaCada`: sólo cabe una instrucción de ese tipo por documento.
+   */
+  readonly descarga?: string;
 }
 
 interface Subpestana {
@@ -82,6 +130,11 @@ interface SeccionDeMenu {
    * mirada de varias maneras.
    */
   readonly subpestanas?: readonly Subpestana[];
+  /**
+   * Las rutas que empiezan así también encienden la sección. Lo declaran los
+   * módulos con barra propia, cuyas pantallas no son sub-pestañas del armazón.
+   */
+  readonly prefijo?: string;
 }
 
 /**
@@ -122,6 +175,9 @@ const ICONO_CARGAS = icono(
 const ICONO_DC3 = icono(
   '<path d="M11.4 2.9H6.3a1.4 1.4 0 0 0-1.4 1.4v11.4a1.4 1.4 0 0 0 1.4 1.4h7.4a1.4 1.4 0 0 0 1.4-1.4V6.5z"/><path d="M11.4 2.9v3.6h3.7"/><path d="M7.6 11h4.8M7.6 13.6h3.2"/>',
 );
+const ICONO_OCUPACIONES = icono(
+  '<rect x="3" y="6.2" width="14" height="10.4" rx="2"/><path d="M7.4 6.2V4.8a1.4 1.4 0 0 1 1.4-1.4h2.4a1.4 1.4 0 0 1 1.4 1.4v1.4"/><path d="M3 10.9h14"/><path d="M9.2 10.9v1.4h1.6v-1.4"/>',
+);
 const ICONO_EXCEL = icono(
   '<path d="M3.4 7.6h13.2M13.6 4.8l3 2.8-3 2.8"/><path d="M16.6 13.2H3.4M6.4 10.4l-3 2.8 3 2.8"/>',
 );
@@ -150,7 +206,7 @@ const PANTALLAS_EXTERNAS: readonly { readonly nombre: string; readonly href: str
 ];
 
 /**
- * Las once secciones de la consola, en el orden en que se recorren durante una
+ * Las doce secciones de la consola, en el orden en que se recorren durante una
  * semana de trabajo: primero lo que se opera a diario, luego lo que cierra una
  * sesión, luego el padrón y sus tableros, y al final las dos consolas técnicas.
  *
@@ -196,7 +252,6 @@ const MENU: readonly SeccionDeMenu[] = [
       { nombre: "Cobertura por curso", href: "/trabajadores/cursos" },
       { nombre: "Cobertura DNC", href: "/trabajadores/cobertura" },
       { nombre: "Departamentos", href: "/trabajadores/departamentos" },
-      { nombre: "Comparativa de planta", href: "/trabajadores/comparativa" },
     ],
   },
   {
@@ -205,15 +260,36 @@ const MENU: readonly SeccionDeMenu[] = [
     href: "/matriz",
     icono: ICONO_CARGAS,
     // Van juntas y en el orden en que se usan: la matriz trae el historial de
-    // fechas, el padrón la CURP y el alta. El historial va al final porque se
-    // consulta después, cuando hay que explicar qué entró y de dónde.
+    // fechas, el padrón la CURP y el alta. Sincronía va después de las dos
+    // porque coteja lo que ambas dejaron aplicado. Control de cambios avisa de
+    // cada envío completo y el historial va al final porque se consulta
+    // después, cuando hay que explicar qué entró y de dónde.
     subpestanas: [
       { nombre: "Barrido de matriz", href: "/matriz" },
       { nombre: "Padrón semanal", href: "/padron" },
+      { nombre: "Sincronía", href: "/sincronia" },
+      { nombre: "Control de cambios", href: "/cambios" },
       { nombre: "Historial", href: "/cargas" },
     ],
   },
-  { grupo: "Capacitación y DNC", nombre: "DC-3", href: "/dc3", icono: ICONO_DC3 },
+  {
+    grupo: "Capacitación y DNC",
+    // Antes de DC-3 porque la alimenta: la clave de ocupación es el recuadro
+    // que le faltaba a la constancia.
+    nombre: "Ocupaciones",
+    href: "/ocupaciones",
+    icono: ICONO_OCUPACIONES,
+  },
+  {
+    grupo: "Capacitación y DNC",
+    nombre: "DC-3",
+    href: "/dc3",
+    icono: ICONO_DC3,
+    // Sin sub-pestañas: DC-3 es un módulo con barra propia —secciones, la cifra
+    // de lo que falta emitir y el buscador del expediente—, que dibuja cada
+    // una de sus pantallas. El prefijo mantiene encendida la sección.
+    prefijo: "/dc3",
+  },
   { grupo: "Sistema", nombre: "Conexión Excel", href: "/excel", icono: ICONO_EXCEL },
   {
     grupo: "Sistema",
@@ -241,15 +317,17 @@ export function renderLayout(opciones: OpcionesDeDiseno): string {
       <meta name="robots" content="noindex, nofollow" />
       <meta name="theme-color" content="${tema === "quiosco" ? "#0a0a0c" : "#eef1f7"}" />
       ${
-        opciones.recargaCada
-          ? html`<meta http-equiv="refresh" content="${opciones.recargaCada}" />`
-          : ""
+        opciones.descarga
+          ? html`<meta http-equiv="refresh" content="1;url=${opciones.descarga}" />`
+          : opciones.recargaCada
+            ? html`<meta http-equiv="refresh" content="${opciones.recargaCada}" />`
+            : ""
       }
       <title>${tituloDocumento}</title>
       <link rel="stylesheet" href="${hojaDeEstilos.ruta}" />
       <link rel="icon" href="${simboloKcm.ruta}" type="${simboloKcm.tipo}" />
     </head>
-    <body class="consola">
+    <body class="consola${conMenu ? "" : " consola-sola"}">
       <a class="salto-contenido" href="#contenido">Saltar al contenido</a>
       ${conMenu ? renderMenu(seccion) : ""}
       <div class="lienzo">
@@ -260,13 +338,37 @@ export function renderLayout(opciones: OpcionesDeDiseno): string {
           </div>
           <div class="barra-acciones">
             ${opciones.estado ?? ""}
-            <span class="insignia insignia-entorno">${opciones.entorno}</span>
+            ${
+              ENTORNO_VISIBLE[opciones.entorno]
+                ? html`<span class="insignia insignia-entorno"
+                    >${ENTORNO_VISIBLE[opciones.entorno]}</span
+                  >`
+                : ""
+            }
+            ${
+              opciones.papel === "nube"
+                ? html`<span
+                    class="insignia insignia-aviso"
+                    title="Las cargas pesadas se hacen en la computadora del departamento"
+                    >En la nube</span
+                  >`
+                : opciones.papel === "local"
+                  ? html`<span
+                      class="insignia insignia-completado"
+                      title="Esta computadora puede hacer las cargas pesadas"
+                      >Equipo del departamento</span
+                    >`
+                  : ""
+            }
             <a class="barra-icono" href="/salir" title="Cerrar sesión">
               ${ICONO_SALIR}<span class="solo-lectores">Cerrar sesión</span>
             </a>
           </div>
         </header>
-        ${seccion?.subpestanas ? renderSubpestanas(seccion, opciones.rutaActiva) : ""}
+        ${
+          opciones.modulo ??
+          (seccion?.subpestanas ? renderSubpestanas(seccion, opciones.rutaActiva) : "")
+        }
         <main class="contenido" id="contenido">${opciones.contenido}</main>
       </div>
     </body>
@@ -281,7 +383,7 @@ function claseDeTema(tema: TemaVisual): string {
 
 /**
  * La sección a la que pertenece una ruta. Una sub-pestaña marca a su sección,
- * de modo que estar en `/trabajadores/comparativa` deja encendido «Trabajadores»
+ * de modo que estar en `/trabajadores/departamentos` deja encendido «Trabajadores»
  * en el lateral y «Comparativa de planta» en la tira de arriba.
  */
 function seccionActiva(rutaActiva: string | undefined): SeccionDeMenu | undefined {
@@ -289,7 +391,8 @@ function seccionActiva(rutaActiva: string | undefined): SeccionDeMenu | undefine
   return MENU.find(
     (seccion) =>
       seccion.href === rutaActiva ||
-      (seccion.subpestanas ?? []).some((pestana) => pestana.href === rutaActiva),
+      (seccion.subpestanas ?? []).some((pestana) => pestana.href === rutaActiva) ||
+      (seccion.prefijo !== undefined && rutaActiva.startsWith(`${seccion.prefijo}/`)),
   );
 }
 

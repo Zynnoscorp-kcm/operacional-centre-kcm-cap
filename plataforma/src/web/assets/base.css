@@ -37,10 +37,22 @@ body {
   min-height: 100vh;
   color: var(--kcm-ink);
   font-family: var(--kcm-font);
+  font-optical-sizing: auto;
   line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
+
+/*
+ * Aquí había un `-webkit-font-smoothing: antialiased` con su pareja de Firefox.
+ *
+ * Se retiraron, y es el cambio que más se nota de todos los de tipografía. En
+ * macOS ese par apaga el suavizado por subpíxel y dibuja cada trazo con menos
+ * tinta: la letra adelgaza aproximadamente medio peso en toda la consola, y lo
+ * hace justo donde peor cae —el texto chico y gris, que ya parte con poco—. Es
+ * un retoque que se ve bien en una maqueta grande y en negro sobre blanco, y
+ * mal en una pantalla de planta a un metro. Sin ellos, el sistema dibuja el
+ * texto como dibuja el del resto del equipo, que es la referencia que tiene
+ * quien lo lee.
+ */
 
 a {
   color: var(--kcm-brand);
@@ -74,6 +86,174 @@ a:hover {
 }
 
 /* ==========================================================================
+   El recorrido entre pantallas
+   --------------------------------------------------------------------------
+   La consola es multipágina: cada sección es un documento servido entero. Hasta
+   ahora eso se veía como se ve una recarga —blanco, salto, página nueva— y ese
+   parpadeo era lo que hacía que once secciones parecieran once programas.
+
+   `@view-transition` lo resuelve sin una línea de JavaScript, que es la única
+   forma de resolverlo aquí: la política declara `default-src 'none'` y la
+   consola no carga guiones. El navegador fotografía la página que se va, la que
+   llega, y anima entre las dos.
+
+   Lo que se anima no es «la página»: son las piezas con nombre. El lateral, la
+   barra de título y la tira de sub-pestañas llevan el **mismo** nombre en los dos
+   documentos, así que el navegador entiende que son el mismo objeto y los deja
+   quietos. Sólo viaja el contenido. La consola deja de recargarse y pasa a
+   comportarse como lo que siempre fue: una sola aplicación.
+
+   La píldora azul es el detalle que enseña el mecanismo. Sólo hay una con
+   `aria-current` por documento, así que el navegador la trata como el mismo
+   objeto en las dos páginas y la **desliza** desde la sección que se deja hasta
+   la que se abre. Nadie tiene que buscar dónde quedó: la vio llegar.
+
+   Los nombres van juntos aquí y no repartidos por sus componentes a propósito.
+   Un `view-transition-name` repetido en un documento cancela la transición
+   entera, en silencio, así que la lista completa tiene que poder leerse de una
+   vez para comprobar que no hay dos iguales. De ahí los selectores de hijo
+   directo: hay una segunda tira de `.subpestanas` dentro de la ficha DC-3 —la
+   del plan del candidato— y sin acotar a `.lienzo >` habría dos con el mismo
+   nombre en esa pantalla.
+
+   Un navegador que no lo entienda navega como hoy. No hay nada que degradar.
+   ========================================================================== */
+
+@view-transition {
+  navigation: auto;
+}
+
+.lateral {
+  view-transition-name: kcm-rail;
+}
+
+.lienzo > .barra {
+  view-transition-name: kcm-barra;
+}
+
+.lienzo > .subpestanas {
+  view-transition-name: kcm-pestanas;
+}
+
+.lienzo > .contenido {
+  view-transition-name: kcm-lienzo;
+}
+
+.lateral-enlace[aria-current="page"] {
+  view-transition-name: kcm-rail-activo;
+}
+
+.lienzo > .subpestanas > .subpestana[aria-current="page"] {
+  view-transition-name: kcm-pestana-activa;
+}
+
+/*
+ * La puerta entrega la escena a la consola.
+ *
+ * Detrás de las hojas del acceso hay una silueta: cuatro rectángulos grises con
+ * la geometría del armazón. Existía para que la puerta tuviera algo que
+ * descubrir, pero al entrar se perdía —la silueta desaparecía y la consola real
+ * aparecía de golpe en su sitio—. Con los mismos nombres que usa la consola, el
+ * navegador entiende que el rectángulo del lateral **es** el lateral, y lo
+ * transforma en él. La silueta deja de ser un telón y pasa a ser el primer
+ * cuadro de la consola.
+ */
+.puerta-fondo-lateral {
+  view-transition-name: kcm-rail;
+}
+
+.puerta-fondo-lienzo > .puerta-fondo-pieza:first-child {
+  view-transition-name: kcm-barra;
+}
+
+.puerta-fondo-lienzo > .puerta-fondo-pieza:last-child {
+  view-transition-name: kcm-lienzo;
+}
+
+/*
+ * El contenido entra desde abajo y sale hacia arriba: seis píxeles, que es
+ * bastante para que se lea como un movimiento y poco para que nadie lo espere.
+ * Lo que sale dura menos que lo que entra —140 contra 320— porque al ojo le
+ * estorba más ver irse lo viejo que llegar lo nuevo.
+ */
+::view-transition-group(kcm-lienzo) {
+  animation-duration: var(--kcm-mov-vista);
+}
+
+::view-transition-old(kcm-lienzo) {
+  animation: kcmLienzoSale 140ms var(--kcm-curva-sale) both;
+}
+
+::view-transition-new(kcm-lienzo) {
+  animation: kcmLienzoEntra var(--kcm-mov-vista) var(--kcm-curva-entra) both;
+}
+
+@keyframes kcmLienzoSale {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes kcmLienzoEntra {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* El armazón no parpadea: cambia de rótulo. La barra y la píldora sólo funden. */
+::view-transition-group(kcm-barra),
+::view-transition-group(kcm-pestanas),
+::view-transition-group(kcm-rail),
+::view-transition-group(kcm-rail-activo),
+::view-transition-group(kcm-pestana-activa) {
+  animation-duration: var(--kcm-mov-vista);
+  animation-timing-function: var(--kcm-curva);
+}
+
+/*
+ * Lo que se pliega.
+ *
+ * Los bloques plegables de la consola —los casos de Sincronía, el tablero de
+ * entregas de Liberación, el detalle de una carga del historial— aparecían de
+ * golpe: la página daba un salto de doscientos píxeles y había que buscar dónde
+ * había quedado la línea que se estaba leyendo. Desplegándose, el ojo sigue el
+ * borde de abajo y no pierde el sitio.
+ *
+ * El `@supports` no es precaución de más. La altura sólo se puede animar hasta
+ * `auto` si el navegador entiende `interpolate-size`, y sin esa condición un
+ * navegador que no lo entienda se quedaría con el `block-size: 0` de la regla
+ * base: el bloque no se abriría nunca. Con la condición, o se anima o se abre
+ * de golpe como hoy.
+ *
+ * `overflow-x` se queda en `visible` a propósito: dentro de estos bloques hay
+ * tablas anchas que llevan su propio desplazamiento horizontal, y recortarlas
+ * por los dos ejes les quitaría las columnas de la derecha.
+ */
+@supports (interpolate-size: allow-keywords) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
+
+  details::details-content {
+    block-size: 0;
+    overflow-x: visible;
+    overflow-y: clip;
+    opacity: 0;
+    transition:
+      block-size var(--kcm-mov) var(--kcm-curva),
+      opacity var(--kcm-mov) var(--kcm-curva),
+      content-visibility var(--kcm-mov) allow-discrete;
+  }
+
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
    El armazón: menú lateral y lienzo
    --------------------------------------------------------------------------
    Dos columnas sobre un fondo gris azulado: el **lateral**, angosto y fijo, y
@@ -94,6 +274,24 @@ a:hover {
   gap: 14px;
   grid-template-columns: 244px minmax(0, 1fr);
   background: var(--kcm-canvas);
+}
+
+/*
+ * La consola sin menú lateral.
+ *
+ * Sin esta clase, quitar el menú no quitaba su columna: la rejilla seguía
+ * declarando 244 px y el lienzo entero —barra, tarjetas y todo— se dibujaba
+ * dentro de esa franja, con cada renglón partido en tres. Es lo que se veía al
+ * apagar. Una sola columna, y el lienzo acotado y centrado, porque una pantalla
+ * de una sola tarjeta estirada a lo ancho de un monitor no se lee mejor.
+ */
+.consola-sola {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.consola-sola .lienzo {
+  width: min(62rem, 100%);
+  margin-inline: auto;
 }
 
 /*
@@ -146,10 +344,10 @@ a:hover {
 }
 
 .lateral-marca-texto span {
-  color: var(--capta-tenue);
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  color: var(--kcm-secundario);
+  font-size: 0.72rem;
+  font-weight: var(--kcm-peso-apoyo);
+  letter-spacing: 0.01em;
 }
 
 .lateral-nav {
@@ -160,13 +358,16 @@ a:hover {
   overflow-y: auto;
 }
 
+/* La interletra baja de 0.16em a 0.12em porque el rótulo creció: separar tanto
+ * las letras de un texto de nueve píxeles era lo que lo mantenía unido de lejos;
+ * a once, el mismo valor lo desarma en letras sueltas. */
 .lateral-grupo {
   margin: 0.9rem 0 0.3rem;
   padding: 0 0.6rem;
   color: var(--capta-tenue);
   font-size: var(--capta-rotulo);
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -180,7 +381,7 @@ a:hover {
   align-items: center;
   gap: 0.62rem;
   border-radius: 14px;
-  color: var(--kcm-muted);
+  color: var(--kcm-secundario);
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.2;
@@ -272,10 +473,13 @@ a:hover {
   line-height: 1.15;
 }
 
+/* El renglón que dice de qué va la pantalla. Es lo segundo que se lee al
+ * llegar, así que se trata como texto de apoyo y no como letra menuda. */
 .barra-lede {
   margin: 0.15rem 0 0;
-  color: var(--kcm-muted);
-  font-size: 0.83rem;
+  color: var(--kcm-secundario);
+  font-size: 0.86rem;
+  font-weight: var(--kcm-peso-apoyo);
 }
 
 .barra-acciones {
@@ -394,7 +598,7 @@ a:hover {
 .seccion-cabecera p {
   margin: 0;
   max-width: 74ch;
-  color: var(--kcm-muted);
+  color: var(--kcm-secundario);
   font-size: 0.88rem;
 }
 
@@ -449,7 +653,7 @@ a:hover {
 .tarjeta p {
   margin: 0 0 var(--kcm-space-2);
   max-width: 74ch;
-  color: var(--kcm-muted);
+  color: var(--kcm-secundario);
 }
 
 .tarjeta p:last-child {
@@ -466,7 +670,7 @@ a:hover {
 
 /*
  * El mínimo es de 185 y no de 210 px por una razón concreta: con 210 una tira
- * de cinco mosaicos —la del lote de DC-3— parte cuatro arriba y uno suelto
+ * de cinco mosaicos —la de la cobertura DC-3— parte cuatro arriba y uno suelto
  * abajo, que se lee como un error de maquetación. Con 185 los cinco caben en un
  * renglón, y las tiras de cuatro o menos siguen estirándose igual porque
  * `auto-fit` reparte el sobrante entre las columnas que haya.
@@ -531,7 +735,7 @@ a:hover {
   color: var(--capta-tenue);
   font-size: var(--capta-rotulo);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -543,15 +747,35 @@ a:hover {
   flex-wrap: wrap;
 }
 
+/*
+ * Las cifras de los mosaicos.
+ *
+ * Estaban en monoespaciada, y ése era el aire anticuado: una cifra de tablero
+ * a 1.75rem en SF Mono o Consolas se lee como la salida de una terminal, no
+ * como el dato de una consola. La monoespaciada estaba ahí por una razón buena
+ * —que los dígitos ocupen lo mismo y las cifras no bailen entre recargas— y esa
+ * razón la cubre `tabular-nums` sin pagar el aspecto: la propia familia de
+ * texto trae cifras tabulares.
+ *
+ * El resto sigue la §15 de tipografía: tracking negativo porque es texto
+ * grande, interlineado apretado por lo mismo, y `font-optical-sizing` para que
+ * la fuente elija su forma al tamaño en que se dibuja.
+ *
+ * Los números de nómina, las huellas y los códigos **siguen** en monoespaciada,
+ * y deben seguir: ahí alinear dígitos y distinguir un cero de una O es el
+ * motivo, no la estética.
+ */
 .kpi-cifra,
 .metrica-numero {
   display: block;
   color: var(--kcm-ink);
-  font-family: var(--kcm-font-mono);
+  font-family: var(--kcm-font);
   font-size: var(--capta-cifra);
-  font-weight: 700;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-optical-sizing: auto;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.05;
   /* Una cifra nunca debe empujar el ancho de su mosaico. */
   min-width: 0;
   overflow-wrap: anywhere;
@@ -563,10 +787,15 @@ a:hover {
   font-weight: 600;
 }
 
+/* La pista bajo la cifra. Mismo tratamiento que `.texto-nota`: es el mismo
+ * papel —explicar en pequeño— y no tendría sentido que se leyera distinto. */
 .kpi-pista {
   margin: 0.45rem 0 0;
-  color: var(--kcm-muted);
-  font-size: 0.78rem;
+  color: var(--kcm-secundario);
+  font-size: 0.82rem;
+  font-weight: var(--kcm-peso-apoyo);
+  letter-spacing: 0.01em;
+  line-height: 1.5;
 }
 
 .metrica-completado {
@@ -704,11 +933,10 @@ a:hover {
 }
 
 .insignia-entorno {
-  background: var(--chip-fondo);
+  background: var(--kcm-warn-bg);
   border-color: var(--bento-borde-vivo);
-  color: var(--kcm-ink);
-  font-family: var(--kcm-font-mono);
-  text-transform: uppercase;
+  color: var(--kcm-warn);
+  letter-spacing: 0.02em;
 }
 
 /* ==========================================================================
@@ -832,17 +1060,59 @@ a:hover {
   flex: 1 1 210px;
   flex-direction: column;
   gap: 0.32rem;
-  color: var(--kcm-muted);
-  font-size: 0.78rem;
+  color: var(--kcm-secundario);
+  font-size: 0.8rem;
   font-weight: 600;
+}
+
+/*
+ * Dentro de un grupo la etiqueta es encabezado, no campo: la base de 210px de la
+ * regla anterior se volvía altura en la columna y separaba cada encabezado de
+ * su recuadro (se veía en «Conectar un equipo»).
+ */
+.grupo-campo > label {
+  flex: 0 0 auto;
+}
+
+.grupo-campo > .opcion {
+  flex-direction: row;
+}
+
+/* El renglón que va debajo de una tira de cifras necesita aire propio. */
+.nota-bajo-tira {
+  margin-top: var(--kcm-space-3);
+}
+
+/* La búsqueda por nombre pide más ancho que un selector; una fecha, menos. */
+.campo-busqueda-ancho {
+  flex: 2 1 280px;
+}
+
+.campo-busqueda-fecha {
+  flex: 0 1 170px;
 }
 
 .etiqueta-formulario,
 .agenda-campo label {
-  color: var(--kcm-muted);
-  font-size: 0.78rem;
+  color: var(--kcm-secundario);
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+/*
+ * El texto de ejemplo de un campo vacío.
+ *
+ * No había regla, así que cada navegador ponía el suyo: en la consola clara sale
+ * un gris cercano al 4:1 y en la agenda pública —que corre en tema oscuro— sale
+ * un gris oscuro que sobre campo negro apenas se distingue del fondo. Y no es
+ * adorno: «Cinco dígitos» o «Nombre del solicitante» es lo único que dice qué
+ * se espera en esa casilla. Va en la tinta apagada del tema, que en los dos
+ * casos está medida, con `opacity: 1` porque Firefox la rebaja por su cuenta.
+ */
+::placeholder {
+  color: var(--kcm-muted);
+  opacity: 1;
 }
 
 /*
@@ -925,6 +1195,22 @@ option {
 
 /* ==========================================================================
    Botones
+   --------------------------------------------------------------------------
+   Tres cosas tenía que arreglar el rediseño de esta pieza, y las tres salieron
+   de mirar la consola con los ojos de quien la abre por primera vez.
+
+   1. **Todos pesaban lo mismo.** En una pantalla con seis botones no había
+      forma de saber cuál era *el* botón. Ahora hay tres pesos y sólo uno lleno:
+      el azul es la acción de la pantalla, y no hay dos azules por pantalla.
+   2. **No parecían pulsables.** Eran rectángulos planos del color del mosaico
+      de una tarjeta. Ahora llevan filo claro arriba y sombra abajo —las dos
+      señales de relieve— y se hunden de verdad al pulsarlos.
+   3. **El área de toque medía 34 px.** A esa altura se falla con el dedo, y con
+      el ratón también cuando la fila es densa. El mínimo pasa a 40 px; los
+      botones chicos se quedan en 28 px, y viven sólo dentro de celdas de tabla.
+
+   El hundido es el único movimiento con rebote de toda la consola, a propósito:
+   es el gesto que confirma que el clic entró. Todo lo demás se posa sin pasarse.
    ========================================================================== */
 
 button,
@@ -935,13 +1221,15 @@ button,
 .boton-pequeno,
 .boton-exito,
 .boton-advertencia,
+.boton-peligro,
 .boton-acceso-rapido,
 .boton-ver-ficha {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 2.5rem;
   gap: 0.45rem;
-  padding: 0.6rem 1.05rem;
+  padding: 0.55rem 1.05rem;
   background: var(--bento-mosaico);
   border: 1px solid var(--bento-borde);
   border-radius: 12px;
@@ -949,12 +1237,24 @@ button,
   font-family: inherit;
   font-size: 0.86rem;
   font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
   text-decoration: none;
+  /*
+   * El relieve son dos capas y cada una hace una cosa: el filo blanco de arriba
+   * simula la luz que da en el canto superior, y la caída corta de abajo separa
+   * el botón del papel. Sin el par, un rectángulo del color del fondo de la
+   * tarjeta no se lee como algo que se pueda pulsar.
+   */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(15, 30, 61, 0.07);
   transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    transform 0.18s ease;
+    background var(--kcm-mov) var(--kcm-curva),
+    border-color var(--kcm-mov) var(--kcm-curva),
+    box-shadow var(--kcm-mov) var(--kcm-curva),
+    color var(--kcm-mov) var(--kcm-curva),
+    transform var(--kcm-mov) var(--kcm-curva-resorte);
 }
 
 button:hover,
@@ -963,39 +1263,101 @@ button:hover,
 .boton-primario:hover,
 .boton-secundario:hover,
 .boton-pequeno:hover,
+.boton-exito:hover,
+.boton-advertencia:hover,
+.boton-peligro:hover,
 .boton-acceso-rapido:hover,
 .boton-ver-ficha:hover {
   background: var(--bento-mosaico-activo);
   border-color: var(--bento-borde-vivo);
   transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 5px 12px -5px rgba(15, 30, 61, 0.26);
 }
 
+/*
+ * El hundido. Baja un píxel, encoge un pelo y cambia la caída por una sombra
+ * interior: es el mismo botón visto desde arriba cuando está dentro de su hueco.
+ * Dura 110 ms al bajar y vuelve con resorte, que es lo que lo hace sentir un
+ * botón y no una imagen que cambia de color.
+ */
 button:active,
-.boton:active {
-  transform: translateY(0);
+.boton:active,
+.boton-kcm:active,
+.boton-primario:active,
+.boton-secundario:active,
+.boton-pequeno:active,
+.boton-exito:active,
+.boton-advertencia:active,
+.boton-peligro:active,
+.boton-acceso-rapido:active,
+.boton-ver-ficha:active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px rgba(15, 30, 61, 0.16);
+  transition-duration: var(--kcm-mov-toque);
 }
 
 button[disabled],
-button:disabled {
-  opacity: 0.45;
+button:disabled,
+[aria-disabled="true"] {
+  opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
+  /* Sin desaturar, un primario apagado sigue siendo la mancha azul más grande
+     de la pantalla y sigue atrayendo el clic que no va a hacer nada. */
+  filter: grayscale(0.4);
 }
 
+/*
+ * La acción principal. Es más alta, más ancha y la única llena de color.
+ *
+ * Un `<button type="submit">` sin clase cuenta como principal: casi todos los
+ * formularios de la consola tienen uno solo y rotularlo sería repetir lo que ya
+ * dice ser el único botón de envío.
+ *
+ * Va envuelto en `:where()` y ahí hay un arreglo, no un estilo. Escrito como
+ * `button[type="submit"]` el selector pesa más que cualquier clase de una sola
+ * palabra, así que le ganaba a `.boton-exito` y a `.boton-advertencia`: los
+ * botones «Autorizar» y «Cerrar» de la lista de sesiones se dibujaban azules
+ * como todos los demás, que es exactamente lo que esas dos variantes existen
+ * para evitar. `:where()` deja el selector pesando como una clase, y la clase,
+ * que va escrita después, gana.
+ */
+:where(button)[type="submit"],
 .boton-primario,
-.boton-kcm,
-button[type="submit"] {
+.boton-kcm {
+  min-height: 2.75rem;
+  padding: 0.6rem 1.35rem;
   background: var(--kcm-gradient-brand);
   border-color: transparent;
   color: #ffffff;
-  box-shadow: var(--marca-halo);
+  font-size: 0.9rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    var(--marca-halo);
 }
 
+:where(button)[type="submit"]:hover,
 .boton-primario:hover,
-.boton-kcm:hover,
-button[type="submit"]:hover {
+.boton-kcm:hover {
   background: var(--kcm-gradient-brand-hover);
   border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 12px 24px -12px rgba(34, 76, 159, 0.8);
+}
+
+/*
+ * El anillo de foco del primario. El de la casa es azul al 45 % y sobre el
+ * relleno azul no se ve; sobre el lienzo claro, un anillo de tinta sí.
+ */
+:where(button)[type="submit"]:focus-visible,
+.boton-primario:focus-visible,
+.boton-kcm:focus-visible {
+  outline: 3px solid var(--kcm-ink);
+  outline-offset: 2px;
 }
 
 .boton-exito {
@@ -1037,6 +1399,74 @@ button[type="submit"]:hover {
   background: var(--kcm-danger);
 }
 
+/*
+ * El tablero de entregas de la pantalla de liberación.
+ *
+ * Va plegado dentro de su propia tarjeta: no es lo primero que se hace en esa
+ * pantalla —primero se libera—, pero tiene que estar ahí para poder contestar
+ * «¿ya llegó?» sin cambiar de sitio. El triángulo del navegador se sustituye por
+ * uno propio porque el de omisión se ve distinto en cada sistema.
+ */
+.tablero-entregas > .tablero-resumen {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.tablero-entregas > .tablero-resumen::-webkit-details-marker {
+  display: none;
+}
+
+.tablero-entregas > .tablero-resumen::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid var(--kcm-muted);
+  transition: transform 0.18s ease;
+}
+
+.tablero-entregas[open] > .tablero-resumen::before {
+  transform: rotate(90deg);
+}
+
+.tablero-titulo {
+  color: var(--kcm-ink);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * El foco de una entrega. Rojo mientras el cliente de Excel no acusa la
+ * escritura, verde cuando ya la acusó, ámbar cuando contestó que no pudo.
+ *
+ * El color nunca va solo: cada foco lleva su `title` y su texto para lectores de
+ * pantalla en el marcado, porque un punto de color no dice nada a quien no
+ * distingue los dos tonos.
+ */
+.foco {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.foco-verde {
+  background: var(--kcm-ok);
+}
+
+.foco-rojo {
+  background: var(--kcm-danger);
+}
+
+.foco-ambar {
+  background: var(--kcm-warn);
+}
+
 /* La columna que sólo lleva ese punto no necesita más ancho que su encabezado. */
 .columna-angosta {
   width: 3.2rem;
@@ -1054,7 +1484,409 @@ button[type="submit"]:hover {
   color: var(--kcm-danger);
 }
 
+/* ==========================================================================
+   Encendido de la instancia local
+   --------------------------------------------------------------------------
+   La tarjeta que aparece sólo en la computadora del departamento, y el botón
+   que la apaga. Son piezas propias y no un `.tarjeta` con un `.boton-peligro`
+   suelto, porque esto no es una acción más de la pantalla: es la única que
+   termina el proceso que sostiene todo lo demás.
+
+   Tres decisiones, y las tres vienen de mirar el gesto y no el componente.
+
+   1. **El estado se lee antes que la acción.** Un punto y una frase corta
+      arriba, el botón debajo. Quien encendió la máquina hace diez minutos para
+      mandar el barrido necesita confirmar que sigue encendida antes de buscar
+      cómo apagarla.
+   2. **El hundido es más profundo que el de un botón corriente.** El gesto que
+      confirma el clic tiene que pesar lo que pesa el acto; la casa hunde un
+      píxel y encoge a 0.985, y aquí se baja a 0.97. No es un movimiento nuevo:
+      es el mismo, con más recorrido.
+   3. **El botón se transforma en la pregunta.** `view-transition-name` empareja
+      este botón con la tarjeta de confirmación de `/apagar`, así que el
+      navegador convierte el uno en la otra en lugar de cortar entre pantallas.
+      La confirmación sale de donde se pulsó, que es de donde el ojo la espera.
+      El nombre aparece una sola vez por documento —repetirlo cancelaría la
+      transición, como ya advierte el bloque del armazón— y un navegador que no
+      lo entienda navega como hoy.
+
+   Lo que deliberadamente **no** lleva: translucidez. La consola es plana por
+   decisión del rediseño —el vidrio competía con las tablas—. Un panel de
+   cristal aquí sería reintroducir por la puerta de atrás lo que se quitó por
+   la de enfrente.
+   ========================================================================== */
+
+/*
+ * La tarjeta de encendido no lleva franja de color.
+ *
+ * Tenía un filo rojo de 4 px a la izquierda, heredado de los avisos de error, y
+ * decía lo que no era: en esa tarjeta no hay ningún problema —la plataforma
+ * está encendida y funcionando—, sólo vive ahí el botón de apagarla. El rojo se
+ * queda donde sí significa algo, que es el propio botón.
+ */
+.energia-estado {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 var(--kcm-space-2);
+  font-weight: 600;
+}
+
+/*
+ * El punto. Fijo y sin latido: un parpadeo lento es justo la oscilación que
+ * `prefers-reduced-motion` existe para evitar, y aquí no aportaría nada que el
+ * color no diga ya.
+ */
+.energia-punto {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--kcm-ok);
+  box-shadow: 0 0 0 3px rgba(18, 112, 74, 0.16);
+  flex: none;
+}
+
+/* El mismo punto, sin encender: gris y sin el halo, que es lo que lo hacía
+ * leerse como «está corriendo». El rótulo de al lado dice el resto. */
+.energia-punto-apagado {
+  background: var(--capta-tenue);
+  box-shadow: none;
+}
+
+.energia-boton {
+  view-transition-name: kcm-energia;
+}
+
+.energia-boton:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+/*
+ * El otro extremo del emparejamiento: la tarjeta que pregunta. Lleva el mismo
+ * nombre que el botón, y por eso el navegador la entiende como el mismo objeto
+ * en otro estado en vez de como una pantalla distinta.
+ */
+.energia-confirmacion {
+  view-transition-name: kcm-energia;
+}
+
+/* La tarjeta que queda detrás del acuse, cuando el recuadro ya se cerró. */
+.energia-reposo {
+  max-width: 44rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+/* ==========================================================================
+   El recuadro emergente
+   --------------------------------------------------------------------------
+   Un diálogo sin guiones. Lo abre y lo cierra el fragmento de la dirección
+   —`:target`—, que es lo único que queda cuando la política declara
+   `default-src 'none'`: no hay `showModal()` ni nada que lo llame.
+
+   El velo no atrapa el foco; sin guiones no hay manera. Se asume: las dos
+   pantallas que lo usan no tienen detrás nada que pueda hacer daño.
+   ========================================================================== */
+
+.emergente {
+  position: fixed;
+  z-index: 60;
+  display: none;
+  padding: var(--kcm-space-3);
+  background: rgba(15, 30, 61, 0.4);
+  inset: 0;
+  place-items: center;
+  animation: kcmVeloLlega 160ms var(--kcm-curva) both;
+}
+
+.emergente:target,
+.emergente-fijo {
+  display: grid;
+}
+
+/*
+ * El ancla que lo cierra. Es un elemento vacío que vive justo antes del
+ * emergente y sirve de interruptor: marcarlo apaga a su hermano. Es la única
+ * forma que tiene la hoja de reaccionar a un fragmento que no es el suyo, y
+ * hace falta porque el botón de OK no puede navegar —para cuando se pulsa, el
+ * servidor ya no existe—.
+ */
+.ancla-de-cierre {
+  display: block;
+  height: 0;
+  /*
+   * Y no arrastra la pantalla al cerrarse. Marcar un fragmento hace que el
+   * navegador desplace hasta él, así que pulsar OK dejaba el tablero corrido
+   * hacia abajo con la barra de título fuera de la vista. Con un margen de
+   * desplazamiento de una pantalla entera, el destino calculado queda por
+   * encima del principio del documento y el navegador lo recorta a cero: la
+   * página se queda exactamente donde estaba.
+   */
+  scroll-margin-block-start: 100vh;
+}
+
+.ancla-de-cierre:target ~ .emergente-fijo {
+  display: none;
+}
+
+.emergente-caja {
+  width: min(27rem, 100%);
+  padding: var(--kcm-space-4);
+  background: var(--kcm-surface);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow-lg);
+  text-align: center;
+  animation: kcmEmergenteLlega var(--kcm-mov) var(--kcm-curva-entra) both;
+}
+
+.emergente-titulo {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.emergente-texto {
+  margin: var(--kcm-space-2) 0 0;
+  color: var(--kcm-secundario);
+  font-size: 0.9rem;
+  font-weight: var(--kcm-peso-apoyo);
+}
+
+.emergente-acciones {
+  display: flex;
+  margin: var(--kcm-space-3) 0 0;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@keyframes kcmVeloLlega {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes kcmEmergenteLlega {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+}
+
+/* ── El acuse del apagado ──────────────────────────────────────────────────
+ *
+ * Cuatro cosas en orden: la rueda mientras el proceso se cierra, la palomita
+ * cuando terminó, el rótulo y el botón. No hay reloj que las encadene —no hay
+ * guiones—, así que las encadenan los retardos de aquí abajo, y por eso están
+ * todos escritos en el mismo sitio y en orden creciente: es el guion de la
+ * escena y se lee de corrido.
+ *
+ * El primer tiempo no es estético. La ruta responde y cierra el proceso 250 ms
+ * después, así que la rueda dura 1.4 s para que la palomita aparezca cuando el
+ * servidor ya está muerto de verdad y no antes: una palomita que se adelanta al
+ * hecho es una pantalla que miente.
+ */
+
+/*
+ * El recuadro del acuse es más angosto que el de la pregunta y crece con la
+ * escena. Lo segundo hace falta: con el rótulo y el botón reservando su sitio
+ * desde el principio, la caja salía con la rueda arriba y dos tercios de blanco
+ * debajo esperando un texto que aún no existía. Creciendo, la caja siempre es
+ * del tamaño de lo que hay dentro.
+ *
+ * El crecimiento es `block-size: 0` a `auto`, que sólo se puede animar con la
+ * `interpolate-size` que la hoja ya enciende para los bloques plegables. Donde
+ * no se entienda, la altura cambia de golpe a media animación y el desvanecido
+ * la acompaña: se pierde el crecimiento, no el resultado.
+ */
+.emergente-acuse {
+  display: flex;
+  width: min(22rem, 100%);
+  flex-direction: column;
+  align-items: center;
+}
+
+.emergente-acuse .escena {
+  order: 1;
+  margin-bottom: 0;
+}
+
+/*
+ * El `min-block-size: 0` no es de adorno. En una columna flexible cada hijo
+ * trae `min-block-size: auto`, que es «nunca más bajo que tu contenido», y con
+ * eso el `block-size: 0` del primer fotograma no colapsaba nada: la caja salía
+ * con la rueda arriba y el hueco del texto debajo, que es lo que se quería
+ * quitar.
+ */
+.emergente-acuse .emergente-titulo {
+  order: 2;
+  margin-block-start: var(--kcm-space-3);
+  min-block-size: 0;
+  overflow: hidden;
+  animation: kcmAcuseCrece var(--kcm-mov-vista) var(--kcm-curva-entra) 1860ms both;
+}
+
+.emergente-acuse .escena-accion {
+  order: 3;
+  min-block-size: 0;
+  animation: kcmAcuseCrece var(--kcm-mov-vista) var(--kcm-curva-entra) 2120ms both;
+}
+
+/*
+ * Rueda y palomita ocupan la misma celda. Si se turnaran en el flujo, la caja
+ * daría un salto al cambiar una por otra justo cuando el ojo está mirando ahí.
+ */
+.escena {
+  display: grid;
+  width: 60px;
+  height: 60px;
+  margin-bottom: var(--kcm-space-3);
+  place-items: center;
+}
+
+.escena > * {
+  grid-area: 1 / 1;
+}
+
+.escena-rueda {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  color: var(--kcm-secundario);
+  animation: kcmRuedaSeVa 240ms var(--kcm-curva-sale) 1400ms both;
+}
+
+.escena-rueda i {
+  position: absolute;
+  inset: 0;
+  transform: rotate(calc(var(--rayo) * 30deg));
+}
+
+/*
+ * Los doce rayos son el mismo trazo girado, y lo que da el giro no es una
+ * rotación sino el desfase: cada uno recorre la misma bajada de opacidad un
+ * doceavo de vuelta más tarde. El retardo es negativo para que ninguno empiece
+ * encendido a destiempo: al dibujarse, cada rayo ya está en su punto del ciclo.
+ */
+.escena-rueda i::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 3.4px;
+  height: 11px;
+  margin-left: -1.7px;
+  border-radius: 2px;
+  background: currentColor;
+  animation: kcmRueda 1s linear calc(var(--rayo) * -1s / 12) infinite;
+}
+
+.escena-rueda i:nth-child(1) {
+  --rayo: 0;
+}
+.escena-rueda i:nth-child(2) {
+  --rayo: 1;
+}
+.escena-rueda i:nth-child(3) {
+  --rayo: 2;
+}
+.escena-rueda i:nth-child(4) {
+  --rayo: 3;
+}
+.escena-rueda i:nth-child(5) {
+  --rayo: 4;
+}
+.escena-rueda i:nth-child(6) {
+  --rayo: 5;
+}
+.escena-rueda i:nth-child(7) {
+  --rayo: 6;
+}
+.escena-rueda i:nth-child(8) {
+  --rayo: 7;
+}
+.escena-rueda i:nth-child(9) {
+  --rayo: 8;
+}
+.escena-rueda i:nth-child(10) {
+  --rayo: 9;
+}
+.escena-rueda i:nth-child(11) {
+  --rayo: 10;
+}
+.escena-rueda i:nth-child(12) {
+  --rayo: 11;
+}
+
+/*
+ * La palomita se dibuja sola: el trazo entero cabe en 24 unidades de longitud,
+ * así que se esconde desplazándolo 24 y se descubre llevándolo a 0. Va en tinta
+ * y no en verde a propósito —apagar no es un éxito, es un final— y entra con el
+ * único resorte de la consola, el mismo del botón al soltarlo.
+ */
+.escena-palomita {
+  color: var(--kcm-ink);
+  animation: kcmPalomitaLlega 380ms var(--kcm-curva-resorte) 1460ms both;
+}
+
+.escena-palomita path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: kcmPalomitaTrazo 420ms var(--kcm-curva-entra) 1540ms both;
+}
+
+@keyframes kcmRueda {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.14;
+  }
+}
+
+@keyframes kcmRuedaSeVa {
+  to {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+
+@keyframes kcmPalomitaLlega {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes kcmPalomitaTrazo {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes kcmAcuseCrece {
+  from {
+    margin-block-start: 0;
+    opacity: 0;
+    block-size: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    block-size: auto;
+  }
+}
+
 .boton-pequeno {
+  min-height: 1.75rem;
   padding: 0.34rem 0.7rem;
   font-size: 0.76rem;
 }
@@ -1064,7 +1896,8 @@ button[type="submit"]:hover {
    `title` y `aria-label` en el marcado, que es de donde sale su nombre. */
 .boton-icono {
   padding: 0.34rem;
-  min-width: 1.9rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
   color: var(--kcm-muted);
 }
 
@@ -1072,18 +1905,58 @@ button[type="submit"]:hover {
   display: block;
 }
 
+/*
+ * El botón de icono aplicado. Un icono sin texto no puede decir por sí solo si
+ * está surtiendo efecto, y el orden que impone el de combinar no se nota en una
+ * lista de tres renglones: encendido se ve que está puesto, y el rótulo del
+ * marcado dice cómo quitarlo.
+ */
+.boton-icono-activo {
+  background: var(--kcm-brand-light);
+  border-color: var(--bento-borde-vivo);
+  color: var(--kcm-brand);
+}
+
+/*
+ * La tira de pestañas del plan con su botón de orden al lado. Van en la misma
+ * fila porque los dos mandan sobre la misma lista: la pestaña decide a quién se
+ * ve y el botón en qué orden. Pegado a las pestañas y no en el extremo derecho
+ * de la tarjeta, que es donde nadie lo relacionaría con la tabla.
+ */
+.barra-de-plan {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+}
+
+/* Las pestañas se llevan el ancho sobrante y desplazan dentro de su píldora. */
+.barra-de-plan .subpestanas {
+  min-width: 0;
+}
+
 .boton-enlace {
+  min-height: 0;
   padding: 0;
   background: none;
   border: none;
+  box-shadow: none;
   color: var(--kcm-brand);
   font-weight: 600;
   text-decoration: underline;
 }
 
-.boton-enlace:hover {
+/*
+ * No hereda nada del relieve ni del hundido: es texto subrayado y tiene que
+ * seguir pareciéndolo. Si se levantara al pasar el puntero, en una frase se
+ * leería como un renglón que se despega.
+ */
+.boton-enlace:hover,
+.boton-enlace:active {
   background: none;
   border: none;
+  box-shadow: none;
+  color: var(--kcm-brand-dark);
   transform: none;
 }
 
@@ -1135,7 +2008,8 @@ button[type="submit"]:hover {
 .ayuda,
 .agenda-privacidad {
   color: var(--capta-tenue);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: var(--kcm-peso-apoyo);
 }
 
 /* ==========================================================================
@@ -1297,8 +2171,10 @@ button[type="submit"]:hover {
 .texto-atenuado,
 .texto-secundario,
 .texto-vacio {
-  color: var(--kcm-muted);
-  font-size: 0.85rem;
+  color: var(--kcm-secundario);
+  font-size: 0.875rem;
+  font-weight: var(--kcm-peso-apoyo);
+  letter-spacing: 0.01em;
 }
 
 .texto-vacio {
@@ -1399,12 +2275,45 @@ button[type="submit"]:hover {
   }
 }
 
+/*
+ * Quien pidió menos movimiento no ve ninguno.
+ *
+ * Las dos primeras reglas ya estaban. La tercera es nueva y hacía falta: las
+ * animaciones del recorrido entre pantallas viven en pseudo-elementos que
+ * `*` no alcanza —no son descendientes de nada, los crea el navegador—, así
+ * que sin nombrarlos seguirían corriendo enteros. Con `animation: none` el
+ * navegador salta directo a la página nueva, que es lo que se pidió.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+
+  /*
+   * La escena del apagado se resuelve de golpe. Las reglas de arriba acortan la
+   * duración pero no el retardo, así que sin esto quedarían dos segundos de
+   * rueda quieta antes del resultado: la espera de una animación sin la
+   * animación. Quien pidió menos movimiento ve la palomita y el rótulo desde el
+   * primer cuadro, que es la información, y no ve girar nada.
+   */
+  .escena-rueda {
+    display: none;
+  }
+
+  .escena-palomita,
+  .escena-palomita path,
+  .emergente-acuse .emergente-titulo,
+  .emergente-acuse .escena-accion {
+    animation-delay: 0s !important;
   }
 }
 
@@ -2051,7 +2960,17 @@ a.agenda-bloque:hover {
   overflow: hidden;
   flex-direction: column;
   justify-content: center;
-  transition: transform 0.72s cubic-bezier(0.65, 0, 0.35, 1);
+  /*
+   * Duraba 720 ms cuando la puerta era el gesto entero: se abría, y detrás
+   * aparecía la consola de golpe. Ahora la puerta sólo hace la primera mitad
+   * —la segunda es la silueta convirtiéndose en la consola real—, así que
+   * alargarla aquí retrasa el resto. 520 ms de hoja más 320 de recorrido se
+   * leen como un movimiento; 720 más 320 se leían como dos.
+   *
+   * Si se cambia este número hay que cambiar `RECORRIDO_MS` en `acceso.js`:
+   * es el guion el que retiene el envío mientras la hoja se va.
+   */
+  transition: transform 0.52s cubic-bezier(0.65, 0, 0.35, 1);
   will-change: transform;
 }
 
@@ -2144,7 +3063,7 @@ a.agenda-bloque:hover {
   position: relative;
   margin: 1rem 0 0;
   max-width: 42ch;
-  color: rgba(255, 255, 255, 0.74);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 0.95rem;
   line-height: 1.6;
 }
@@ -2301,71 +3220,27 @@ a.agenda-bloque:hover {
   font-size: 0.78rem;
 }
 
-/* -----------------------------------------------------------------------------
- * Fichas de conteo
- *
- * Son los tableros que contestan «¿cuadra?» de un vistazo: la concordancia DNC
- * y el cuadre del padrón semanal. Las pantallas ya las pedían por clase, pero
- * la hoja nunca las tuvo y salían como una lista de renglones sueltos.
- *
- * La rejilla es automática a propósito. El número de fichas cambia según la
- * pantalla —siete en la concordancia, once en el padrón— y fijar columnas
- * obligaría a retocar la hoja cada vez que se agrega una medición.
- * -------------------------------------------------------------------------- */
-.rejilla-fichas {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: var(--kcm-space-2);
-  margin: var(--kcm-space-3) 0;
-}
-
-.ficha {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: var(--kcm-space-2) var(--kcm-space-3);
-  background: var(--bento-tarjeta);
-  border: 1px solid var(--bento-borde);
-  border-left: 3px solid var(--kcm-brand-sky);
-  border-radius: var(--kcm-radius-sm);
-}
-
-.ficha-valor {
-  color: var(--kcm-ink);
-  font-family: var(--kcm-font-display);
-  font-size: 1.6rem;
-  font-weight: 700;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-
-.ficha-etiqueta {
-  color: var(--kcm-muted);
-  font-size: 0.76rem;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-/* Sólo se enciende cuando el número que le duele a la pantalla no es cero: una
- * ficha en rojo permanente deja de leerse a la semana. */
-.ficha-alerta {
-  background: var(--kcm-danger-bg);
-  border-color: rgba(185, 28, 28, 0.28);
-  border-left-color: var(--kcm-danger);
-}
-
-.ficha-alerta .ficha-valor {
-  color: var(--kcm-danger);
-}
-
 /* Renglón explicativo bajo un tablero o una tabla. Lo usan las pantallas de
  * cobertura, del padrón y de la conexión con Excel. */
+/*
+ * El renglón explicativo. Es el texto que más se repite en la consola y el que
+ * peor se leía: gris plano, a 0.84rem y con el peso del cuerpo.
+ *
+ * Tres ajustes como conjunto, que es como pide construirse la jerarquía: medio
+ * punto más de peso —que da presencia sin ocupar más—, un pelo de tracking
+ * positivo, que es lo que el texto pequeño necesita al revés que un titular, e
+ * interlineado algo más suelto porque el cuerpo lo agradece. El color pasa a la
+ * tinta atenuada al 80 %, que sobre tarjeta blanca queda en 6.9:1 en vez de los
+ * 5.4:1 del gris anterior.
+ */
 .texto-nota {
   margin: var(--kcm-space-2) 0 0;
   max-width: 74ch;
-  color: var(--kcm-muted);
-  font-size: 0.84rem;
-  line-height: 1.55;
+  color: var(--kcm-secundario);
+  font-size: 0.875rem;
+  font-weight: var(--kcm-peso-apoyo);
+  letter-spacing: 0.01em;
+  line-height: 1.6;
 }
 
 .texto-nota strong {
@@ -2373,303 +3248,644 @@ a.agenda-bloque:hover {
 }
 
 /* ==========================================================================
-   Gráfica de telaraña del avance DNC
+   Ficha del trabajador
    --------------------------------------------------------------------------
-   El dibujo se compone en el servidor y llega como SVG en línea: la política
-   de contenido declara `default-src 'none'` y ninguna biblioteca de gráficas
-   podría cargarse. Lo «interactivo» vive aquí y en los `<title>` del marcado:
-   el globo nativo del navegador al pasar el puntero, y este realce.
-
-   Es la **única pieza de vidrio líquido** de la consola. El resto del rediseño
-   es plano a propósito, porque el vidrio competía con las tablas; aquí no hay
-   tabla que leer sino una figura, y el relieve la ayuda: el disco translúcido
-   despega la telaraña del fondo y las dos manchas de color que se ven por
-   detrás le dan profundidad sin añadir una sola línea más al dibujo.
-
-   El `viewBox` es ancho y lleva los rótulos dentro. Antes era cuadrado con
-   `overflow: visible`, y los rótulos de la izquierda se pintaban encima del
-   menú lateral y los de la derecha encima del resumen. Aquí ya no se declara
-   `overflow`: el recorte por omisión del `<svg>` vuelve a ser red de seguridad.
+   Arriba, la persona y sus cuatro cifras. Debajo, dos columnas: la telaraña y
+   la trayectoria a la izquierda; los cursos del puesto y sus constancias a la
+   derecha. Los tonos de estado son los de toda la consola —verde acreditado,
+   ámbar por reforzar, azul programado, rojo pendiente— y siempre van con su
+   palabra al lado: el color no es el único que lo dice.
    ========================================================================== */
 
-.radar-envoltura {
-  position: relative;
-  display: flex;
-  padding: clamp(0.7rem, 1.8vw, 1.2rem) clamp(0.8rem, 2vw, 1.4rem);
-  overflow: hidden;
+.dnc-cabecera {
+  display: grid;
   align-items: center;
-  gap: var(--kcm-space-4);
-  flex-wrap: wrap;
-  justify-content: space-between;
-  background: var(--vidrio-fondo);
-  border: 1px solid var(--vidrio-borde);
-  border-radius: var(--kcm-radius-lg);
-  box-shadow: var(--vidrio-sombra);
-  backdrop-filter: var(--vidrio-desenfoque);
-  -webkit-backdrop-filter: var(--vidrio-desenfoque);
+  gap: var(--kcm-space-3) var(--kcm-space-4);
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
-/*
- * El destello diagonal. Va encima de todo y sin capturar el puntero: es la luz
- * de una ventana sobre la lámina, y es lo que termina de convencer de que hay
- * cristal y no un rectángulo de color claro.
- */
-.radar-envoltura::before {
-  content: "";
-  position: absolute;
-  inset: -20% -10%;
-  background: var(--vidrio-reflejo);
-  pointer-events: none;
+.dnc-identidad {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--kcm-space-3);
 }
 
-/*
- * El margen izquierdo es el ajuste que pidió la revisión: separa el dibujo del
- * canto del panel sin centrarlo. Centrarlo dejaría el resumen colgando en el
- * aire; así el dibujo respira y el resumen se queda pegado al borde derecho.
- */
-.radar {
-  position: relative;
-  width: 100%;
-  max-width: 620px;
-  height: auto;
-  margin-left: clamp(0px, 1.6vw, 28px);
-  flex: 1 1 420px;
+.dnc-avatar {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  place-items: center;
+  background: var(--kcm-brand-light);
+  border: 1px solid var(--bento-borde-vivo);
+  border-radius: 14px;
+  color: var(--kcm-brand);
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 
-/* El disco de vidrio que va detrás de la telaraña. */
-.radar-lente {
-  fill: url(#radar-vidrio);
+.dnc-datos {
+  min-width: 0;
 }
 
-.radar-lente-filo {
-  fill: none;
-  stroke: url(#radar-canto);
-  stroke-width: 1.4;
+.dnc-nombre {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
 }
 
-.radar-canto-luz {
-  stop-color: #ffffff;
-  stop-opacity: 0.95;
-}
-
-.radar-canto-sombra {
-  stop-color: var(--kcm-brand);
-  stop-opacity: 0.26;
-}
-
-/* El reflejo alargado de arriba a la izquierda: la luz sobre el cristal. */
-.radar-lente-brillo {
-  fill: var(--vidrio-brillo);
-  opacity: 0.62;
-  filter: url(#radar-difuminado);
-}
-
-/*
- * La cúpula. Oscurece hacia el canto en vez de desvanecerse: un disco que se
- * aclara del centro al borde parece un halo; uno que se oscurece parece vidrio.
- */
-.radar-vidrio-alto {
-  stop-color: #ffffff;
-  stop-opacity: 0.86;
-}
-
-.radar-vidrio-medio {
-  stop-color: #ffffff;
-  stop-opacity: 0.28;
-}
-
-.radar-vidrio-bajo {
-  stop-color: var(--kcm-brand-sky);
-  stop-opacity: 0.1;
-}
-
-.radar-vidrio-canto {
-  stop-color: var(--kcm-brand);
-  stop-opacity: 0.17;
-}
-
-.radar-anillo {
-  fill: none;
-  stroke: var(--bento-borde);
-  stroke-width: 1;
-}
-
-.radar-eje {
-  stroke: var(--bento-borde);
-  stroke-width: 1;
-}
-
-/* La silueta, dos veces: primero difuminada como halo y encima nítida. */
-.radar-halo {
-  fill: var(--kcm-brand);
-  opacity: 0.28;
-  filter: url(#radar-difuminado);
-}
-
-.radar-area {
-  fill: url(#radar-relleno);
-  stroke: url(#radar-filo);
-  stroke-width: 2.2;
-  stroke-linejoin: round;
-}
-
-.radar-relleno-alto {
-  stop-color: var(--kcm-brand-sky);
-  stop-opacity: 0.58;
-}
-
-.radar-relleno-medio {
-  stop-color: var(--kcm-brand-bright);
-  stop-opacity: 0.4;
-}
-
-.radar-relleno-bajo {
-  stop-color: var(--kcm-brand-dark);
-  stop-opacity: 0.2;
-}
-
-.radar-filo-claro {
-  stop-color: var(--kcm-brand-sky);
-}
-
-.radar-filo-marca {
-  stop-color: var(--kcm-brand);
-}
-
-.radar-filo-hondo {
-  stop-color: var(--kcm-brand-dark);
-}
-
-/* El halo del vértice hereda su color del estado y sólo enciende al pasar. */
-.radar-aureola {
-  fill: currentcolor;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.radar-punto {
-  fill: currentcolor;
-  stroke: #ffffff;
-  stroke-width: 1.6;
-  transition: r 0.15s ease;
-}
-
-.radar-etiqueta {
-  fill: var(--kcm-muted);
-  font-family: var(--kcm-font-mono);
-  font-size: 9.5px;
+.dnc-lugar {
+  margin: 0.25rem 0 0;
+  color: var(--kcm-secundario);
+  font-size: 0.86rem;
   font-weight: 600;
 }
 
-/* El vértice entero responde al puntero, no sólo el círculo: cuatro píxeles y
- * medio de radio son un blanco imposible de acertar. */
-.radar-vertice:hover .radar-punto {
-  r: 7;
-}
-
-.radar-vertice:hover .radar-aureola {
-  opacity: 0.28;
-}
-
-.radar-vertice:hover .radar-etiqueta {
-  fill: var(--kcm-ink);
-}
-
-/*
- * El color del estado se pone una sola vez, en el grupo, y el punto y su halo
- * lo heredan con `currentcolor`.
- *
- * El valor por omisión va antes que los estados a propósito: comparten
- * especificidad y gana el último declarado.
- */
-.radar-vertice {
-  color: var(--kcm-brand);
-}
-
-.radar-estado-completado {
-  color: var(--kcm-ok);
-}
-
-.radar-estado-reforzar {
-  color: var(--kcm-danger);
-}
-
-.radar-estado-programado {
-  color: var(--kcm-warn);
-}
-
-.radar-estado-pendiente {
+.dnc-meta {
+  margin: 0.2rem 0 0;
   color: var(--capta-tenue);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.76rem;
 }
 
-.radar-resumen {
-  position: relative;
-  display: grid;
+.dnc-conteos {
+  display: flex;
   margin: 0;
   gap: var(--kcm-space-3);
 }
 
-.radar-resumen dt {
+.dnc-conteo {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.dnc-conteo-rotulo {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--capta-tenue);
   font-size: var(--capta-rotulo);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.radar-resumen dd {
+.dnc-conteo-cifra {
   margin: 0;
-  color: var(--kcm-brand);
-  font-family: var(--kcm-font-mono);
-  font-size: 1.6rem;
-  font-weight: 700;
-}
-
-.radar-lista {
-  display: grid;
-  margin: var(--kcm-space-3) 0 0;
-  padding: 0;
-  gap: 0.3rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  list-style: none;
-}
-
-.radar-lista li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--kcm-space-2);
-  justify-content: space-between;
-  padding: 0.3rem 0;
-  border-bottom: 1px solid var(--bento-borde);
-}
-
-.radar-lista-curso {
   color: var(--kcm-ink);
-  font-size: 0.85rem;
+  font-family: var(--kcm-font-mono);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.dnc-punto {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.dnc-avance {
+  position: relative;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+}
+
+.dnc-avance-anillo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dnc-avance-fondo {
+  fill: none;
+  stroke: var(--capta-linea);
+  stroke-width: 5;
+}
+
+.dnc-avance-trazo {
+  fill: none;
+  stroke: var(--kcm-ok);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.dnc-avance-cifra {
+  position: relative;
+  color: var(--kcm-ink);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
-/*
- * El estado en la lista. Va después de los colores de vértice porque comparte
- * especificidad con ellos: sin esto, `.radar-estado-pendiente` teñiría también
- * el texto de la lista.
- */
-.radar-lista-estado {
-  color: var(--kcm-muted);
-  font-size: 0.76rem;
-  text-align: right;
+.dnc-avance-de {
+  color: var(--capta-tenue);
+  font-size: 0.72rem;
 }
 
-.radar-lista .radar-estado-completado {
+.dnc-cuerpo {
+  display: grid;
+  margin-top: var(--kcm-space-3);
+  align-items: start;
+  gap: var(--kcm-space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.dnc-columna {
+  display: grid;
+  min-width: 0;
+  gap: var(--kcm-space-3);
+}
+
+.dnc-tarjeta {
+  padding: clamp(1rem, 2vw, 1.4rem);
+}
+
+.dnc-tarjeta-cabecera {
+  margin-bottom: var(--kcm-space-2);
+}
+
+.dnc-cabecera-fila {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--kcm-space-2);
+}
+
+.dnc-titulo {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+.dnc-subtitulo {
+  margin: 0.15rem 0 0;
+  color: var(--capta-tenue);
+  font-size: 0.8rem;
+  font-weight: var(--kcm-peso-apoyo);
+}
+
+.dnc-tono-completado {
   color: var(--kcm-ok);
 }
 
-.radar-lista .radar-estado-reforzar {
+.dnc-tono-reforzar {
+  color: var(--kcm-warn);
+}
+
+.dnc-tono-programado {
+  color: var(--kcm-brand);
+}
+
+.dnc-tono-pendiente {
   color: var(--kcm-danger);
 }
 
-.radar-lista .radar-estado-programado {
-  color: var(--kcm-warn);
+.dnc-tono-datos_insuficientes,
+.dnc-tono-no_aplica {
+  color: var(--capta-tenue);
+}
+
+/* ── La telaraña ─────────────────────────────────────────────────────────── */
+
+.dnc-radar {
+  margin: 0;
+}
+
+.dnc-radar-lienzo {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dnc-radar-anillo,
+.dnc-radar-eje {
+  fill: none;
+  stroke: var(--capta-linea);
+  stroke-width: 1;
+}
+
+.dnc-radar-borde {
+  stroke: var(--bento-borde-vivo);
+}
+
+.dnc-radar-area {
+  fill: none;
+  stroke: var(--capta-tenue);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.4;
+}
+
+.dnc-radar-persona {
+  fill: var(--kcm-brand-light);
+  stroke: var(--kcm-brand);
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.dnc-radar-vertice {
+  fill: var(--kcm-brand);
+  stroke: var(--kcm-surface);
+  stroke-width: 1.5;
+}
+
+/*
+ * El rótulo toma el color de su estado; el de un curso acreditado se apaga a
+ * gris, porque no pide nada. `fill` sigue a `color` con `currentColor`.
+ */
+.dnc-radar-rotulo {
+  fill: currentColor;
+  font-family: var(--kcm-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.dnc-radar-rotulo.dnc-tono-completado {
+  color: var(--capta-tenue);
+}
+
+.dnc-radar-leyenda {
+  display: flex;
+  margin-top: var(--kcm-space-1);
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  color: var(--kcm-secundario);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.dnc-leyenda-serie {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.dnc-leyenda-serie::before {
+  width: 1.1rem;
+  border-top: 2px solid var(--kcm-brand);
+  content: "";
+}
+
+.dnc-leyenda-persona {
+  color: var(--kcm-brand);
+}
+
+.dnc-leyenda-area::before {
+  border-top: 2px dashed var(--capta-tenue);
+}
+
+.dnc-claves {
+  display: flex;
+  margin: var(--kcm-space-2) 0 0;
+  padding-top: var(--kcm-space-2);
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--capta-linea);
+  color: var(--capta-tenue);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.dnc-clave {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* ── La trayectoria ──────────────────────────────────────────────────────── */
+
+.dnc-linea {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dnc-hito {
+  position: relative;
+  display: grid;
+  padding: 0 0 var(--kcm-space-3) 1.5rem;
+  gap: 0.12rem;
+}
+
+/* El punto del hito y, debajo, el hilo que lo une con el siguiente. */
+.dnc-hito::before {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.15rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--kcm-ok);
+  box-shadow: 0 0 0 3px var(--kcm-surface);
+  content: "";
+}
+
+.dnc-hito::after {
+  position: absolute;
+  top: 1.05rem;
+  bottom: 0.1rem;
+  left: 0.4rem;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--bento-borde);
+  content: "";
+}
+
+.dnc-hito:last-child {
+  padding-bottom: var(--kcm-space-1);
+}
+
+.dnc-hito:last-child::after {
+  display: none;
+}
+
+.dnc-hito-constancia::before {
+  background: var(--kcm-brand);
+}
+
+.dnc-hito-ingreso::before {
+  background: var(--capta-tenue);
+}
+
+.dnc-hito-fecha {
+  color: var(--capta-tenue);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.72rem;
+}
+
+.dnc-hito-titulo {
+  color: var(--kcm-ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.dnc-hito-detalle {
+  color: var(--capta-tenue);
+  font-size: 0.78rem;
+}
+
+.dnc-mas {
+  margin-top: var(--kcm-space-2);
+}
+
+.dnc-mas summary {
+  margin-bottom: var(--kcm-space-2);
+  color: var(--kcm-brand);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* ── Los cursos del puesto ───────────────────────────────────────────────── */
+
+.dnc-cursos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dnc-curso {
+  display: grid;
+  padding: 0.62rem 0;
+  align-items: center;
+  gap: 0.75rem;
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  border-bottom: 1px solid var(--capta-linea);
+}
+
+.dnc-curso:last-child {
+  border-bottom: 0;
+}
+
+.dnc-curso-marca {
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--capta-linea);
+}
+
+.dnc-curso-completado .dnc-curso-marca {
+  background: var(--kcm-ok);
+}
+
+.dnc-curso-reforzar .dnc-curso-marca {
+  background: var(--kcm-warn);
+}
+
+.dnc-curso-programado .dnc-curso-marca {
+  background: var(--kcm-brand);
+}
+
+.dnc-curso-pendiente .dnc-curso-marca {
+  background: var(--kcm-danger);
+}
+
+.dnc-curso-cuerpo {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.dnc-curso-nombre {
+  color: var(--kcm-ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.dnc-curso-detalle {
+  color: var(--capta-tenue);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.72rem;
+}
+
+.dnc-curso-estado {
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .dnc-cabecera {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dnc-conteos {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .dnc-cuerpo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ==========================================================================
+   Avance por curso
+   --------------------------------------------------------------------------
+   Una fila por curso: nombre, barra apilada y la cuenta escrita. La barra es un
+   SVG que se estira a su celda; los tramos llevan los tonos de estado y un
+   trazo del color de la tarjeta que los separa sin estirarse con ellos.
+   ========================================================================== */
+
+.avance-cursos {
+  display: grid;
+  margin: var(--kcm-space-2) 0 0;
+  padding: 0;
+  gap: 0.55rem;
+  list-style: none;
+}
+
+.avance-curso {
+  display: grid;
+  align-items: center;
+  gap: var(--kcm-space-3);
+  grid-template-columns: minmax(12rem, 22rem) minmax(8rem, 1fr) 4.5rem;
+}
+
+.avance-nombre {
+  overflow: hidden;
+  color: var(--kcm-ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avance-nombre a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.avance-nombre a:hover {
+  color: var(--kcm-brand);
+  text-decoration: underline;
+}
+
+.avance-detalle {
+  display: block;
+  color: var(--capta-tenue);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.avance-barra {
+  display: block;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--chip-fondo);
+}
+
+.avance-lienzo {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.avance-lienzo rect {
+  stroke: var(--kcm-surface);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.avance-sin-cursos {
+  color: var(--capta-tenue);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.avance-cuenta {
+  color: var(--capta-tenue);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.78rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.avance-cuenta strong {
+  color: var(--kcm-ink);
+  font-weight: 600;
+}
+
+.avance-acreditado {
+  fill: var(--kcm-ok);
+  background: var(--kcm-ok);
+}
+
+.avance-reforzar {
+  fill: var(--kcm-warn);
+  background: var(--kcm-warn);
+}
+
+.avance-programado {
+  fill: var(--kcm-brand);
+  background: var(--kcm-brand);
+}
+
+.avance-pendiente {
+  fill: var(--kcm-danger);
+  background: var(--kcm-danger);
+  opacity: 0.55;
+}
+
+.avance-leyenda {
+  display: flex;
+  margin: 0;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  color: var(--capta-tenue);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.avance-clave {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.avance-muestra {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+}
+
+.avance-sin-plantilla {
+  margin-top: var(--kcm-space-3);
+  padding-top: var(--kcm-space-2);
+  border-top: 1px solid var(--capta-linea);
+}
+
+.avance-sin-plantilla summary {
+  color: var(--capta-tenue);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .avance-curso {
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
+  }
+
+  .avance-barra {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 /* ==========================================================================
@@ -2753,8 +3969,8 @@ a.agenda-bloque:hover {
   position: relative;
   margin: 0;
   max-width: 46ch;
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 0.87rem;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.89rem;
   line-height: 1.55;
 }
 
@@ -2915,10 +4131,8 @@ a.agenda-bloque:hover {
    Pasos de una operación
    --------------------------------------------------------------------------
    Para cuando una tarjeta ofrece varias acciones y el orden entre ellas
-   importa. Nació en el lote de DC-3, donde eran tres `<form>` sueltos uno
-   debajo de otro: sin separación se encimaban, y con el mismo aspecto los tres
-   no había forma de saber cuál había que oprimir primero ni cuál firmaba
-   documentos incompletos.
+   importa: tres `<form>` sueltos uno debajo de otro se enciman, y con el mismo
+   aspecto no hay forma de saber cuál se oprime primero.
 
    Cada paso lleva su número, su nombre, una línea de qué hace y su botón. El
    número no es decoración: es la respuesta a «¿por dónde empiezo?».
@@ -2975,8 +4189,9 @@ a.agenda-bloque:hover {
 .paso-texto {
   margin: 0.15rem 0 0;
   max-width: 64ch;
-  color: var(--kcm-muted);
-  font-size: 0.82rem;
+  color: var(--kcm-secundario);
+  font-size: 0.85rem;
+  font-weight: var(--kcm-peso-apoyo);
   line-height: 1.45;
 }
 
@@ -2985,4 +4200,2040 @@ a.agenda-bloque:hover {
   display: flex;
   flex: none;
   align-items: center;
+}
+
+/* ── La cola del día ───────────────────────────────────────────────────────
+ *
+ * El único bloque de la consola donde la cifra manda sobre el texto. Va así a
+ * propósito: la pregunta que contesta —«¿qué hago ahora?»— se responde con un
+ * número y un verbo, y cualquier párrafo al lado la haría más lenta de leer.
+ *
+ * La franja de color no es decorativa: marca los renglones que piden acción de
+ * quien está frente a la pantalla. Una sesión abierta no la lleva, porque lo que
+ * falta ahí ocurre en la sala y no aquí.
+ */
+.cola {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cola-fila {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 4px 16px 14px;
+  border-bottom: 1px solid var(--kcm-line);
+  border-left: 3px solid transparent;
+}
+
+.cola-fila:last-child {
+  border-bottom: none;
+}
+
+.cola-toca {
+  border-left-color: var(--kcm-brand);
+}
+
+.cola-alto {
+  border-left-color: var(--kcm-danger);
+}
+
+/*
+ * La cifra de la cola, hermana de la de los mosaicos y con el mismo cambio: de
+ * monoespaciada a la familia de texto con cifras tabulares. Ya declaraba
+ * `tabular-nums`, así que la monoespaciada no estaba sosteniendo la alineación
+ * —la sostenía esa línea— y sólo aportaba el aire de terminal.
+ *
+ * El tamaño pasa a `rem`: en píxeles fijos ignoraba el ajuste de tamaño de
+ * texto del sistema, y esta cifra es justo la que alguien con la vista cansada
+ * necesita poder agrandar.
+ */
+.cola-cifra {
+  font-family: var(--kcm-font);
+  font-size: 1.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-optical-sizing: auto;
+  line-height: 1;
+  min-width: 48px;
+  text-align: right;
+  letter-spacing: -0.02em;
+}
+
+.cola-texto {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cola-texto strong {
+  font-weight: 600;
+}
+
+.cola-pista {
+  font-size: 13px;
+  color: var(--kcm-muted);
+}
+
+.cola-accion {
+  flex: 0 0 auto;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 16px;
+  border: 1px solid var(--kcm-line-strong, var(--kcm-line));
+  border-radius: 999px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cola-accion {
+  transition:
+    background var(--kcm-mov) var(--kcm-curva),
+    border-color var(--kcm-mov) var(--kcm-curva),
+    transform var(--kcm-mov) var(--kcm-curva-resorte);
+}
+
+.cola-accion:hover {
+  background: var(--kcm-brand-light);
+  border-color: var(--bento-borde-vivo);
+  transform: translateY(-1px);
+}
+
+.cola-accion:active {
+  transform: translateY(1px);
+  transition-duration: var(--kcm-mov-toque);
+}
+
+/* ==========================================================================
+   El módulo DC-3
+   --------------------------------------------------------------------------
+   Cuatro pantallas —emisión, panel, lote e historial— que comparten tres cosas
+   que el resto de la consola no tenía: una lista que se marca por renglones,
+   una barra de cobertura y los filtros como fichas que se quitan de una en una.
+
+   Nada de esto lleva guiones. Las casillas viven dentro del formulario que
+   envuelve la tabla, «marcar esta página» es un enlace que vuelve a pintarla con
+   las casillas puestas, y la barra es un `<progress>` nativo porque
+   `style-src 'self'` descarta el atributo `style` y un ancho proporcional no se
+   puede escribir de otro modo sin inventar una escala de clases.
+   ========================================================================== */
+
+/* La tarjeta que sólo enlaza a otra pantalla: menos alta y sin aire sobrante. */
+.tarjeta-compacta {
+  padding: var(--kcm-space-3) var(--kcm-space-4);
+}
+
+/*
+ * Dos tarjetas a la par, que se apilan cuando no caben. El `minmax(0, 1fr)` no
+ * es adorno: sin el cero, una tabla ancha dentro de una columna la estira por
+ * encima de su mitad y la de al lado se encoge hasta desaparecer.
+ */
+.rejilla-dos {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+}
+
+/* La tira de cifras dentro de una tarjeta ya estrecha. */
+.kpi-tira-compacta .kpi {
+  padding: var(--kcm-space-2) var(--kcm-space-3);
+}
+
+/*
+ * El mosaico de la situación que se está viendo.
+ *
+ * Las tres situaciones son también las tres pestañas, así que uno de los tres
+ * mosaicos siempre corresponde a lo que hay debajo. Marcarlo evita la pregunta
+ * de «¿esta lista es la de listos o la de faltan datos?» en una pantalla que se
+ * usa con prisa.
+ */
+.kpi-activo {
+  border-color: var(--bento-borde-vivo);
+  box-shadow:
+    var(--kcm-shadow),
+    inset 0 0 0 1px var(--bento-borde-vivo);
+}
+
+/*
+ * La barra de cobertura.
+ *
+ * `appearance: none` es obligatorio antes de poder pintarla, y los dos
+ * pseudoelementos de abajo no son alternativas: Chrome y Safari dibujan el valor
+ * con `::-webkit-progress-value` sobre `::-webkit-progress-bar`, y Firefox con
+ * `::-moz-progress-bar`. Sin los dos bloques, la barra se ve nativa en uno de
+ * los dos navegadores y pintada en el otro.
+ */
+.cobertura-barra {
+  display: block;
+  width: 100%;
+  min-width: 6rem;
+  height: 8px;
+  border: 0;
+  border-radius: var(--kcm-radius-pill);
+  background: var(--bento-mosaico);
+  appearance: none;
+}
+
+.cobertura-barra::-webkit-progress-bar {
+  border-radius: var(--kcm-radius-pill);
+  background: var(--bento-mosaico);
+}
+
+.cobertura-barra::-webkit-progress-value {
+  border-radius: var(--kcm-radius-pill);
+  background: var(--kcm-ok);
+}
+
+.cobertura-barra::-moz-progress-bar {
+  border-radius: var(--kcm-radius-pill);
+  background: var(--kcm-ok);
+}
+
+.celda-cobertura {
+  display: flex;
+  min-width: 10rem;
+  align-items: center;
+  gap: var(--kcm-space-2);
+}
+
+.cobertura-cifra {
+  color: var(--kcm-secundario);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.columna-ancha {
+  min-width: 12rem;
+}
+
+/* ── Los filtros puestos, como fichas ─────────────────────────────────────── */
+
+.chips-filtro {
+  display: flex;
+  margin: var(--kcm-space-2) 0 0;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chips-rotulo {
+  color: var(--kcm-secundario);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/*
+ * Una ficha es un enlace que lleva a la misma pantalla sin ese filtro. Por eso
+ * no lleva subrayado ni color de enlace: se lee como un objeto que se quita, no
+ * como un sitio al que ir.
+ */
+.chip-filtro,
+.chip-limpiar {
+  display: inline-flex;
+  padding: 0.22rem 0.62rem;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--chip-fondo);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  color: var(--kcm-secundario);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background var(--kcm-mov) var(--kcm-curva),
+    color var(--kcm-mov) var(--kcm-curva);
+}
+
+.chip-filtro:hover {
+  background: var(--kcm-brand-light);
+  color: var(--kcm-brand);
+}
+
+.chip-aspa {
+  color: var(--kcm-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.chip-filtro:hover .chip-aspa {
+  color: var(--kcm-danger);
+}
+
+.chip-limpiar {
+  background: transparent;
+  border-style: dashed;
+}
+
+/*
+ * Lo que le falta a un renglón, una ficha por dato. En ámbar y no en rojo: un
+ * recuadro en blanco no invalida la constancia, la deja a medias para llenarse a
+ * mano, y el rojo de esta consola está reservado a lo que no se puede hacer.
+ */
+.chip-falta {
+  display: inline-block;
+  margin: 0 0.2rem 0.2rem 0;
+  padding: 0.14rem 0.5rem;
+  background: var(--kcm-warn-bg);
+  border-radius: var(--kcm-radius-pill);
+  color: var(--kcm-warn);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ── La lista que se marca ────────────────────────────────────────────────── */
+
+.formulario-tanda {
+  margin: var(--kcm-space-3) 0 0;
+}
+
+.columna-casilla {
+  width: 2.4rem;
+  text-align: center;
+}
+
+/*
+ * `accent-color` pinta la casilla con el azul de la plataforma sin reconstruir
+ * el control: el nativo ya sabe de foco, de teclado y de lectores de pantalla, y
+ * una casilla dibujada a mano pierde las tres cosas.
+ */
+.casilla-kcm {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--kcm-brand);
+  cursor: pointer;
+}
+
+/* La fila marcada se distingue del resto sin depender del color de la casilla. */
+.tabla-plan tbody tr:has(.casilla-kcm:checked) {
+  background: var(--kcm-brand-light);
+}
+
+/*
+ * Las acciones de un renglón, en una sola línea.
+ *
+ * Envolvían, y con tres controles eso significa un renglón de tabla el doble de
+ * alto que los demás en cuanto el nombre del curso crece. `nowrap` las mantiene
+ * juntas y la columna se ensancha lo que haga falta, que es lo que la tabla
+ * sabe hacer sola.
+ */
+.celda-acciones {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+/*
+ * El pie de la tabla: a la izquierda lo que se puede hacer con lo marcado, a la
+ * derecha dónde se está. Se apilan en cuanto no caben, y la cuenta queda arriba
+ * de los dos botones de página, que es como se lee de arriba abajo.
+ */
+.pie-de-tabla {
+  display: flex;
+  margin-top: var(--kcm-space-3);
+  padding-top: var(--kcm-space-3);
+  gap: var(--kcm-space-3);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--kcm-line);
+}
+
+.pie-acciones,
+.paginacion {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+}
+
+.pie-acciones .texto-nota {
+  margin: 0;
+}
+
+.paginacion-cuenta {
+  color: var(--kcm-secundario);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--kcm-peso-apoyo);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   DC-3 como plataforma
+   --------------------------------------------------------------------------
+   El módulo dejó de ser cuatro reportes con el aspecto de cualquier otra
+   pantalla y pasó a ser una aplicación dentro de la consola: barra propia con
+   la cifra de lo que falta emitir y un buscador que lleva al expediente de una
+   persona, filtros de un clic con su cuenta al lado, el plazo legal en cada
+   renglón, y una barra de selección que aparece al marcar.
+
+   Sigue sin haber un solo guion. Lo que en otra aplicación haría JavaScript lo
+   hace aquí el navegador con lo que ya trae: `popover` para las advertencias,
+   `:has()` para la barra de selección, un contador de CSS para su cifra y
+   `<meta refresh>` para que el documento baje solo después de emitir.
+   ========================================================================== */
+
+/* ── La barra del módulo ─────────────────────────────────────────────────── */
+
+.modulo {
+  display: flex;
+  padding: 0.35rem 0.35rem 0.35rem 0.45rem;
+  align-items: center;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  box-shadow: var(--kcm-shadow);
+}
+
+/*
+ * Nombre propio en el recorrido entre pantallas: al moverse dentro del módulo la
+ * barra se queda quieta y la píldora se desliza. Va acotado a `.lienzo >` por
+ * la misma razón que la tira genérica: un nombre repetido cancela la
+ * transición entera.
+ */
+.lienzo > .modulo {
+  view-transition-name: kcm-modulo;
+}
+
+.lienzo > .modulo .modulo-pestana[aria-current="page"] {
+  view-transition-name: kcm-modulo-activo;
+}
+
+::view-transition-group(kcm-modulo),
+::view-transition-group(kcm-modulo-activo) {
+  animation-duration: var(--kcm-mov-vista);
+  animation-timing-function: var(--kcm-curva);
+}
+
+.modulo-secciones {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  gap: 0.2rem;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.modulo-pestana {
+  display: inline-flex;
+  padding: 0.48rem 0.95rem;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: var(--kcm-radius-pill);
+  color: var(--kcm-muted);
+  font-size: 0.83rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background var(--kcm-mov) var(--kcm-curva),
+    color var(--kcm-mov) var(--kcm-curva);
+}
+
+.modulo-pestana:hover {
+  background: var(--bento-mosaico);
+  color: var(--kcm-ink);
+}
+
+.modulo-pestana[aria-current="page"] {
+  background: var(--kcm-gradient-brand);
+  color: #ffffff;
+  box-shadow: var(--marca-halo);
+}
+
+.modulo-pestana svg {
+  flex: none;
+}
+
+/* La cifra de lo que falta emitir: la bandeja dice cuánto hay sin abrirla. */
+.modulo-cuenta {
+  min-width: 1.6rem;
+  padding: 0.06rem 0.45rem;
+  border-radius: var(--kcm-radius-pill);
+  background: var(--kcm-warn-bg);
+  color: var(--kcm-warn);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.modulo-pestana[aria-current="page"] .modulo-cuenta {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.modulo-busqueda {
+  display: flex;
+  min-width: min(21rem, 100%);
+  margin-left: auto;
+  padding: 0.18rem 0.2rem 0.18rem 0.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  transition:
+    border-color var(--kcm-mov) var(--kcm-curva),
+    box-shadow var(--kcm-mov) var(--kcm-curva);
+}
+
+.modulo-busqueda:focus-within {
+  border-color: var(--kcm-brand);
+  box-shadow: 0 0 0 3px var(--kcm-brand-light);
+}
+
+.modulo-busqueda-icono {
+  display: grid;
+  color: var(--kcm-muted);
+}
+
+.modulo-busqueda .modulo-busqueda-campo {
+  min-width: 0;
+  padding: 0.38rem 0.2rem;
+  flex: 1 1 auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 0.86rem;
+}
+
+.modulo-busqueda .modulo-busqueda-campo:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.modulo-busqueda .modulo-busqueda-boton {
+  min-height: 2.05rem;
+  padding: 0.3rem 0.95rem;
+  border-radius: var(--kcm-radius-pill);
+  font-size: 0.8rem;
+}
+
+/* ── La bandeja: filtros a la izquierda, lista a la derecha ─────────────── */
+
+.bandeja {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  align-items: start;
+}
+
+.facetas {
+  position: sticky;
+  top: 14px;
+  display: flex;
+  max-height: calc(100vh - 28px);
+  padding: var(--kcm-space-3) var(--kcm-space-2);
+  flex-direction: column;
+  gap: var(--kcm-space-2);
+  overflow-y: auto;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--tarjeta-filo);
+}
+
+.faceta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.faceta + .faceta {
+  padding-top: var(--kcm-space-2);
+  border-top: 1px solid var(--bento-borde);
+}
+
+.facetas .faceta-titulo {
+  margin: 0 0 0.3rem;
+  padding: 0 0.55rem;
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.faceta-opcion {
+  display: flex;
+  padding: 0.42rem 0.55rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 10px;
+  color: var(--kcm-secundario);
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background var(--kcm-mov) var(--kcm-curva),
+    color var(--kcm-mov) var(--kcm-curva);
+}
+
+.faceta-opcion:hover {
+  background: var(--bento-mosaico);
+  color: var(--kcm-ink);
+}
+
+.faceta-opcion[aria-current="true"] {
+  background: var(--kcm-brand-light);
+  color: var(--kcm-brand);
+  box-shadow: inset 0 0 0 1px var(--bento-borde-vivo);
+}
+
+.faceta-texto {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.faceta-cuenta {
+  color: var(--kcm-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.faceta-opcion[aria-current="true"] .faceta-cuenta {
+  color: var(--kcm-brand);
+}
+
+/* El punto de color acompaña al rótulo, nunca lo sustituye. */
+.faceta-punto {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--capta-tenue);
+}
+
+.punto-ok {
+  background: var(--kcm-ok);
+}
+
+.punto-aviso {
+  background: var(--kcm-warn);
+}
+
+.punto-alerta {
+  background: var(--kcm-danger);
+}
+
+.faceta-formulario {
+  gap: var(--kcm-space-2);
+}
+
+.faceta-campo {
+  display: flex;
+  padding: 0 0.3rem;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.facetas .faceta-campo .faceta-titulo,
+.historial-formulario .faceta-titulo {
+  margin: 0;
+  padding: 0;
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.faceta-campo .select-kcm,
+.faceta-campo .input-kcm {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.84rem;
+}
+
+.faceta-aplicar {
+  margin-left: 0.3rem;
+  align-self: flex-start;
+}
+
+.bandeja-lista {
+  min-width: 0;
+  padding: clamp(1rem, 1.8vw, 1.35rem);
+}
+
+.bandeja-cabecera {
+  display: flex;
+  margin-bottom: var(--kcm-space-2);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--kcm-space-2) var(--kcm-space-3);
+  flex-wrap: wrap;
+}
+
+.bandeja-titulo h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.bandeja-lista .bandeja-cuenta {
+  margin: 0.2rem 0 0;
+  color: var(--kcm-secundario);
+  font-size: 0.86rem;
+  font-weight: var(--kcm-peso-apoyo);
+}
+
+.bandeja-cuenta strong {
+  color: var(--kcm-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.bandeja-herramientas {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-1);
+  flex-wrap: wrap;
+}
+
+/* Opciones hermanas que se excluyen: el orden, el periodo. */
+.segmentado {
+  display: inline-flex;
+  padding: 0.2rem;
+  gap: 0.15rem;
+  flex-wrap: wrap;
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: 14px;
+}
+
+.segmento {
+  display: inline-flex;
+  padding: 0.34rem 0.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 11px;
+  color: var(--kcm-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background var(--kcm-mov) var(--kcm-curva),
+    color var(--kcm-mov) var(--kcm-curva);
+}
+
+.segmento:hover {
+  background: var(--bento-tarjeta);
+  color: var(--kcm-ink);
+}
+
+.segmento[aria-current="true"] {
+  background: var(--bento-tarjeta);
+  color: var(--kcm-brand);
+  box-shadow:
+    0 1px 2px rgba(15, 30, 61, 0.08),
+    inset 0 0 0 1px var(--bento-borde-vivo);
+}
+
+.segmento-cuenta {
+  color: var(--kcm-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.boton-lista {
+  background: var(--kcm-brand-light);
+  border-color: var(--bento-borde-vivo);
+  color: var(--kcm-brand);
+}
+
+/* Lo que vale para toda la lista se dice una vez, arriba, y no en cada renglón. */
+.bandeja-lista .nota-lista {
+  max-width: none;
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.8rem;
+  background: var(--bento-mosaico);
+  border-radius: 12px;
+  color: var(--kcm-secundario);
+  font-size: 0.84rem;
+  font-weight: var(--kcm-peso-apoyo);
+}
+
+.bandeja-lista .nota-tenue {
+  padding: 0.2rem 0;
+  background: transparent;
+}
+
+/* ── Los renglones ──────────────────────────────────────────────────────── */
+
+.celda-persona {
+  min-width: 14rem;
+}
+
+.persona-nombre {
+  display: block;
+  color: var(--kcm-ink);
+  font-weight: 700;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+a.persona-nombre:hover {
+  color: var(--kcm-brand);
+  text-decoration: underline;
+}
+
+.persona-meta {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--kcm-secundario);
+  font-size: 0.76rem;
+  font-weight: var(--kcm-peso-apoyo);
+  line-height: 1.35;
+}
+
+.celda-fecha {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.celda-estado {
+  min-width: 10rem;
+}
+
+.celda-estado > * {
+  margin: 0.1rem 0.25rem 0.1rem 0;
+}
+
+.columna-acciones {
+  width: 1%;
+}
+
+.boton-emitir {
+  min-width: 4.2rem;
+}
+
+/* El curso, corto y con su nombre completo al pasar el puntero. */
+.curso-ficha {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde-vivo);
+  border-radius: 8px;
+  color: var(--kcm-ink);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ── La advertencia sobre el renglón ────────────────────────────────────── */
+
+/*
+ * Un `popover` declarativo. El navegador lo pone en la capa superior, lo cierra
+ * con Esc o con un clic fuera, y devuelve el foco al botón que lo abrió: todo lo
+ * que un diálogo necesita, sin una línea de guion.
+ *
+ * `display: none` por omisión es deliberado. En un navegador que no entiende
+ * `popover`, el elemento es un `<div>` más y la advertencia de cada renglón se
+ * dibujaría debajo de la lista; así se queda oculta, y la regla de abajo
+ * cambia el botón por el enlace a la pantalla de confirmación.
+ */
+.confirmacion {
+  display: none;
+  width: min(27rem, calc(100vw - 2rem));
+  padding: var(--kcm-space-4) var(--kcm-space-4) var(--kcm-space-3);
+  background: var(--kcm-surface);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow-lg);
+  color: var(--kcm-ink);
+}
+
+.confirmacion:popover-open {
+  display: block;
+  animation: kcmEmergenteLlega var(--kcm-mov) var(--kcm-curva-entra) both;
+}
+
+.confirmacion::backdrop {
+  background: rgba(15, 30, 61, 0.32);
+}
+
+.confirmacion .confirmacion-titulo {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.confirmacion .confirmacion-quien {
+  margin: 0.65rem 0 0;
+  color: var(--kcm-ink);
+  font-size: 0.95rem;
+}
+
+.confirmacion .confirmacion-que {
+  margin: 0.25rem 0 0;
+  color: var(--kcm-secundario);
+  font-size: 0.84rem;
+}
+
+.confirmacion .confirmacion-aviso {
+  margin: 0.7rem 0 0;
+  padding: 0.5rem 0.7rem;
+  background: var(--kcm-warn-bg);
+  border-radius: 10px;
+  color: var(--kcm-warn);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.confirmacion-formulario {
+  display: flex;
+  margin-top: var(--kcm-space-3);
+  flex-direction: column;
+  gap: var(--kcm-space-2);
+}
+
+.confirmacion-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+}
+
+.casilla-con-rotulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--kcm-secundario);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.casilla-opcion {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  flex: none;
+  accent-color: var(--kcm-brand);
+}
+
+/* Botón con `popover` donde se entiende; enlace a la pantalla donde no. */
+.sin-popover {
+  display: none;
+}
+
+@supports not selector(:popover-open) {
+  .solo-con-popover {
+    display: none !important;
+  }
+
+  .sin-popover {
+    display: inline-flex;
+  }
+}
+
+.confirmacion-pagina {
+  max-width: 46rem;
+}
+
+/* ── La barra de lo marcado ─────────────────────────────────────────────── */
+
+/*
+ * Aparece al marcar el primer renglón y se pega al borde inferior mientras se
+ * recorre la lista. Es oscura para que no se confunda con la tabla: es la
+ * herramienta que actúa sobre ella, no una fila más.
+ *
+ * La cifra la pone un contador de CSS que suma las casillas marcadas del mismo
+ * formulario; el elemento que la enseña va después de la tabla, que es lo que
+ * el contador necesita para haberlas contado todas.
+ */
+.formulario-tanda {
+  counter-reset: marcadas;
+}
+
+.formulario-tanda .casilla-kcm:checked {
+  counter-increment: marcadas;
+}
+
+.barra-seleccion {
+  position: sticky;
+  z-index: 20;
+  bottom: 14px;
+  display: flex;
+  margin-top: var(--kcm-space-3);
+  padding: 0.55rem 0.6rem 0.55rem 1.15rem;
+  align-items: center;
+  gap: var(--kcm-space-2) var(--kcm-space-3);
+  flex-wrap: wrap;
+  background: var(--kcm-ink);
+  border-radius: 18px;
+  box-shadow: var(--kcm-shadow-lg);
+  color: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  visibility: hidden;
+  transition:
+    opacity var(--kcm-mov) var(--kcm-curva),
+    transform var(--kcm-mov) var(--kcm-curva-entra),
+    visibility 0s linear var(--kcm-mov);
+}
+
+.formulario-tanda:has(.casilla-kcm:checked) .barra-seleccion {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+@supports not selector(:has(*)) {
+  .barra-seleccion {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+    visibility: visible;
+  }
+}
+
+.barra-seleccion .seleccion-cuenta {
+  display: flex;
+  margin: 0;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+}
+
+.seleccion-numero::before {
+  content: counter(marcadas);
+  color: #ffffff;
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.barra-seleccion .casilla-con-rotulo {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.seleccion-acciones {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+}
+
+.barra-seleccion .boton-secundario {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.barra-seleccion .boton-secundario:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.barra-seleccion .boton-enlace,
+.barra-seleccion .boton-enlace:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── El acuse de una emisión ────────────────────────────────────────────── */
+
+.acuse {
+  display: flex;
+  padding: var(--kcm-space-3) var(--kcm-space-4);
+  align-items: flex-start;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+  background: var(--kcm-ok-bg);
+  border: 1px solid rgba(18, 112, 74, 0.24);
+  border-radius: var(--kcm-radius-lg);
+  box-shadow: var(--kcm-shadow);
+  animation: kcmAcuseLlega var(--kcm-mov-vista) var(--kcm-curva-entra) both;
+}
+
+.acuse-fallido {
+  background: var(--kcm-warn-bg);
+  border-color: rgba(154, 86, 0, 0.24);
+}
+
+.acuse-marca {
+  display: grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--kcm-ok);
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.acuse-fallido .acuse-marca {
+  background: var(--kcm-warn);
+}
+
+.acuse-cuerpo {
+  min-width: min(18rem, 100%);
+  flex: 1 1 auto;
+}
+
+.acuse .acuse-titulo {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.acuse .acuse-texto {
+  margin: 0.2rem 0 0;
+  color: var(--kcm-secundario);
+  font-size: 0.86rem;
+}
+
+.acuse .acuse-fallas {
+  color: var(--kcm-warn);
+}
+
+.acuse-acciones {
+  display: flex;
+  align-self: center;
+  gap: var(--kcm-space-1);
+  flex-wrap: wrap;
+}
+
+@keyframes kcmAcuseLlega {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* ── El expediente de una persona ───────────────────────────────────────── */
+
+.expediente-cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kcm-space-3);
+}
+
+.expediente-identidad {
+  display: flex;
+  align-items: center;
+  gap: var(--kcm-space-3);
+  flex-wrap: wrap;
+}
+
+.expediente-nombre {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.expediente-datos {
+  display: grid;
+  margin: 0;
+  padding-top: var(--kcm-space-3);
+  gap: var(--kcm-space-2) var(--kcm-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  border-top: 1px solid var(--bento-borde);
+}
+
+.expediente-dato dt {
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.expediente-dato dd {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+}
+
+.dato-ok {
+  color: var(--kcm-ok);
+  font-weight: 600;
+}
+
+.dato-falta {
+  color: var(--kcm-warn);
+  font-weight: 600;
+}
+
+.expediente-tanda {
+  display: flex;
+  padding: var(--kcm-space-2) var(--kcm-space-3);
+  align-items: center;
+  gap: var(--kcm-space-2);
+  flex-wrap: wrap;
+  background: var(--kcm-brand-light);
+  border-radius: var(--kcm-radius);
+}
+
+.expediente-tanda .texto-nota {
+  margin: 0;
+}
+
+.expediente-cursos {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
+}
+
+.curso-expediente {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kcm-space-2);
+}
+
+.curso-lista {
+  border-color: var(--bento-borde-vivo);
+}
+
+.curso-expediente-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kcm-space-2);
+}
+
+.curso-expediente .curso-expediente-nombre {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.curso-datos {
+  display: grid;
+  margin: 0;
+  gap: 0.4rem var(--kcm-space-2);
+  grid-template-columns: max-content minmax(0, 1fr);
+  font-size: 0.84rem;
+}
+
+.curso-datos > div {
+  display: contents;
+}
+
+.curso-datos dt {
+  color: var(--kcm-secundario);
+  font-weight: 600;
+}
+
+.curso-datos dd {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.curso-expediente .curso-emision,
+.curso-expediente .curso-blancos {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+
+.curso-expediente .curso-emision {
+  background: var(--kcm-ok-bg);
+  color: var(--kcm-ok);
+}
+
+.curso-expediente .curso-blancos {
+  background: var(--kcm-warn-bg);
+  color: var(--kcm-warn);
+}
+
+.curso-acciones {
+  display: flex;
+  margin-top: auto;
+  padding-top: var(--kcm-space-2);
+  align-items: center;
+  gap: var(--kcm-space-1);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--bento-borde);
+}
+
+/* ── La búsqueda ────────────────────────────────────────────────────────── */
+
+.lista-personas {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  list-style: none;
+}
+
+.persona-fila {
+  display: flex;
+  padding: 0.75rem 0.4rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kcm-space-2) var(--kcm-space-3);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--capta-linea);
+}
+
+.persona-fila:last-child {
+  border-bottom: none;
+}
+
+.persona-enlace {
+  min-width: min(16rem, 100%);
+  text-decoration: none;
+}
+
+.persona-enlace:hover .persona-nombre {
+  color: var(--kcm-brand);
+  text-decoration: underline;
+}
+
+.persona-cursos {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.estado-curso {
+  padding: 0.18rem 0.6rem;
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.estado-emitida {
+  background: var(--kcm-ok-bg);
+  color: var(--kcm-ok);
+}
+
+.estado-pendiente {
+  background: var(--kcm-warn-bg);
+  color: var(--kcm-warn);
+}
+
+.estado-sin-curso {
+  background: var(--chip-fondo);
+  color: var(--kcm-secundario);
+}
+
+/* ── El historial ───────────────────────────────────────────────────────── */
+
+.historial-filtros {
+  display: flex;
+  margin-bottom: var(--kcm-space-3);
+  flex-direction: column;
+  gap: var(--kcm-space-2);
+}
+
+.historial-formulario {
+  display: grid;
+  gap: var(--kcm-space-2);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  align-items: end;
+}
+
+.historial-formulario .faceta-campo {
+  padding: 0;
+}
+
+.historial-formulario > button {
+  justify-self: start;
+}
+
+/* El encabezado de cada día: se lee como un separador, no como otra columna. */
+.tabla-kcm .fila-dia th {
+  padding: 0.75rem 0.9rem 0.45rem;
+  background: var(--bento-tarjeta);
+  color: var(--kcm-ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.fila-dia-cuenta {
+  margin-left: 0.5rem;
+  color: var(--kcm-muted);
+  font-weight: 600;
+}
+
+.celda-hora {
+  width: 4.5rem;
+  color: var(--kcm-secundario);
+}
+
+/* ── La cobertura por área ──────────────────────────────────────────────── */
+
+/*
+ * El avance de entrega va en el azul de la plataforma y no en verde: mide una
+ * proporción, no dice que algo esté bien. El verde se queda para los estados.
+ */
+.cobertura-entrega::-webkit-progress-value {
+  background: var(--kcm-brand);
+}
+
+.cobertura-entrega::-moz-progress-bar {
+  background: var(--kcm-brand);
+}
+
+.tabla-areas tbody th.celda-area {
+  color: var(--kcm-ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+
+.celda-area-curso {
+  min-width: 9rem;
+}
+
+.celda-area-curso .cobertura-barra {
+  margin-bottom: 0.3rem;
+}
+
+.area-pendientes {
+  color: var(--kcm-brand);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.area-pendientes:hover {
+  text-decoration: underline;
+}
+
+.area-al-dia {
+  color: var(--kcm-ok);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* ── Los datos del formato ──────────────────────────────────────────────── */
+
+.definiciones-dc3 {
+  display: grid;
+  margin: 0;
+  gap: 0.6rem var(--kcm-space-3);
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.definiciones-dc3 > div {
+  display: contents;
+}
+
+.definiciones-dc3 dt {
+  padding-top: 0.15rem;
+  color: var(--capta-tenue);
+  font-size: var(--capta-rotulo);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.definiciones-dc3 dd {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.huecos {
+  display: grid;
+  margin-bottom: var(--kcm-space-3);
+  gap: var(--kcm-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+}
+
+.hueco {
+  padding: var(--kcm-space-3);
+  background: var(--bento-mosaico);
+  border: 1px solid var(--bento-borde);
+  border-radius: var(--kcm-radius);
+}
+
+.hueco-abierto {
+  background: var(--kcm-warn-bg);
+  border-color: rgba(154, 86, 0, 0.2);
+}
+
+.huecos .hueco-cifra {
+  margin: 0;
+  color: var(--kcm-ink);
+  font-size: var(--capta-cifra);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.huecos .hueco-de {
+  color: var(--kcm-secundario);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.huecos .hueco-titulo {
+  margin: 0.3rem 0 0;
+  color: var(--kcm-ink);
+  font-weight: 700;
+}
+
+.huecos .hueco-texto {
+  margin: 0.35rem 0 0;
+  color: var(--kcm-secundario);
+  font-size: 0.82rem;
+}
+
+/* ── Pantallas angostas ─────────────────────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .bandeja {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facetas {
+    position: static;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--kcm-space-2) var(--kcm-space-3);
+  }
+
+  .faceta {
+    min-width: 11rem;
+    flex: 1 1 11rem;
+  }
+
+  .faceta + .faceta {
+    padding-top: 0;
+    border-top: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .modulo {
+    border-radius: var(--kcm-radius-lg);
+  }
+
+  .modulo-busqueda {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .seleccion-acciones {
+    margin-left: 0;
+  }
+}
+
+/* ── Ajustes de la primera vuelta ───────────────────────────────────────── */
+
+/*
+ * Las acciones de un renglón van en su propia caja y no convierten la celda en
+ * una caja flexible: una celda con `display: flex` deja de ser celda, y su línea
+ * inferior se dibujaba a otra altura que la del resto del renglón.
+ */
+.acciones-renglon {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.celda-curso .celda-fecha {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--kcm-secundario);
+  font-size: 0.78rem;
+  font-weight: var(--kcm-peso-apoyo);
+}
+
+.tabla-bandeja .persona-meta {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Los envíos secundarios del módulo —aplicar un filtro, buscar— no llevan el
+ * azul lleno: en cada pantalla hay una sola acción principal, y filtrar no lo
+ * es. `.formulario-secundario` declara lo mismo para cualquier formulario de
+ * búsqueda que comparta pantalla con la acción principal, como el catálogo de
+ * Ocupaciones junto a la consulta. Sin esta regla, el estilo de omisión de `type="submit"` los pintaba como
+ * la acción de la pantalla.
+ */
+.facetas button[type="submit"],
+.historial-formulario button[type="submit"],
+.modulo-busqueda button[type="submit"],
+.formulario-secundario button[type="submit"] {
+  background: var(--bento-tarjeta);
+  border: 1px solid var(--bento-borde-vivo);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(15, 30, 61, 0.07);
+  color: var(--kcm-brand);
+}
+
+.facetas button[type="submit"]:hover,
+.historial-formulario button[type="submit"]:hover,
+.modulo-busqueda button[type="submit"]:hover,
+.formulario-secundario button[type="submit"]:hover {
+  background: var(--kcm-brand-light);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 5px 12px -5px rgba(15, 30, 61, 0.26);
+}
+
+.historial-formulario button[type="submit"] {
+  min-height: 2.45rem;
+}
+
+/*
+ * La pista de las barras dentro de una tabla. El fondo de la tabla y el de la
+ * pista eran el mismo gris, así que de un medidor sólo se veía el tramo lleno,
+ * suelto, como una raya sin escala.
+ */
+.tabla-contenedor .cobertura-barra,
+.tabla-contenedor .cobertura-barra::-webkit-progress-bar {
+  background: var(--bento-mosaico-activo);
+}
+
+.tabla-cobertura td {
+  white-space: nowrap;
+}
+
+/* Segunda vuelta: la bandeja cabe sin desplazar a lo ancho en un monitor de oficina. */
+.bandeja {
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+}
+
+.tabla-bandeja th,
+.tabla-bandeja td {
+  padding-inline: 0.7rem;
+}
+
+.tabla-bandeja .persona-meta {
+  max-width: 19rem;
+}
+
+.modulo-busqueda {
+  min-width: min(16.5rem, 100%);
+}
+
+.modulo-pestana {
+  padding-inline: 0.85rem;
+}
+
+/* La opción de la hoja de entrega, dentro de la barra oscura. */
+.seleccion-opcion {
+  white-space: nowrap;
+}
+
+/* El historial: la hora y la persona juntas, sin que la tabla se estire. */
+.tabla-historial .celda-persona {
+  min-width: 12rem;
+}
+
+/*
+ * El punto de quiebre de la bandeja va al final a propósito: la regla que fija
+ * el ancho de la columna de filtros está más arriba con la misma especificidad,
+ * y escrito antes, este bloque perdía y los filtros no bajaban nunca.
+ */
+@media (max-width: 1180px) {
+  .bandeja {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * Panel de cambios: lo que trae un envío, como un «antes y después».
+ *
+ * Azul translúcido de la casa para el marco; verde lo que entra, rojo lo que
+ * sale y el valor anterior tachado junto al nuevo. Sin leyendas: el color y el
+ * signo de cada renglón dicen lo que pasa.
+ */
+.panel-cambios {
+  display: grid;
+  gap: var(--kcm-space-3);
+  padding: var(--kcm-space-4);
+  border: 1px solid rgba(34, 76, 159, 0.18);
+  border-radius: var(--kcm-radius);
+  background: rgba(58, 108, 203, 0.07);
+  backdrop-filter: blur(6px);
+}
+
+.panel-cambios-titulo {
+  margin: 0;
+  color: var(--kcm-brand-dark);
+  font-size: 1.05rem;
+}
+
+.panel-cambios-vacio {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  color: var(--kcm-ok);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.panel-cambios-palomita {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--kcm-radius-pill);
+  background: var(--kcm-ok-bg);
+}
+
+.panel-cambios-cifras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.cambio-cifra {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--kcm-radius-pill);
+  background: var(--kcm-surface);
+  box-shadow: var(--kcm-shadow);
+}
+
+.cambio-cifra-valor {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.cambio-cifra-rotulo {
+  color: var(--kcm-secundario);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.cambio-cifra-alta .cambio-cifra-valor {
+  color: var(--kcm-ok);
+}
+
+.cambio-cifra-baja .cambio-cifra-valor {
+  color: var(--kcm-danger);
+}
+
+.cambio-cifra-cambio .cambio-cifra-valor {
+  color: var(--kcm-brand);
+}
+
+.diff-bloque {
+  overflow: hidden;
+  border: 1px solid var(--kcm-line);
+  border-radius: var(--kcm-radius-sm);
+  background: var(--kcm-surface);
+}
+
+.diff-bloque > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.diff-bloque > summary::-webkit-details-marker {
+  display: none;
+}
+
+.diff-bloque > summary::after {
+  content: "▾";
+  margin-left: auto;
+  color: var(--kcm-muted);
+  transition: transform var(--kcm-mov) var(--kcm-curva);
+}
+
+.diff-bloque:not([open]) > summary::after {
+  transform: rotate(-90deg);
+}
+
+.diff-bloque-signo {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.diff-bloque-signo-alta {
+  color: var(--kcm-ok);
+  background: var(--kcm-ok-bg);
+}
+
+.diff-bloque-signo-baja {
+  color: var(--kcm-danger);
+  background: var(--kcm-danger-bg);
+}
+
+.diff-bloque-signo-cambio {
+  color: var(--kcm-brand);
+  background: var(--kcm-brand-light);
+}
+
+.diff-bloque-cuenta {
+  padding: 0.1rem 0.55rem;
+  border-radius: var(--kcm-radius-pill);
+  background: var(--kcm-brand-light);
+  color: var(--kcm-brand);
+  font-size: 0.8rem;
+}
+
+.diff-lista {
+  max-height: 22rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--kcm-line);
+  list-style: none;
+}
+
+.diff-fila {
+  display: grid;
+  grid-template-columns: 1.4rem 5.5rem minmax(10rem, 1.2fr) minmax(0, 2fr);
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.45rem 0.9rem;
+  border-left: 3px solid transparent;
+  font-size: 0.88rem;
+}
+
+.diff-fila + .diff-fila {
+  border-top: 1px solid var(--kcm-line);
+}
+
+.diff-alta {
+  border-left-color: var(--kcm-ok);
+  background: rgba(18, 112, 74, 0.06);
+}
+
+.diff-baja {
+  border-left-color: var(--kcm-danger);
+  background: rgba(179, 38, 30, 0.05);
+}
+
+.diff-cambio {
+  border-left-color: var(--kcm-brand-bright);
+}
+
+.diff-marca {
+  font-weight: 800;
+  text-align: center;
+}
+
+.diff-alta .diff-marca {
+  color: var(--kcm-ok);
+}
+
+.diff-baja .diff-marca {
+  color: var(--kcm-danger);
+}
+
+.diff-cambio .diff-marca {
+  color: var(--kcm-brand);
+}
+
+.diff-nomina {
+  color: var(--kcm-muted);
+  font-family: var(--kcm-font-mono);
+  font-size: 0.82rem;
+}
+
+.diff-nombre {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-detalle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  color: var(--kcm-secundario);
+}
+
+.diff-campo {
+  color: var(--kcm-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.diff-detalle del {
+  padding: 0 0.35rem;
+  border-radius: 6px;
+  background: var(--kcm-danger-bg);
+  color: var(--kcm-danger);
+}
+
+.diff-detalle ins {
+  padding: 0 0.35rem;
+  border-radius: 6px;
+  background: var(--kcm-ok-bg);
+  color: var(--kcm-ok);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.diff-flecha {
+  color: var(--kcm-muted);
+}
+
+.diff-pie {
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  border-top: 1px solid var(--kcm-line);
+  color: var(--kcm-muted);
+  font-size: 0.82rem;
+}
+
+/* Lo largo que casi nunca hace falta ver, como la lista de cursos, va plegado. */
+.plegable > summary {
+  padding: 0.2rem 0;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .diff-fila {
+    grid-template-columns: 1.2rem minmax(0, 1fr);
+  }
+
+  .diff-nomina,
+  .diff-nombre,
+  .diff-detalle {
+    grid-column: 2;
+  }
+}
+
+.panel-cambios-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  color: var(--kcm-secundario);
+  font-size: 0.88rem;
+}
+
+.panel-cambios-pie .boton-primario {
+  margin-left: auto;
+}
+
+.panel-cambios + .panel-cambios {
+  margin-top: var(--kcm-space-3);
+}
+
+/* Cada dato que cambia de una persona, como pastilla; varios se acomodan en fila. */
+.diff-dato {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--kcm-line);
+  border-radius: 8px;
+  background: var(--kcm-surface);
+}
+
+.diff-dato-alta {
+  border-color: rgba(18, 112, 74, 0.25);
+  color: var(--kcm-ok);
+}
+
+.diff-dato-baja {
+  border-color: rgba(179, 38, 30, 0.25);
+  color: var(--kcm-danger);
+}
+
+/* Sólo aviso: la diferencia se enseña en gris porque no se escribe. */
+.cambio-cifra-aviso .cambio-cifra-valor,
+.diff-aviso .diff-marca {
+  color: var(--kcm-muted);
+}
+
+.diff-aviso {
+  border-left-color: var(--kcm-muted);
+  background: rgba(74, 90, 120, 0.05);
+}
+
+.diff-bloque-signo-aviso {
+  color: var(--kcm-muted);
+  background: rgba(74, 90, 120, 0.1);
+}
+
+.diff-dato-aviso,
+.diff-dato-aviso del,
+.diff-dato-aviso ins {
+  border-style: dashed;
+  background: transparent;
+  color: var(--kcm-muted);
+  font-weight: 600;
+}
+
+.diff-dato-aviso del {
+  text-decoration: none;
+}
+
+.diff-nota {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.diff-baja .diff-nota {
+  color: var(--kcm-danger);
+}
+
+.diff-aviso .diff-nota {
+  color: var(--kcm-muted);
+}
+
+.diff-dato-aviso del,
+.diff-dato-aviso ins {
+  padding: 0;
+  border: 0;
 }

@@ -3,7 +3,7 @@
  * Permite ejecutar pruebas completas sin dependencias externas ni credenciales reales.
  */
 
-import type { WorkerNumber } from "../../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   AuditEventRecord,
   AuditAction,
@@ -16,8 +16,8 @@ import type {
   TrainingCatalogItem,
 } from "../../domain/quiosco/tipos.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
-import type { Clock } from "../../ports/reloj.ts";
-import { systemClock } from "../reloj-sistema.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
+import { systemClock } from "../sistema/reloj-sistema.ts";
 
 export interface MemoryKioskSessionState {
   readonly sessions?: readonly SessionRecord[];

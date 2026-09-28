@@ -5,7 +5,7 @@
  */
 
 import { createHmac, randomBytes } from "node:crypto";
-import type { Clock } from "../../ports/reloj.ts";
+import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
 import { igualEnTiempoConstante } from "../../server/sesion-consola.ts";
 import { KioskAuthError, RateLimitExceededError } from "./errores.ts";

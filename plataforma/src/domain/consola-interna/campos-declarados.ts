@@ -9,9 +9,9 @@
  * está escribiendo, y no hay `ROLLBACK` que devuelva eso.
  *
  * Lo que hace es lo que el esquema ya tenía previsto para esto: agrega un
- * renglón a `kcm.campo_declarado`, el registro de campos que existe justamente
+ * renglón a `organizacion.atributo_definicion`, el registro de campos que existe justamente
  * para incorporar un dato nuevo sin desplegar código. Los valores de ese campo
- * viven después en `kcm.atributo_declarado`, uno por trabajador, con
+ * viven después en `organizacion.trabajador_atributo`, uno por trabajador, con
  * procedencia y vigencia.
  *
  * La aprobación es un acto aparte
@@ -22,11 +22,11 @@
  * impide que un campo capturado a medias mueva un número que Recursos Humanos
  * ya reportó.
  *
- * Ambas operaciones dejan evento en `kcm.auditoria`, que es de sólo agregado.
+ * Ambas operaciones dejan evento en `sistema.bitacora_auditoria`, que es de sólo agregado.
  */
 
 import type { DeclaredFieldPort } from "../../ports/consola-interna.port.ts";
-import { DomainError } from "../errores.ts";
+import { DomainError } from "../comun/errores.ts";
 import {
   ORIGENES_DE_CAMPO,
   TIPOS_DE_CAMPO,

@@ -29,12 +29,10 @@ poder. La aplicación nunca los ejecuta.
 |---|---|---|
 | `semilla-catalogo.js` | `npm run build:semilla-catalogo` | El TSV de capacitaciones y empleados a partir de un snapshot. |
 | `mapeo-matriz.js` | `npm run build:mapeo-matriz` | Las filas de `MATRIZ_MAPEO` propuestas desde un snapshot. |
-| `generar-dc3.js` | `npm run dc3:plan`, `dc3:check`, `dc3:report`, `dc3:generar` | El plan y la emisión de constancias DC-3. |
-| `vista-previa-dc3.js` | `npm run dc3:vista-previa` | Banco de pruebas en loopback con identidad inventada. |
 
-Todos escriben únicamente bajo `referencias/privado/`, que está fuera de Git. El
-generador DC-3 falla cerrado si le falta la configuración legal: no inventa
-duración, área temática ni agente capacitador.
+Los dos escriben únicamente bajo `referencias/privado/`, que está fuera de Git.
+Las constancias DC-3 no tienen generador de línea de comandos: se emiten desde
+la consola.
 
 ## `check/` — verificaciones
 

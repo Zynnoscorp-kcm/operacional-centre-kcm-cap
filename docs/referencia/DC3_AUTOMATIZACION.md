@@ -1,398 +1,212 @@
-# Automatización de constancias DC-3
+# Constancias DC-3
 
-Estado: **LISTA PARA EMITIR EN CUANTO SE APRUEBEN LOS METADATOS**. El cruce, la
-validación de identidad, el ledger y la composición del documento final están
-resueltos y probados de extremo a extremo. Cada constancia se entrega como PDF
-de una página, no como hoja de cálculo. La emisión con datos reales
-permanece bloqueada hasta aprobar por curso duración, área temática y agente
-capacitador; ésos son los únicos datos que faltan y se capturan en
-configuración, sin volver a tocar código.
+Estado al 24 de septiembre de 2026: **la emisión vive en la consola**, en `/dc3`,
+y emite cualquier instancia —la del equipo del departamento o la publicada— con
+una sola bitácora. Cuentan los cursos desde el **1 de enero de 2026**; los de
+años anteriores se consultan y se emiten aparte. No hay emisión por lote ni
+generador de línea de comandos: el procesamiento es por filtros sobre la lista,
+o completo sobre todo lo que la lista enseña.
 
 ## Decisión de arquitectura
 
-Adenda del 2026-07-29: para la operación sin servidor se implementó un cliente
-VBA único con módulos separados de liberación, snapshot y DC-3.
-
-Adenda del 2026-08-01 que revierte la anterior en lo que toca a DC-3: **la
-emisión vuelve a ser exclusiva del worker Node de este documento** y el módulo
-`KcmDc3` se eliminó del cliente VBA. Dos rutas de emisión sobre la misma
-plantilla oficial pueden producir dos constancias del mismo curso al mismo
-trabajador, cada una con su folio, sin que ninguno de los dos ledgers vea a la
-otra; y este worker ya componía el PDF de una página, que la ruta VBA no
-alcanzaba. El cliente VBA conserva liberación y snapshot, que sí exigen estar
-del lado de Excel: ver `docs/VBA_BRIDGE.md`.
-
-La premisa de que agregar DC-3 a la plataforma necesariamente la hará lenta se
-rechaza. El tamaño del código no es el factor dominante: el riesgo aparece si
-una llamada interactiva escanea miles de filas, copia plantillas y convierte
-archivos antes de responder al navegador.
-
-El módulo se implementó como worker Node local, dentro del stack que el
-repositorio ya usa. No añade Supabase, no entra en `google.script.run`, no toma
-el `ScriptLock` de quiosco/OCR y no consume las cuotas de conversión de Apps
-Script. Puede ejecutarse con el Programador de tareas de Windows o `launchd` en
-macOS después de aprobar la configuración privada.
-
-La decisión mantiene el cruce y la composición fuera de la petición
-interactiva: una pantalla publica el estado del ledger o el vínculo ya generado,
-nunca dispara la generación dentro de la respuesta.
-
-Eso también evita quedar sujeto a los límites de una plataforma de ejecución
-ajena —tiempo máximo por invocación, cuotas diarias de conversión— que pueden
-cambiar sin aviso:
-
-- https://developers.google.com/apps-script/guides/services/quotas
-- https://developers.google.com/apps-script/guides/support/best-practices
-- https://developers.google.com/apps-script/guides/triggers/installable
-
-## Flujo y fuentes
-
-```mermaid
-flowchart LR
-  X[XLSB maestro<br/>solo lectura] --> H[Snapshot HC en memoria]
-  S[sem 29 CAP.xlsx<br/>SND/EMP ACTIVOS] --> R[Identidad activa, CURP,<br/>puesto y fecha de alta]
-  H --> P[Planificador DC-3]
-  R --> P
-  C[Configuración privada<br/>metadatos aprobados] --> P
-  T[Plantilla oficial XLSX<br/>solo lectura] --> Y[Leyendas oficiales]
-  Y --> G[Compositor PDF]
-  P --> G
-  G --> L[Ledger recuperable]
-  G --> O[referencias/privado/<br/>dc3-generados<br/>PDF por constancia]
-```
-
-Los tres originales se leen con control de tamaño, rutas, CRC y estabilidad de
-`inode`, tamaño y fecha de modificación. El worker nunca reescribe los archivos
-fuente ni convierte el XLSB.
+- **Una sola ruta de emisión.** El 2026-08-01 se eliminó `KcmDc3` del cliente
+  VBA: dos rutas sobre la misma plantilla podían producir dos constancias del
+  mismo curso al mismo trabajador sin que ninguna viera a la otra. El
+  2026-09-24 se retiró también el generador por lote de Node, con su ledger en
+  disco, por la misma razón: lo que emitía no aparecía en la bitácora de la
+  consola y la bandeja lo seguía contando como pendiente.
+- **Una sola bitácora.** Cada emisión es un asiento en `sistema.bitacora_auditoria`
+  (`accion = 'DC3_EMITIDA_INDIVIDUAL'`, `entidad_id = 'nomina:curso'`,
+  `estado_nuevo` `EMITIDA` o `EMITIDA_PARCIAL`), con la cuenta de quien emitió y
+  el número de la solicitud. Es la tabla que no se reescribe; ninguna pantalla
+  la edita.
+- **Cualquier instancia emite.** La razón social, las firmas y las leyendas van
+  horneadas en `packages/dc3/pdf/leyendas-oficiales.js`, y los logotipos del
+  membrete viven dentro de la plataforma (`plataforma/src/web/pdf/membrete/`).
+  Ya no hay configuración privada que falte en la nube.
+- **Sin migraciones.** Todo lee de las tablas existentes —`organizacion.trabajador`,
+  `operacion.historial_capacitacion`, `dc3.curso_configuracion`, `sistema.bitacora_auditoria`— y escribe sólo
+  en la bitácora.
 
 ## El documento que se entrega es un PDF
 
-La plantilla oficial es una hoja de cálculo. Impresa arrastra la cuadrícula, los
-renglones descuadrados de las celdas combinadas y, sobre todo, el reverso con
-los dos catálogos —áreas y subáreas del Catálogo Nacional de Ocupaciones y áreas
-temáticas de los cursos—, que son material de consulta para llenar el formato y
-no parte de la constancia que recibe el trabajador. Entregar eso es entregar un
-borrador.
-
-Por eso el PDF no se convierte desde la hoja: se compone. `packages/dc3/pdf/` escribe
-el archivo a mano, sin dependencias, con las fuentes base Helvetica que todo
-lector incluye. Lo que se conserva del archivo oficial son sus leyendas —título,
-encabezados de las tres secciones, etiquetas de cada campo, razón social y RFC
-del patrón, protesta de decir verdad, pies de firma e instrucciones—, leídas
-celda por celda. Si la plantilla dejara de declarar una de ellas, la emisión se
-detiene en vez de imprimir una sección muda.
-
-Consecuencias deliberadas:
+La plantilla oficial es una hoja de cálculo. Impresa arrastra la cuadrícula, las
+celdas combinadas y el reverso con los catálogos de consulta, que no son parte
+de la constancia que recibe el trabajador. Por eso el PDF no se convierte desde
+la hoja: se compone. `packages/dc3/pdf/` lo escribe sin dependencias, con las
+fuentes base que todo lector incluye. Del archivo oficial se conservan sus
+leyendas —título, encabezados, etiquetas de cada campo, razón social y RFC del
+patrón, protesta de decir verdad, pies de firma e instrucciones—, horneadas y
+comparadas contra el borrador oficial donde está presente.
 
 - El anverso se imprime completo en una página; el reverso de consulta no se
-  imprime nunca, y una prueba sobre el archivo oficial lo comprueba.
-- La leyenda oficial de instrucciones sigue mencionando «el reverso de este
-  formato». Es redacción de la STPS y se conserva textual: también remite a
-  www.stps.gob.mx, que es donde esos catálogos están publicados.
-- El nombre de curso largo de LOTO se ajusta hasta caber en dos renglones. Si
-  algún contenido no cupiera en la página, el generador falla en lugar de
-  recortar texto legal.
-- El PDF no hereda nada del origen: ni rutas locales, ni autores, ni fecha de
-  generación. Su fecha interna es la del curso, de modo que dos corridas del
-  mismo DC-3 producen exactamente los mismos bytes y el ledger las reconoce como
-  la misma constancia.
-- La razón social se imprime tal como está en la plantilla. La entregada dice
-  `KIMBERL- CLARK`; mientras no se corrija ahí, `employer.legalName` en la
-  configuración privada permite imprimir la correcta sin editar el archivo
-  oficial. Ese valor viaja en la huella: cambiarlo no reemite en silencio.
+  imprime nunca.
+- El nombre de curso largo se ajusta hasta dos renglones; si algo no cupiera,
+  el compositor falla en vez de recortar texto legal.
+- El PDF no hereda rutas, autores ni fecha de generación: la misma constancia
+  produce exactamente los mismos bytes. Por eso la vista previa es la constancia
+  que se emite y la reimpresión es la que se entregó.
+- La razón social va corregida en las leyendas horneadas —el borrador la trae
+  con errata— y la prueba que compara contra el borrador la excluye a propósito.
+- El logotipo del sindicato sólo va en las constancias del personal
+  sindicalizado (NS).
 
-## Reglas de detección
+## De dónde sale cada dato
 
-- Corte único: `2026-01-01`, inclusive.
-- `INDUCCION_EMPRESA`: un trabajador en `SND ACTIVOS` o `EMP ACTIVOS` queda
-  detectado cuando su fecha de alta es igual o posterior al corte; esa fecha es
-  la fecha del curso.
-- `QMS`: se toma la primera fecha de QMS igual o posterior al corte.
-- `LOTO`: se unen las columnas fuente cuya identidad normalizada corresponde al
-  nombre largo solicitado y se toma la primera fecha igual o posterior al
-  corte. El año del encabezado queda como trazabilidad, pero la fecha de celda
-  manda.
-- El objetivo es una constancia por trabajador y curso, no una por cada
-  repetición. Una fecha posterior no sobrescribe una constancia existente.
-- Todo documento requiere una identidad vigente en las páginas de activos, un
-  número normalizable a cinco dígitos, nombre, CURP válida, puesto y fecha de
-  alta válida. Una discrepancia queda bloqueada; no se completa con datos
-  inferidos.
-- El campo de ocupación específica se llena con la **clave de ocupación del
-  trabajador**, que el padrón semanal trae en una columna opcional al final de
-  sus dos hojas de activos, titulada **`Clave de ocupación`** —rótulo declarado
-  el 2026-08-13 y marcado como provisional por el departamento—. Queda vacío
-  mientras esa columna no traiga clave para esa persona y su puesto tampoco
-  tenga el mapeo de respaldo. El puesto sí se llena siempre desde el padrón.
+| Recuadro | Fuente |
+|---|---|
+| Nombre, CURP, puesto | Padrón semanal (`organizacion.trabajador`) |
+| Ocupación específica | Clave de ocupación del trabajador, columna «Clave de ocupación» del padrón |
+| Curso, duración, área temática, agente capacitador | Catálogo de cursos DC-3 (`dc3.curso_configuracion`) |
+| Fecha del curso | Ver la regla del corte |
+| Término del periodo | Fecha del curso más `dias_periodo` del curso |
+| Razón social, RFC, firmas | Leyendas horneadas del formato oficial |
 
-  El rótulo se compara ya normalizado, así que acentos, mayúsculas, puntos y
-  espacios dan igual, y se siguen aceptando las formas anteriores —`CLAVE CNO`,
-  `CNO`, `OCUPACION CNO`, `CLAVE OCUPACION`, `OCUPACION ESPECIFICA`, las dos
-  largas del catálogo y las cuatro de «tipo de trabajo»—: los libros de semanas
-  pasadas traen `CLAVE CNO`, y volverlos ilegibles al renombrar convertiría una
-  mejora en una interrupción. La posición no importa: se resuelve por nombre en
-  el renglón 1.
+El área temática se imprime «clave-nombre». Si la base trae la clave sin el
+nombre, el nombre sale del catálogo de la STPS (`domain/dc3/areas-tematicas.ts`)
+y el recuadro cuenta como completo. Lo que falte sale en blanco, y la pantalla
+lo dice antes de emitir.
 
-  La clave vive en el trabajador y **no en el puesto** desde la migración `0041`
-  (2026-08-12). La versión anterior la consolidaba por puesto y rechazaba sin
-  escribir el puesto que llegaba con dos claves distintas; el departamento
-  corrigió la premisa: la clave varía según el puesto **y el área** de cada
-  quien, así que un mismo puesto en dos áreas trae legítimamente dos claves y
-  consolidarlas perdía las dos. `kcm.puesto.clave_cno` se conserva como respaldo
-  de quien todavía no tiene clave propia; el padrón ya no lo escribe.
+## La regla del corte
 
-## Metadatos que faltan aprobar
+`domain/dc3/corte.ts` fija `CORTE_DE_CONSTANCIAS = "2026-01-01"`.
 
-La matriz sólo aporta curso y fecha. Para una DC-3 utilizable todavía se deben
-aprobar por cada uno de los tres cursos:
+- **Cursos de la matriz.** La fecha de la constancia es la **primera** vez que
+  el trabajador tomó el curso desde el corte. Si no lo ha tomado desde
+  entonces, la **más reciente** anterior al corte, y esa constancia cuenta como
+  de «años anteriores».
+- **Inducción.** La fecha es la de alta del trabajador; un alta anterior al
+  corte es de años anteriores.
+- **Pendiente** es lo que tiene fecha desde el corte y no se ha emitido. Lo de
+  años anteriores no cuenta como pendiente en la bandeja, en Inicio ni en la
+  cobertura: se revisa con el filtro «Años anteriores» y se emite igual que lo
+  demás.
 
-1. duración en horas;
-2. área temática que debe imprimirse;
-3. nombre o registro aprobado del agente capacitador.
+La consulta calcula la fecha con un `LATERAL` sobre `operacion.historial_capacitacion`
+(`min(...) FILTER (WHERE fecha >= corte)` y `max(...) FILTER (WHERE fecha <
+corte)`), y el periodo filtra con `b.antes_del_corte`. Quien no tiene fecha no
+se pierde en ningún periodo: aparece en «Sin registro del curso».
 
-La referencia SIRCE histórica de LOTO contiene dos duraciones diferentes, 8 y
-12 horas, por lo que el worker no escogió una automáticamente. QMS e Inducción
-tampoco contienen esos metadatos en las fuentes entregadas. El archivo de
-ejemplo deja los campos vacíos y produce bloqueos agregados, nunca documentos
-incompletos.
+## El módulo de la consola
 
-Un candidato al que le falte cualquiera de los tres queda bloqueado entero, con
-su motivo, antes de que se toque el sistema de archivos: no existe un estado
-intermedio en el que la constancia salga con un campo vacío. El resumen los
-distingue de los bloqueos de origen —identidad ausente, CURP inválida, puesto o
-fecha de alta faltantes— porque unos se resuelven capturando configuración y los
-otros corrigiendo la fuente:
+`/dc3` tiene barra propia —sus secciones, la cifra de lo que falta emitir desde
+el corte y un buscador que lleva al expediente de una persona— y funciona sin
+una línea de JavaScript: la política declara `default-src 'none'`.
 
-```json
-"readiness": {
-  "metadataApproved": false,
-  "canEmit": false,
-  "coursesPendingMetadata": [{ "courseId": "QMS", "missingMetadata": ["..."] }],
-  "emitOnApproval": 1743,
-  "blockedBySource": 0,
-  "sourceIssues": {}
-}
-```
+| Sección | Ruta | Contesta |
+|---|---|---|
+| **Por emitir** | `/dc3` | Qué constancias falta emitir desde 2026, y los años anteriores aparte |
+| **Emitidas** | `/dc3/historial` | Qué salió, cuándo y quién lo emitió; y la reimpresión |
+| **Cobertura** | `/dc3/panel` | Cuánto falta por curso y por área |
+| **Datos del formato** | `/dc3/datos` | Qué imprime cada curso y qué sale en blanco |
+| Expediente | `/dc3/trabajador/:nomina` | Todo lo DC-3 de una persona: la ventanilla |
+| Búsqueda | `/dc3/buscar?q=` | Nómina o nombre; una sola coincidencia lleva directo al expediente |
 
-## Configuración y ejecución
+### La bandeja
 
-Primero se crea una copia privada:
+Sin filtro pedido enseña **lo que falta emitir desde el corte**, en orden
+alfabético; «Para repartir» agrupa por tipo de personal y cada grupo por
+nómina. Los filtros de todos los días son opciones de un clic con su cifra
+—situación, fecha del curso (desde 2026 o años anteriores), curso, emitidas o
+no— y cada grupo cuenta con los demás puestos y el suyo quitado. Área y tipo de
+personal van en un formulario pequeño. Lo que vale para toda la lista, como la
+clave de ocupación que hoy falta a todo el padrón, se dice una vez arriba.
 
-```bash
-cp config/dc3-generator.example.json referencias/privado/dc3-config.json
-```
+### Emitir
 
-En la copia privada se completan `durationHours`, `thematicArea` y
-`trainingAgent` para cada curso. Las firmas sólo se agregan si se desea
-sobrescribir de forma explícita las que ya conserva la plantilla.
+- **Una.** El botón abre la advertencia encima del renglón (un `popover`
+  declarativo). El «sí» es `POST /dc3/constancia/:n/:c` y la respuesta es `303`
+  a la misma lista, con el acuse puesto. El PDF baja solo con un
+  `<meta http-equiv="refresh">` hacia `/dc3/documentos`, que responde como
+  adjunto. Recargar no vuelve a emitir.
+- **Las marcadas.** Al marcar el primer renglón aparece la barra de selección
+  con la cifra de lo marcado —un contador de CSS— y dos salidas: un solo PDF,
+  con la hoja de entrega delante si se pide, o un ZIP con un archivo por
+  constancia.
+- **Todas las de la lista.** «Emitir todas (N)» toma la lista entera con sus
+  filtros y en su orden, sin marcar nada. Es el procesamiento completo: con el
+  filtro de un curso, todas las constancias de ese curso.
 
-El plan es seguro por defecto y sólo publica conteos e hashes:
+Varias constancias se leen en una consulta (`findCandidates`), se componen para
+comprobar que salen y se asientan en un solo `INSERT` (`recordEmissions`): o
+entran todas o ninguna. La dirección de regreso no lleva las claves —dos mil no
+caben en una dirección— sino el **número de la solicitud** que las asentó;
+`/dc3/documentos?solicitud=…` las encuentra en la bitácora
+(`listRequestEmissionKeys`), en cualquier instancia.
 
-```bash
-npm run dc3:plan -- --config referencias/privado/dc3-config.json
-```
+La **hoja de entrega** (`web/pdf/relacion-dc3.ts`) enumera las constancias en
+el mismo orden que las que la siguen, con una columna «Recibí: nombre y firma».
 
-`dc3:check` responde con un código de salida si todavía falta capturar algo, y
-sirve para vigilancia programada sin leer el JSON completo:
+### Topes
 
-```bash
-npm run dc3:check -- --config referencias/privado/dc3-config.json
-```
+| | Equipo local | Nube |
+|---|---:|---:|
+| Constancias por emisión, en un PDF | 2000 | 400 |
+| En ZIP | 300 | 15 |
+| Reimpresión | 2000 | 400 |
 
-`dc3:report` deja el detalle por candidato bloqueado, con su motivo y la hoja y
-fila de origen, dentro de `referencias/privado/` y con permisos `0600`:
+Medido con constancias sintéticas y hoja de entrega: 400 en un PDF pesan
+3.0 MB y se componen en 0.2 s; 2000 pesan 14.2 MB en 0.6 s. En un PDF los
+logotipos se guardan una vez (`buildPdf({ compartirImagenes: true })`); en un
+ZIP cada archivo lleva los suyos, y 15 pesan 1.8 MB. La nube corta la respuesta
+a los 4.5 MB, por eso allá los topes son menores. Una lista más larga que el
+tope no se emite a medias: la pantalla lo dice, y filtrada por curso o por área
+cabe en una sola emisión.
 
-```bash
-npm run dc3:report -- --config referencias/privado/dc3-config.json
-```
+### Reimprimir
 
-La escritura exige una bandera distinta:
+`GET /dc3/documentos?claves=…` compone de nuevo **sólo lo ya asentado** y no lo
+vuelve a asentar: una reimpresión de lo que nunca se emitió sería una emisión
+sin rastro. Una sola constancia sin hoja de entrega sale byte por byte igual que
+al emitirla. Se reimprime desde el historial y desde el expediente.
 
-```bash
-npm run dc3:generate -- --config referencias/privado/dc3-config.json
-```
+### Quién emitió
 
-Códigos de salida: `0` correcto, `1` error, `2` conflictos sin sobrescribir,
-`3` metadatos legales pendientes.
+Cada asiento lleva la cuenta de consola de quien emitió, leída de la sesión.
+`USUARIO_CAPACITACION` queda sólo para el acceso abierto del piloto.
 
-### El día de la aprobación
+### Datos del formato
 
-Cuando Capacitación entregue los tres metadatos, el procedimiento completo es:
+De sólo lectura: lo que imprime cada curso, la razón social, las firmas y el
+membrete, la regla del corte, y lo que sale en blanco —trabajadores sin clave de
+ocupación, CURP o puesto; las combinaciones de área y puesto sin clave— con un
+CSV para completar la clave en el padrón (`/dc3/sin-ocupacion.csv`, sin CURP).
 
-1. capturarlos en la copia privada de la configuración;
-2. `npm run dc3:check` hasta que salga con `0`;
-3. `npm run dc3:plan` y conciliar los conteos;
-4. `npm run dc3:generate`.
+### Fuera del módulo
 
-No hay ningún paso de reproceso: el cruce, la identidad, el ledger y la
-plantilla ya están fijados. `readiness.emitOnApproval` anticipa desde hoy
-cuántas constancias saldrán en ese momento.
+- **Inicio** pone en «Lo que toca ahora» las constancias por emitir desde el
+  corte, con enlace a la bandeja.
+- **La ficha del trabajador** reconoce lo emitido y enlaza al expediente DC-3.
 
-`dc3:generate` se niega a correr —salida `3`— mientras algún curso configurado
-tenga metadatos pendientes. Un lote a medias no se puede deshacer, porque el
-ledger fija lo ya emitido. Si Capacitación aprueba un curso antes que los otros,
-la emisión parcial es legítima pero debe pedirse a propósito:
+## Privacidad
 
-```bash
-npm run dc3:generate -- --config referencias/privado/dc3-config.json --allow-partial
-```
-
-Los cursos aprobados se emiten y el resto queda bloqueado con su motivo. Cuando
-después se aprueben los faltantes, la corrida siguiente genera únicamente los
-nuevos y reporta los anteriores como repetidos, sin conflictos.
-
-## Banco de pruebas local
-
-El resto del ecosistema se prueba en un navegador —`preview:ocr` y
-`preview:platform`—; DC-3 sólo se podía revisar leyendo JSON en la terminal, y
-las tres preguntas que más importan antes de la aprobación son visuales: cuántas
-constancias salen con cierta duración, cómo queda impreso el formato oficial y
-si la emisión completa se comporta como está documentada.
-
-```bash
-npm run preview:dc3
-npm run preview:dc3 -- --config referencias/privado/dc3-config.json --port 4180
-```
-
-El servidor escucha sólo en `127.0.0.1:4175`, valida `Host` y origen y responde
-con `no-store`. Tiene cuatro paneles:
-
-1. **Metadatos de ensayo**: duración, área temática, agente y las tres firmas.
-   Se aplican sobre una copia en memoria de la configuración; cerrar el proceso
-   los descarta y la configuración privada no se toca. Aprobar sigue siendo
-   capturarlos en `referencias/privado/dc3-config.json`.
-2. **Plan sobre las fuentes reales**: ejecuta el mismo punto de entrada que
-   `npm run dc3:plan`, en sólo lectura, y publica exactamente los mismos
-   agregados. Una corrida completa sobre las referencias entregadas tarda unos
-   140 ms, así que responde a cada cambio de metadatos sin caché.
-3. **Vista previa de la constancia**: compone el PDF con una identidad inventada
-   y los metadatos capturados, lo muestra en pantalla, lo ofrece para descargar y
-   lista campo por campo lo que quedó impreso. No consulta el padrón ni escribe
-   nada.
-4. **Ensayo de emisión**: única ruta con escritura. Emite contra un padrón
-   sintético en una carpeta temporal fuera del proyecto, corre dos veces y
-   compara: la segunda vuelta debe reportar repetidas y cero nuevas. La carpeta
-   se elimina al terminar.
-
-Dos límites lo mantienen seguro y son parte del contrato, no una omisión:
-
-- Ningún nombre, número de nómina o CURP sale por HTTP. Sobre datos reales el
-  banco publica conteos y hashes; los únicos datos personales que aparecen en
-  pantalla son inventados. El detalle por candidato sigue siendo
-  `npm run dc3:report`, que lo deja en `referencias/privado/` con modo `0600`.
-- La emisión real no tiene botón. Un lote no se deshace porque el ledger fija lo
-  emitido, así que sigue siendo un acto deliberado de `npm run dc3:generate`,
-  con su lock, su ledger y sus códigos de salida.
-
-## Idempotencia, privacidad y recuperación
-
-- La identidad lógica es un SHA-256 de trabajador + curso. El nombre del
-  archivo usa un hash estable, no el nombre ni el número de nómina.
-- La huella efectiva incluye los datos impresos en la constancia —identidad,
-  curso, fecha, los tres metadatos legales y las firmas—, la fecha de corte y
-  el hash de la plantilla. `configVersion` queda deliberadamente fuera: es una
-  etiqueta humana y se guarda en el ledger sólo como dato de auditoría. Si
-  participara en la huella, renombrarla al aprobar un segundo curso convertiría
-  en conflicto todas las constancias ya emitidas.
-- El ledger progresa por `PENDING -> COMPLETED`. Si la ejecución se interrumpe
-  después de escribir el archivo, el siguiente intento verifica su hash y
-  completa el journal.
-- Un replay idéntico no crea otro archivo. Un cambio de fecha, identidad,
-  plantilla o metadatos para la misma constancia termina en conflicto; nunca
-  sobrescribe.
-- Todos los archivos, el ledger y el reporte de bloqueos viven bajo
-  `referencias/privado/`, con permisos locales restrictivos y fuera de Git. El
-  reporte sí contiene número de trabajador, hoja y fila, porque su único
-  propósito es corregir la fuente; por eso la ruta se valida y una configuración
-  que apunte fuera de esa carpeta aborta.
-- Las fuentes DC-3 —padrón semanal con CURP, plantilla oficial firmada y la
-  referencia SIRCE— quedaron añadidas a `.gitignore`. Estaban sin rastrear pero
-  tampoco ignoradas, así que un `git add -A` las habría publicado.
-- Los logs y el resumen contienen sólo conteos, códigos e hashes. Las pruebas,
-  renders y fixtures usan identidades completamente sintéticas.
-- El PDF de salida no contiene rutas locales, autores ni fecha de generación: no
-  hereda metadatos de la plantilla ni del equipo que lo emitió.
+- Los CSV de la bandeja y de la ocupación no llevan CURP.
+- Las respuestas con constancias van con `cache-control: no-store`.
+- Las pruebas usan identidades sintéticas; el material de referencia con datos
+  personales vive fuera de Git.
 
 ## Línea base observada
 
-El plan de sólo lectura sobre las referencias entregadas detectó:
-
-| Métrica | Resultado |
-|---|---:|
-| Trabajadores en matriz | 1,686 |
-| Trabajadores en hojas activas | 1,686 |
-| Identidades activas completas para DC-3 | 1,684 |
-| Constancias potenciales | 1,743 |
-| Inducción desde 2026 | 139 |
-| QMS desde 2026 | 453 |
-| LOTO desde 2026 | 1,151 |
-| Trabajadores con un curso detectado | 828 |
-| Trabajadores con dos cursos detectados | 429 |
-| Trabajadores con los tres cursos detectados | 19 |
-| Constancias que saldrán al aprobar los metadatos | 1,743 |
-| Constancias bloqueadas por la fuente | 0 |
-
-Son conteos de detección, no constancias emitidas. Con la configuración de
-ejemplo las 1,743 quedan bloqueadas por los tres metadatos pendientes.
-
-Las dos identidades activas con CURP inválida **no** son candidatas a DC-3: no
-tienen curso ni alta posterior al corte. Deben corregirse en la fuente de todas
-formas, pero hoy no reducen las 1,743. Ningún trabajador de la matriz falta en
-las hojas activas.
+El conteo de agosto de 2026 sobre las referencias entregadas, con la regla del
+corte, detectó 1,743 constancias potenciales desde 2026: 139 de inducción, 453
+de QMS y 1,151 de LOTO, sobre 1,684 identidades activas completas. Es un
+conteo de detección, no de constancias emitidas.
 
 ## Qué está verificado y qué no
 
-Verificado con evidencia ejecutada:
+Verificado: el compositor —una página, bytes deterministas, nombre largo en dos
+renglones, leyendas horneadas contra el borrador oficial—; la bandeja, el
+periodo, la emisión individual y múltiple, la descarga por número de solicitud,
+la reimpresión, el expediente, la cobertura y los topes en los dos papeles, con
+un padrón sintético.
 
-- La plantilla oficial real acepta el llenado. Hasta esta revisión ninguna
-  prueba la tocaba: todas usaban una plantilla sintética construida para calzar
-  con las celdas esperadas, así que un cambio de formato en el archivo oficial
-  habría aparecido apenas el día de la emisión. Ahora su contrato —nombre,
-  puesto, curso, duración, área, agente, los 18 recuadros de CURP y los dos
-  bloques de fecha— está fijado por una prueba que además comprueba que el
-  archivo no se modifica.
-- El punto de entrada completo, no sólo sus piezas: configuración, resolución
-  de rutas, frontera privada, lock, ledger, resumen y códigos de salida.
-- El ensayo del día de la aprobación sobre un proyecto sintético completo
-  —matriz XLSB, padrón activo y plantilla—: metadatos vacíos bloquean, la
-  emisión se niega, al capturarlos salen todas las constancias, el replay las
-  reporta como repetidas y renombrar `configVersion` no genera conflictos.
-- La aprobación parcial: exige bandera explícita y no invalida lo ya emitido.
-- Un cambio real de metadatos entra en conflicto y deja intacto el archivo
-  emitido, comprobado por hash.
-- Las dos garantías nuevas se validaron por mutación: al reintroducir
-  `configVersion` en la huella y al quitar la guarda de lote parcial, las
-  pruebas correspondientes fallan.
-
-No verificado:
-
-- La emisión con datos reales, porque no existen metadatos aprobados.
-- La compilación del cliente VBA, que requiere Excel para Windows.
-
-## Divergencias con el cliente VBA: cerradas
-
-Hubo dos, y ambas dejaron de existir el 2026-08-01 al eliminarse `KcmDc3.bas`.
-Se dejan anotadas porque explican por qué la emisión quedó en una sola ruta:
-
-- `KcmDc3.bas` copiaba la plantilla oficial y conservaba su extensión, de modo
-  que entregaba una hoja de cálculo —con la cuadrícula y el reverso de consulta
-  que este documento explica por qué no deben llegar al trabajador—, mientras
-  este worker compone el PDF de una página.
-- Un trabajador presente en la matriz pero ausente de las hojas activas se
-  reporta aquí como `ACTIVE_IDENTITY_NOT_FOUND`, y el módulo VBA lo descartaba
-  en silencio porque filtraba por existencia antes de crear el candidato.
-
-Este worker es la única ruta de emisión. El cliente VBA conserva liberación y
-snapshot, que sí exigen estar del lado de Excel.
+No verificado: la emisión contra la base real, que sigue pausada.
 
 ## Alcance pendiente
 
-- Aprobación formal de los metadatos de los tres cursos y del mapeo ocupacional
-  si se decide llenar ese campo.
-- Ejecución piloto sobre una copia privada, revisión humana de una muestra y
-  definición de retención.
-- Programación en una cuenta de servicio del equipo y monitoreo de los códigos
-  de salida `2` —conflictos sin sobrescritura— y `3` —metadatos pendientes—.
-- Empaquetado opcional como `.exe` mediante Node SEA después del piloto. No es
-  necesario para validar la lógica ni conviene introducirlo antes de fijar la
-  configuración legal.
+- Que el padrón real traiga la clave de ocupación (hoy 0 de 1,685).
+- Aprobar en el catálogo de cursos la duración, el área temática y el agente de
+  los cursos que aún no los tengan.
+- La acción `DC3_REPORT_V1` del puente VBA quedó sin uso desde que se retiró
+  `KcmDc3`: ningún cliente la manda, y `dc3.evento_excel` no recibe asientos
+  nuevos.

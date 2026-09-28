@@ -27,7 +27,27 @@
 :root {
   /* Tinta y texto */
   --kcm-ink: #0f1e3d;
-  --kcm-muted: #5a6b85;
+  /*
+   * La tinta apagada. Era `#5a6b85`, que sobre tarjeta blanca da 5.4:1: pasa AA
+   * y se lee bien en una pantalla buena y de frente, que no es donde se usa esta
+   * consola. Y no pinta un detalle suelto, sino los treinta sitios donde vive el
+   * texto que acompaña: el subtítulo de la barra, las entradas del menú, las
+   * unidades de las cifras, los rótulos de formulario. Subida a 7.0:1 el tono
+   * sigue siendo el mismo azul agrisado —no se vuelve tinta plena, la jerarquía
+   * no cambia— y deja de apagarse contra el blanco.
+   */
+  --kcm-muted: #4a5a78;
+  /*
+   * Texto secundario legible. `--kcm-muted` da 5.4:1 sobre tarjeta blanca y
+   * pasa AA por poco, pero es el color del renglón explicativo, que es el
+   * texto que más se repite en la consola y el que se lee en peores
+   * condiciones: pantalla de planta, de pie y con prisa. Éste da 7.9:1.
+   *
+   * Es un token y no un `color-mix` en la regla porque la hoja resuelve todos
+   * sus colores por token, y porque una función de color que un navegador no
+   * entienda invalida la declaración entera y deja el texto en tinta plena.
+   */
+  --kcm-secundario: #3d4a63;
   --kcm-line: rgba(34, 76, 159, 0.12);
 
   /* Marca */
@@ -79,8 +99,26 @@
   --kcm-gradient-warn-hover: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
 
   /* Tipografía */
-  --kcm-font: "IBM Plex Sans", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --kcm-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /*
+   * La familia de texto: Manrope, servida por la propia plataforma —ver
+   * `web/estaticos.ts`—, con la de cada sistema detrás por si el archivo no
+   * llegara. Antes la hoja nombraba una familia que no viajaba con la
+   * plataforma y cada equipo dibujaba la suya: la misma pantalla se veía
+   * distinta en cada computadora.
+   */
+  --kcm-font: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /*
+   * El peso del texto que acompaña. La consola lo tenía en 450 —medio escalón
+   * sobre el normal— y ese medio escalón sólo existe en una fuente variable: en
+   * la que no lo es, el navegador redondea a 400 y el renglón explicativo acaba
+   * dibujado igual que el cuerpo, que es justo lo que no se quería. 500 es un
+   * peso real en las dos familias del sistema y se sostiene en pantalla de
+   * planta, que es donde este texto se lee peor.
+   */
+  --kcm-peso-apoyo: 500;
+  /* Lo que se lee como dato —nóminas, fechas, claves— va en IBM Plex Mono. */
+  --kcm-font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   /*
    * Tipografía de despliegue del quiosco. `Kiosk.html` pide Montserrat a Google
    * Fonts; aquí no se descarga nada, porque la política declara `font-src
@@ -96,6 +134,27 @@
   --kcm-space-3: 1.1rem;
   --kcm-space-4: 1.75rem;
   --kcm-space-5: 2.75rem;
+
+  /*
+   * Movimiento. Tres duraciones y cuatro curvas, y nada más.
+   *
+   * La regla que las ordena: aquí el movimiento sirve para decir dónde está uno,
+   * no para adornar. Por eso lo más largo son 320 ms —el recorrido entre dos
+   * secciones— y lo más corto 110 ms, que es lo que tarda un botón en hundirse.
+   *
+   * Las curvas no son intercambiables. Lo que **entra** desacelera: llega
+   * deprisa y se posa. Lo que **sale** acelera: se va sin hacerse notar. Lo que
+   * se mueve dentro de la pantalla sin entrar ni salir usa la estándar. Y el
+   * resorte —el único rebote de toda la consola— es el del botón al soltarlo,
+   * porque un botón que vuelve sin pasarse no se siente pulsado.
+   */
+  --kcm-mov-toque: 110ms;
+  --kcm-mov: 200ms;
+  --kcm-mov-vista: 320ms;
+  --kcm-curva: cubic-bezier(0.4, 0, 0.2, 1);
+  --kcm-curva-entra: cubic-bezier(0.16, 0.9, 0.28, 1);
+  --kcm-curva-sale: cubic-bezier(0.5, 0, 0.9, 0.3);
+  --kcm-curva-resorte: cubic-bezier(0.34, 1.32, 0.62, 1);
 
   /*
    * Respaldos de las superficies y del armazón.
@@ -122,76 +181,28 @@
   --marca-halo: 0 8px 20px -12px rgba(34, 76, 159, 0.5);
   --tarjeta-filo: var(--kcm-shadow);
 
-  /*
-   * Vidrio líquido. La consola es plana a propósito —el rediseño retiró el
-   * vidrio esmerilado justamente porque competía con las tablas—, así que estos
-   * valores existen para una sola pieza: la telaraña del avance DNC de la
-   * ficha, que no es una tabla ni un formulario sino una figura, y donde el
-   * relieve ayuda a leerla en vez de estorbar.
-   */
-  /*
-   * El tinte va dentro del degradado y no en manchas difuminadas aparte.
-   * Antes eran tres círculos con `filter: blur()`: cada uno tenía un centro
-   * saturado y un borde que se apagaba deprisa, así que en pantalla se leían
-   * como tres grumos de color en lugar de una lámina teñida. Cuatro capas de
-   * `radial-gradient` muy abiertas, ancladas fuera del panel y terminadas en
-   * alfa cero del mismo tono —no en `transparent`, que es negro y ensucia—
-   * dan una malla continua sin un solo píxel de transición dura.
-   */
-  --vidrio-fondo:
-    radial-gradient(
-      95% 115% at 0% 0%,
-      rgba(34, 76, 159, 0.32) 0%,
-      rgba(34, 76, 159, 0.11) 38%,
-      rgba(34, 76, 159, 0) 72%
-    ),
-    radial-gradient(
-      92% 122% at 100% 104%,
-      rgba(58, 108, 203, 0.34) 0%,
-      rgba(58, 108, 203, 0.12) 40%,
-      rgba(58, 108, 203, 0) 74%
-    ),
-    radial-gradient(
-      82% 112% at 46% 114%,
-      rgba(143, 182, 221, 0.32) 0%,
-      rgba(143, 182, 221, 0.09) 42%,
-      rgba(143, 182, 221, 0) 76%
-    ),
-    radial-gradient(72% 104% at 94% -10%, rgba(91, 141, 196, 0.26) 0%, rgba(91, 141, 196, 0) 64%),
-    linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.82) 0%,
-      rgba(255, 255, 255, 0.3) 46%,
-      rgba(255, 255, 255, 0.78) 100%
-    );
-  --vidrio-borde: rgba(255, 255, 255, 0.95);
-  /*
-   * Cuatro capas, y cada una hace una cosa. El filo claro arriba a la izquierda
-   * y el oscuro abajo a la derecha son los que dan grosor: sin ese par, un
-   * panel translúcido se lee como una capa de pintura y no como una lámina. La
-   * tercera es la sombra que el propio cristal proyecta hacia dentro por el
-   * canto inferior, y la cuarta la que proyecta sobre lo que tiene debajo.
-   */
-  --vidrio-sombra:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.98), inset -1px -1px 0 rgba(34, 76, 159, 0.12),
-    inset 0 -20px 42px -32px rgba(23, 53, 111, 0.4), 0 26px 54px -34px rgba(34, 76, 159, 0.62);
-  --vidrio-desenfoque: blur(18px) saturate(172%);
-  --vidrio-brillo: rgba(255, 255, 255, 0.72);
-  /* El destello diagonal que recorre la lámina, como luz de ventana. */
-  --vidrio-reflejo: linear-gradient(
-    108deg,
-    transparent 26%,
-    rgba(255, 255, 255, 0.72) 40%,
-    rgba(255, 255, 255, 0.24) 47%,
-    transparent 58%
-  );
-
   /* Densidad CAPTA: rótulos diminutos, cifras grandes y filas apretadas. */
-  --capta-rotulo: 0.58rem;
-  --capta-texto: 0.8rem;
+  /*
+   * El rótulo estaba en 0.58rem: nueve píxeles y pico, en mayúsculas, con
+   * interletra abierta y el color más flojo de la hoja. Es el que nombra cada
+   * cifra del tablero y cada columna de tabla, así que el dato se leía y su
+   * nombre no. A 0.7rem sigue siendo el texto más chico de la consola —la
+   * jerarquía la sostienen el tamaño, la caja alta y el peso, no la palidez—.
+   */
+  --capta-rotulo: 0.7rem;
+  --capta-texto: 0.84rem;
   --capta-cifra: 1.75rem;
   --capta-linea: rgba(34, 76, 159, 0.1);
-  --capta-tenue: #8493aa;
+  /*
+   * Rótulo diminuto de los mosaicos. Era `#8493aa` (3.1:1, por debajo del 4.5:1
+   * que WCAG exige para texto pequeño), pasó a `#64748f` (4.9:1) y ahora a
+   * 6.4:1. El 4.9:1 cumplía la norma y seguía sin leerse: la norma es el piso
+   * para un texto de tamaño normal, y éste es el más chico de la consola, en
+   * mayúsculas y con interletra abierta, que son tres cosas que restan.
+   * Conserva su sitio en la escala —sigue siendo más claro que `--kcm-muted`—,
+   * así que la jerarquía no cambia.
+   */
+  --capta-tenue: #515f80;
 }
 
 /*
@@ -237,7 +248,10 @@
   --tarjeta-filo: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
   --kcm-ink: #f5f6f8;
-  --kcm-muted: rgba(226, 230, 236, 0.62);
+  --kcm-muted: rgba(226, 230, 236, 0.78);
+  /* En oscuro el secundario sube en vez de bajar: sobre fondo negro, más
+   * opacidad es más contraste. */
+  --kcm-secundario: rgba(236, 240, 246, 0.86);
   --kcm-line: rgba(255, 255, 255, 0.14);
   --kcm-canvas: #0a0a0c;
   --kcm-surface: rgba(0, 0, 0, 0.36);
@@ -246,5 +260,5 @@
   --kcm-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.6);
   --kcm-shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
   --capta-linea: rgba(255, 255, 255, 0.12);
-  --capta-tenue: rgba(226, 230, 236, 0.5);
+  --capta-tenue: rgba(226, 230, 236, 0.72);
 }

@@ -186,17 +186,16 @@ function servicio(input: { puerto?: LoadLogPort; sha256?: string }): {
 // ---------------------------------------------------------------- el asiento
 
 describe("Bitácora de cargas · qué queda asentado", () => {
-  it("el padrón asienta encargo, revisión y aplicación, en ese orden", async () => {
+  it("el padrón asienta revisión y aplicación, en ese orden", async () => {
     const { servicio: padronService, puerto } = servicio({});
 
-    padronService.solicitar("Maricela0000");
     const plan = await padronService.previsualizar(Buffer.from("x"), "sem 33 CAP.xlsx");
     await padronService.aplicar(plan.planId, "Maricela0000");
 
     const asientos = await puerto.listar(10);
     assert.deepEqual(
       asientos.map((asiento) => asiento.hecho),
-      ["APLICADA", "REVISADA", "ENCARGADA"],
+      ["APLICADA", "REVISADA"],
     );
     assert.ok(asientos.every((asiento) => asiento.tipo === "PADRON"));
   });
@@ -226,15 +225,6 @@ describe("Bitácora de cargas · qué queda asentado", () => {
     const [rechazo] = await puerto.listar(1);
     assert.equal(rechazo?.hecho, "RECHAZADA");
     assert.equal(rechazo?.resumen["motivo"], "ROSTER_PLAN_NOT_FOUND");
-  });
-
-  it("el encargo no lleva huella: todavía no hay archivo que huellar", async () => {
-    const { servicio: padronService, puerto } = servicio({});
-    padronService.solicitar("Maricela0000");
-
-    const [encargo] = await puerto.listar(1);
-    assert.equal(encargo?.hecho, "ENCARGADA");
-    assert.equal(encargo?.sha256, "");
   });
 });
 
@@ -361,7 +351,7 @@ describe("Bitácora de cargas · la pantalla del historial", () => {
     assert.match(respuesta.body, /Historial de cargas/u);
     // Sin base la bitácora muere con el proceso, y la pantalla tiene que decirlo:
     // un historial que se vacía solo sin avisar es peor que no tenerlo.
-    assert.match(respuesta.body, /se pierde al reiniciarlo/u);
+    assert.match(respuesta.body, /se pierde al reiniciar\s+la plataforma/u);
     await app.close();
   });
 
@@ -404,7 +394,7 @@ describe("Bitácora de cargas · el adaptador de PostgreSQL", () => {
     const bitacora = new SupabaseLoadLog(espia);
 
     // El asiento de rechazo lleva lo que vino del formulario: es el único
-    // identificador que un navegador puede fabricar, y `kcm.identificador_solicitud`
+    // identificador que un navegador puede fabricar, y `comun.identificador_solicitud`
     // exige de 8 a 128 caracteres de un alfabeto acotado.
     await bitacora.registrar({
       tipo: "PADRON",
@@ -434,14 +424,14 @@ describe("Bitácora de cargas · el adaptador de PostgreSQL", () => {
     assert.equal(espia.ultimosParametros[5], "8f14e45f-ceea-467a-9575-3f3a0f2b1a2c");
   });
 
-  it("un encargo sin huella no viola el NOT NULL de la entidad", async () => {
+  it("un asiento sin huella no viola el NOT NULL de la entidad", async () => {
     const espia = new EjecutorEspia();
     const bitacora = new SupabaseLoadLog(espia);
     await bitacora.registrar({
-      tipo: "MATRIZ",
-      hecho: "ENCARGADA",
+      tipo: "PADRON",
+      hecho: "RECHAZADA",
       actor: "Maricela0000",
-      archivo: "(pendiente de entrega)",
+      archivo: "(revisión vencida)",
       sha256: "",
       resumen: {},
     });
@@ -540,11 +530,28 @@ describe("Padrón contra matriz · divergencias que no se escriben", () => {
     const plan = await s.previsualizar(Buffer.from("x"), "sem 33 CAP.xlsx");
     await s.aplicar(plan.planId, "Maricela0000");
 
-    // Las escrituras son las de siempre. Ninguna toca nómina ni planta: el
-    // puerto no expone forma de hacerlo, y esta prueba fija que siga así.
+    // Ninguna escritura toca nómina ni planta: el puerto no expone forma de
+    // hacerlo y las columnas personales (0046) salen de una lista cerrada que
+    // no las incluye. Esta prueba fija que siga así.
     const escrito = repositorio.ultimasEscrituras;
     assert.ok(escrito);
-    assert.deepEqual(Object.keys(escrito).sort(), ["altas", "curp", "inducciones", "ocupaciones"]);
+    assert.deepEqual(Object.keys(escrito).sort(), [
+      "altas",
+      "curp",
+      "datos",
+      "enArchivo",
+      "fechasDeBaja",
+      "inducciones",
+      "ocupaciones",
+      "reactivar",
+    ]);
+    for (const [, columna] of escrito.datos ?? []) {
+      assert.ok(!["tipo_nomina", "planta"].includes(columna), `el padrón escribió ${columna}`);
+    }
+    // En el panel la diferencia sí se ve, en gris: sólo aviso.
+    const avisos = (plan.detalle?.movimientos ?? []).filter((m) => m.soloAviso);
+    assert.ok(avisos.some((m) => m.campo === "Tipo de nómina"));
+    assert.ok(avisos.some((m) => m.campo === "Planta"));
   });
 
   it("sin dato en la base no hay divergencia: es un hueco, no un desacuerdo", async () => {

@@ -16,8 +16,8 @@ Windows ni de automatización COM.
 
    `ENDPOINT = https://<FQDN>/api/v1/vba-bridge`
 
-5. Importar los quince módulos de `clients/excel/vba/`; `KcmDiagHash.bas` es sólo una
-   herramienta de diagnóstico y no forma parte de la instalación normal.
+5. Importar los diecisiete módulos de `clients/excel/vba/`: dieciséis `.bas` y la clase
+   `KcmDiccionario.cls`.
 6. Ejecutar `KcmInstallButtons` y después `KcmVerificarMatriz`. El humo de la
    instalación se lee entero en la hoja `KCM_ESTADO`: configuración, credencial,
    archivo maestro, forma de la hoja y conexión, cada una con su estado. No
@@ -27,17 +27,18 @@ Windows ni de automatización COM.
 
 1. Abrir el editor con `Alt+F11` y ejecutar `Debug > Compile VBAProject`. Registrar
    versión de Excel, Windows y resultado, sin datos personales.
-2. Ejecutar `KcmInstallBridge` y revisar que las hojas técnicas queden ocultas.
-3. Ejecutar `KcmApplyPendingReleases` con una liberación sintética
-   `NO_OVERWRITE`; repetirla y comprobar que no aparece un segundo efecto.
+2. Ejecutar `KcmAsistenteConexion`, que crea las hojas técnicas, y revisar que
+   queden ocultas.
+3. Pulsar **Actualizar** con una liberación sintética `NO_OVERWRITE`; repetirlo
+   y comprobar que no aparece un segundo efecto.
 4. Ejecutar un caso sintético `OVERWRITE_WITH_HISTORY`. Comprobar que
    `KCM_SOBRESCRITURAS` contiene valor anterior, actor, referencia del motivo y
    fecha antes de confirmar el nuevo valor.
 5. Forzar un conflicto y comprobar que el lote completo falla sin escritura
    parcial. Forzar después un error antes de guardar y comprobar el rollback de
    valor, comentario y formato.
-6. Ejecutar `KcmTransmitMatrixSnapshot` dos veces sobre la misma copia y confirmar
-   idempotencia en `MATRIX_IMPORT_V1`.
+6. Pulsar **Actualización completa** dos veces sobre la misma copia y confirmar
+   idempotencia en `MATRIX_IMPORT_V1`: la segunda no cambia nada.
 7. Revocar la credencial desde `/excel` y comprobar que la siguiente consulta
    falla cerrada. Repetir con credencial vencida y con equipo distinto.
 

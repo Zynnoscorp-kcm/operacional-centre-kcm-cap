@@ -9,7 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { WorkerNumber } from "../../domain/numero-trabajador.ts";
+import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type { HcRecord } from "../../domain/importacion-matriz/tipos.ts";
 import type {
   AttendanceRecord,
