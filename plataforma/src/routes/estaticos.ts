@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 import {
   guionAcceso,
   guionHaces,
+  guionOcupaciones,
   guionQuiosco,
   hojaDeEstilos,
   imagenes,
@@ -32,7 +33,7 @@ export function registerAssetRoutes(app: FastifyInstance): void {
   // Los tres guiones —el fondo de haces, el del quiosco y el de la puerta— bajo
   // la misma regla que la hoja: hash en la dirección, sin dato dentro y caché
   // eterna.
-  for (const guion of [guionHaces, guionQuiosco, guionAcceso]) {
+  for (const guion of [guionHaces, guionQuiosco, guionAcceso, guionOcupaciones]) {
     app.get(guion.ruta, (_peticion, respuesta) => {
       return respuesta
         .type(guion.tipo)

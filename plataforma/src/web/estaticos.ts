@@ -162,6 +162,8 @@ export const guionQuiosco: HojaDeEstilos = construirGuion("quiosco.js");
  */
 export const guionAcceso: HojaDeEstilos = construirGuion("acceso.js");
 
+export const guionOcupaciones: HojaDeEstilos = construirGuion("ocupaciones.js");
+
 function construirGuion(nombre: string): HojaDeEstilos {
   const contenido = readFileSync(join(DIRECTORIO_ESTATICOS, nombre), "utf8");
   const hash = huella(contenido);

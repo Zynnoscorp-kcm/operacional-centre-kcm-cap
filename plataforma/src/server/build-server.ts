@@ -17,6 +17,7 @@ import { buildLoggerOptions } from "../observability/logging.ts";
 import { registerAccessRoutes } from "../routes/acceso.ts";
 import { registerAgendaRoutes } from "../routes/agenda.ts";
 import { registerAssetRoutes } from "../routes/estaticos.ts";
+import { guionOcupaciones } from "../web/estaticos.ts";
 import { registerHealthRoute } from "../routes/salud.ts";
 import { registerHomeRoute } from "../routes/inicio.ts";
 import { apagadoPorOmision, programarApagado, registerShutdownRoutes } from "../routes/apagado.ts";
@@ -566,6 +567,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerOccupationRoutes(app, {
     config,
     extraer: (archivo) => extractorDeOcupaciones.extraer(archivo),
+    guion: guionOcupaciones,
     ...(deps.occupationService ? { servicio: deps.occupationService } : {}),
   });
 

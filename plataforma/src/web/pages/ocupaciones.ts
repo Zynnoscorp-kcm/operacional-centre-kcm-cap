@@ -12,6 +12,7 @@
 
 import type { EnvironmentName } from "../../config/environment.ts";
 import type { Ocupacion, Subarea } from "../../domain/ocupaciones/catalogo.ts";
+import type { HojaDeEstilos } from "../estaticos.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
@@ -40,6 +41,7 @@ export interface DatosDeOcupaciones {
   readonly subareas: readonly Subarea[];
   readonly tamanoDelCatalogo: number;
   readonly limiteDeBusqueda: number;
+  readonly guion?: HojaDeEstilos | undefined;
 }
 
 function cifra(valor: number): string {
@@ -65,16 +67,25 @@ function renderFormulario(datos: DatosDeOcupaciones): Html {
               action="/ocupaciones"
               enctype="multipart/form-data"
               class="formulario"
+              id="form-clasificar"
             >
               <label>
                 Archivo del padrón
                 <input type="file" name="archivo" accept=".xlsx" required />
               </label>
-              <button type="submit">Clasificar faltantes</button>
+              <button type="submit" id="btn-clasificar">Clasificar faltantes</button>
             </form>
+            <div id="progreso-ia" class="tarjeta-aviso tarjeta-aviso-ia" style="display:none">
+              <p id="progreso-texto">
+                <strong>Clasificando ocupaciones…</strong> Cada caso se consulta con dos modelos de IA.
+                No cierres ni recargues esta pestaña.
+              </p>
+              <div class="barra-progreso"><div class="barra-progreso-relleno" id="barra-relleno"></div></div>
+              <p class="texto-nota" id="progreso-detalle" style="margin-top:0.5rem">Preparando…</p>
+            </div>
             <p class="texto-nota nota-bajo-tira">
               Sólo viajan al modelo el puesto y el centro de costos; ningún dato personal sale de la
-              plataforma. Puede tardar hasta un minuto.
+              plataforma. Puede tardar uno o dos minutos.
             </p>`
         : html`<p class="texto-vacio">
             El agente de ocupaciones no está disponible en esta instalación. La búsqueda en el
@@ -289,6 +300,7 @@ export function renderOccupationsPage(datos: DatosDeOcupaciones): string {
   const contenido = html`
     <div class="rejilla-dos">${renderFormulario(datos)} ${renderLeyenda()}</div>
     ${datos.resultado ? renderResultado(datos.resultado) : ""} ${renderCatalogo(datos)}
+    ${datos.guion ? html`<script src="${datos.guion.ruta}"></script>` : ""}
   `;
 
   return renderLayout({
