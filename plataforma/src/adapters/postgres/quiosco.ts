@@ -16,7 +16,7 @@
 import { scryptSync, timingSafeEqual } from "node:crypto";
 
 import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
-import { InvalidInputError } from "../../domain/quiosco/errores.ts";
+import { InvalidInputError, SessionCodeTakenError } from "../../domain/quiosco/errores.ts";
 import type {
   AuditEventRecord,
   AttendanceRecord,
@@ -165,6 +165,21 @@ interface ConcesionRow {
   solicitud_id: string | null;
 }
 
+/**
+ * La violación de unicidad de `codigo_sesion`. Se reconoce por la restricción
+ * y no sólo por el código `23505`: la solicitud de creación también es única,
+ * y ese choque no se arregla pidiendo otro número.
+ */
+function esCodigoDuplicado(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const falla = error as { code?: unknown; constraint?: unknown };
+  return (
+    falla.code === "23505" &&
+    typeof falla.constraint === "string" &&
+    falla.constraint.includes("codigo_sesion")
+  );
+}
+
 export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPort {
   private readonly db: SqlExecutor;
 
@@ -235,28 +250,45 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
       )
       RETURNING *;
     `;
-    await this.db.query(sql, [
-      session.sessionId,
-      session.sessionCode,
-      capacitacionId,
-      capacitadorId,
-      session.date,
-      session.durationMinutes,
-      session.room || null,
-      session.startTime || null,
-      session.eventType,
-      session.maxCapacity,
-      session.status,
-      session.authorized,
-      creadorId,
-      session.createdAt,
-      session.creationRequestId,
-      session.version,
-      autorizadaPor,
-      autorizadaEn,
-    ]);
+    try {
+      await this.db.query(sql, [
+        session.sessionId,
+        session.sessionCode,
+        capacitacionId,
+        capacitadorId,
+        session.date,
+        session.durationMinutes,
+        session.room || null,
+        session.startTime || null,
+        session.eventType,
+        session.maxCapacity,
+        session.status,
+        session.authorized,
+        creadorId,
+        session.createdAt,
+        session.creationRequestId,
+        session.version,
+        autorizadaPor,
+        autorizadaEn,
+      ]);
+    } catch (error) {
+      // Otra sesión creada al mismo tiempo se quedó con el consecutivo: el
+      // servicio pide el siguiente. Cualquier otra unicidad sigue siendo error.
+      if (esCodigoDuplicado(error)) throw new SessionCodeTakenError();
+      throw error;
+    }
 
     return session;
+  }
+
+  async getHighestSessionCodeNumber(): Promise<number> {
+    // Los códigos anteriores, `KCM-AAMMDD-XXXXXX`, no cuentan: no casan con
+    // el patrón y `MAX` ignora los nulos.
+    const res = await this.db.query<{ mayor: number | null }>(
+      `SELECT MAX(substring(codigo_sesion FROM '^KC-([0-9]{4})$')::int) AS mayor
+         FROM operacion.sesion;`,
+    );
+    return res.rows[0]?.mayor ?? 0;
   }
 
   async updateSession(sessionId: string, updates: Partial<SessionRecord>): Promise<SessionRecord> {

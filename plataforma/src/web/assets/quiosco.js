@@ -602,11 +602,12 @@
       codeForm.addEventListener("submit", function (e) {
         e.preventDefault();
         var value = codeInput ? codeInput.value.trim() : "";
+        // «KC1» ya es un código: el servidor lo completa a KC-0001.
         var cleanLen = value.replace(/[^A-Za-z0-9]/g, "").length;
-        if (cleanLen < 6 || cleanLen > 25) {
+        if (cleanLen < 3 || cleanLen > 25) {
           if (codeInput) codeInput.classList.add("input-error");
           showLauncherMessage(
-            "Escriba el código de sesión (KCM-260727-188AAA) o el código corto (ABCD-2345).",
+            "Escriba el código de sesión (KC-0001) o el código corto (ABCD-2345).",
             true,
           );
           return;

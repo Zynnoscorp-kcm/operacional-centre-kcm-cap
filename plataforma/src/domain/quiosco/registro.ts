@@ -279,8 +279,8 @@ export class KioskService {
 
       // El nombre del curso acompaña a la pantalla de registro mientras dura la
       // sesión. Cuesta una lectura por arranque de quiosco, no por registro, y
-      // evita que la única referencia visible sea un código de doce caracteres
-      // que nadie puede reconocer.
+      // evita que la única referencia visible sea un código que nadie puede
+      // reconocer.
       const training = await this.repo.getTrainingById(session.trainingId);
 
       return {

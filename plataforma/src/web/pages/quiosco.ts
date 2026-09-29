@@ -382,7 +382,7 @@ export function renderKioskPage(props: KioskPageProps): string {
                   Código de sesión
                 </h3>
                 <p style="margin:0 0 12px;font-size:0.85rem;color:rgba(226,230,236,0.55)">
-                  Código de sesión (KCM-260727-188AAA) o código de acceso (ABCD-2345).
+                  Código de sesión (KC-0001) o código de acceso (ABCD-2345).
                 </p>
                 <form id="kiosk-code-form" autocomplete="off" novalidate>
                   <input
@@ -390,7 +390,7 @@ export function renderKioskPage(props: KioskPageProps): string {
                     name="accessCode"
                     type="text"
                     maxlength="25"
-                    placeholder="KCM-260727-188AAA"
+                    placeholder="KC-0001"
                     required
                     autocomplete="off"
                     autocapitalize="characters"
@@ -525,7 +525,7 @@ export function renderKioskPage(props: KioskPageProps): string {
             <!--
                 Confirmación de sesión.
 
-                El código son doce caracteres que se dictan en voz alta, y en un
+                El código es un consecutivo que se dicta en voz alta, y en un
                 día con dos cursos en la misma sala equivocarse de uno no da
                 ninguna señal: el quiosco aceptaba el código y pasaba directo a
                 registrar. Las asistencias quedaban colgadas del curso ajeno y

@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { ReleaseRepositoryPort } from "../../ports/liberacion.port.ts";
+import { esCodigoDeSesion, normalizarCodigoDeSesion } from "../quiosco/codigo-de-sesion.ts";
 import type { ActorIdentity, AttendanceRecord, SessionRecord } from "../quiosco/tipos.ts";
 import { blockingReasons } from "../preliberacion/servicio.ts";
 import {
@@ -101,13 +102,14 @@ export class ReleaseService {
   /**
    * La interfaz humana muestra el código de sesión, mientras que los efectos
    * internos usan UUID. Resuelve ambos sin enviar un código legible a una
-   * columna UUID de PostgreSQL.
+   * columna UUID de PostgreSQL. Reconoce el código nuevo, `KC-0001` —también
+   * tecleado sin ceros—, y el anterior, `KCM-AAMMDD-XXXXXX`.
    */
   async resolveSessionReference(reference: string): Promise<string> {
     const value = assertIdentifier(reference, "sessionId");
-    const isVisibleSessionCode = /^KCM-\d{6}-[A-Z0-9]{6}$/i.test(value);
-    const session = isVisibleSessionCode
-      ? await this.#repo.getSessionByCode(value)
+    const codigo = normalizarCodigoDeSesion(value);
+    const session = esCodigoDeSesion(codigo)
+      ? await this.#repo.getSessionByCode(codigo)
       : await this.#repo.getSessionById(value);
     if (!session) {
       throw new InvalidReleaseStateError("La sesión no existe");

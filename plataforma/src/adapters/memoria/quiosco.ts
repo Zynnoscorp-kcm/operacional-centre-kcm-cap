@@ -15,6 +15,8 @@ import type {
   SessionRecord,
   TrainingCatalogItem,
 } from "../../domain/quiosco/tipos.ts";
+import { numeroDeCodigoDeSesion } from "../../domain/quiosco/codigo-de-sesion.ts";
+import { SessionCodeTakenError } from "../../domain/quiosco/errores.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
 import type { Clock } from "../../ports/reloj.port.ts";
 import { systemClock } from "../sistema/reloj-sistema.ts";
@@ -99,9 +101,21 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
 
   // --- Sesiones ---
   async createSession(session: SessionRecord): Promise<SessionRecord> {
+    // La misma unicidad que la base: dos sesiones no comparten código.
+    for (const existente of this.sessions.values()) {
+      if (existente.sessionCode === session.sessionCode) throw new SessionCodeTakenError();
+    }
     const copy = { ...session };
     this.sessions.set(session.sessionId, copy);
     return copy;
+  }
+
+  getHighestSessionCodeNumber(): Promise<number> {
+    let mayor = 0;
+    for (const session of this.sessions.values()) {
+      mayor = Math.max(mayor, numeroDeCodigoDeSesion(session.sessionCode) ?? 0);
+    }
+    return Promise.resolve(mayor);
   }
 
   async updateSession(sessionId: string, updates: Partial<SessionRecord>): Promise<SessionRecord> {

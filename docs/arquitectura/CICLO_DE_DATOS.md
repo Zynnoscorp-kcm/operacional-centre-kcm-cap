@@ -80,7 +80,8 @@ Conviene decirlo antes, porque casi toda la mecánica ya existe:
   sobrescritura conserva valor anterior, actor, motivo y procedencia **antes** de
   escribir.
 - El **puente de liberaciones**: la plataforma registra el efecto, el cliente VBA
-  lo materializa con marcador `KCM_VBA_V1|…`, calcula SHA del libro y acusa.
+  lo materializa con el código de la sesión en la nota de cada celda (`KC-0001`),
+  calcula SHA del libro y acusa.
 - La **bitácora de cargas** (`sistema.bitacora_auditoria` vía `BitacoraDeCargas`): los cuatro
   hechos —encargada, revisada, aplicada, rechazada— quedan asentados.
 

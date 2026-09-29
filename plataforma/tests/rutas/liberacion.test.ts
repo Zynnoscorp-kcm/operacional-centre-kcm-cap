@@ -120,6 +120,29 @@ describe("E10 · rutas de liberación", () => {
     await app.close();
   });
 
+  it("GET /liberacion acepta el código nuevo, también tecleado sin ceros", async () => {
+    const app = await buildServer({
+      config: config(),
+      clock: fixedClock(),
+      releaseRepository: new MemoryReleaseRepository({
+        sessions: [buildSession({ sessionCode: "KC-0007" })],
+        attendances: [buildAttendance("10001")],
+        mappings: [buildMapping("NO_OVERWRITE")],
+        trainings: [TRAINING_ID],
+      }),
+      releaseIntegritySecret: "secreto-de-integridad-de-pruebas-32-bytes",
+    });
+    for (const tecleado of ["KC-0007", "kc-7"]) {
+      const respuesta = await app.inject({
+        method: "GET",
+        url: `/liberacion?sessionId=${tecleado}`,
+      });
+      assert.equal(respuesta.statusCode, 200, tecleado);
+      assert.match(respuesta.body, /Validación previa/, tecleado);
+    }
+    await app.close();
+  });
+
   it("una sesión inexistente responde la pantalla con el motivo, no un 500", async () => {
     const { app } = await server();
     const respuesta = await app.inject({ method: "GET", url: "/liberacion?sessionId=SES-9999" });

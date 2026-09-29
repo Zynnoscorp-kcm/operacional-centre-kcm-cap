@@ -82,6 +82,9 @@ const TRADUCCION_DE_DOMINIO: Readonly<Record<string, readonly [number, ErrorCode
   EXCEL_CREDENTIAL_ALREADY_ACTIVE: [409, "CONFLICTO"],
   EXCEL_IMPORT_NOT_FOUND: [404, "NO_ENCONTRADO"],
   EXCEL_ACK_CONFLICT: [409, "CONFLICTO"],
+  // Sesiones: el consecutivo `KC-NNNN`
+  CODIGO_DE_SESION_OCUPADO: [409, "CONFLICTO"],
+  CODIGOS_DE_SESION_AGOTADOS: [409, "CONFLICTO"],
   // Consola interna: campos declarados y explorador de la base
   CAMPO_NO_ENCONTRADO: [404, "NO_ENCONTRADO"],
   CAMPO_DUPLICADO: [409, "CONFLICTO"],

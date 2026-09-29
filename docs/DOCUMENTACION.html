@@ -4159,7 +4159,7 @@ npm run preview:dc3   <i># banco de pruebas en 127.0.0.1:4175</i></pre>
     <li>Verifica hoja, encabezado, columna, versión de mapeo y política declarada. El encabezado se compara <strong>con conciencia de celdas combinadas</strong>: una combinación vertical devolvía vacío y marcaba todo el lote como <code>HEADER_CONFLICT</code>.</li>
     <li>Una fórmula, valor, error, nota o encabezado inesperado <strong>bloquea el lote entero</strong>.</li>
     <li>El destino viaja como número de fila y de columna; la dirección textual queda sólo como dato de reporte, porque partirla por <code>!</code> rompía con un nombre de hoja que contuviera ese signo.</li>
-    <li>Cada celda escrita recibe el marcador <code>KCM_VBA_V1|idempotencyKey|mappingVersion|completionDate</code>, y una celda con formato <code>General</code> recibe formato de fecha para no mostrar el número de serie.</li>
+    <li>La nota de cada celda escrita dice el código de la sesión de donde viene la fecha, como <code>KC-0001</code>; antes llevaba la clave técnica <code>KCM_VBA_V1|idempotencyKey|mappingVersion|completionDate</code>. Una celda con formato <code>General</code> recibe formato de fecha para no mostrar el número de serie.</li>
     <li>El modo de cálculo se restituye y el libro se recalcula <em>antes</em> de guardar: la matriz no queda archivada en cálculo manual para quien la abra después.</li>
     <li>Tras guardar calcula el SHA-256 del XLSB y sólo entonces envía <code>APPLIED</code> o <code>RECOVERED</code>. Desde ese punto el rollback queda desactivado: un fallo del acuse ya no puede borrar fechas guardadas y verificadas.</li>
     <li>Un corte después de escribir se recupera por fecha más marcador; nunca se crea una segunda fecha ni se borra un valor preexistente.</li>
@@ -5580,7 +5580,7 @@ Camino más largo: <b>E1 → E4 → E5 → E8 → E9 → E10 → E11</b></pre>
     <dd>Fila que dice a qué hoja, columna y encabezado corresponde un curso dentro del archivo maestro, con su política de sobrescritura. Debe haber exactamente uno activo.</dd>
 
     <dt>Marcador</dt>
-    <dd>Cadena que el sistema escribe junto a cada valor para poder reconocerlo después. En la matriz es <code>KCM_VBA_V1|…</code>; en el efecto de liberación, <code>KCM_RELEASE_V2</code> firmado con HMAC.</dd>
+    <dd>Cadena que el sistema escribe junto a cada valor para poder reconocerlo después. En la matriz, la nota lleva el código de la sesión (<code>KC-0001</code>); en el efecto de liberación, <code>KCM_RELEASE_V2</code> firmado con HMAC.</dd>
 
     <dt>Nómina (NS / NQ)</dt>
     <dd>Tipo de nómina: <code>NS</code> sindicalizado, <code>NQ</code> confianza. También, coloquialmente, el número de trabajador de cinco dígitos.</dd>

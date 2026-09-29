@@ -28,6 +28,7 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
     Dim batchKey As Variant
     Dim master As Workbook
     Dim escogidas As Long
+    Dim codigos As KcmDiccionario
 
     KcmResetCaches
     Set response = KcmHttpPost("RELEASE_PULL_V1", "")
@@ -61,6 +62,20 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
             "Las sesiones seleccionadas no tienen fechas pendientes."
         Exit Sub
     End If
+
+    ' Cada fecha lleva en su nota el codigo de su sesion (KC-0001). Se consulta antes de abrir
+    ' la matriz: si la consulta falla, no se escribe nada, igual que si fallara la descarga.
+    Set codigos = KcmCodigosDeSesion()
+    For Each batchKey In batches.Keys
+        Set batchRows = batches.Objeto(CStr(batchKey))
+        For Each row In batchRows
+            If codigos.Exists(CStr(row.Item("sessionId"))) Then
+                row.Add "sessionCode", CStr(codigos.Item(CStr(row.Item("sessionId"))))
+            Else
+                row.Add "sessionCode", ""
+            End If
+        Next row
+    Next batchKey
 
     Set master = KcmOpenMaster(False)
     For Each batchKey In batches.Keys
@@ -159,11 +174,12 @@ Private Sub KcmApplyReleaseBatch(ByVal master As Workbook, ByVal rows As Collect
             ' Una celda con formato General mostraria el numero de serie en lugar de la fecha.
             If target.NumberFormat = "General" Then target.NumberFormat = "dd/mm/yyyy"
             ' La nota que ya estaba se conserva: puede ser un apunte del area sobre esa persona y
-            ' borrarlo seria perder informacion que nadie mas guarda. Solo se retira el marcador
-            ' anterior, para que no se acumulen uno debajo de otro liberacion tras liberacion.
+            ' borrarlo seria perder informacion que nadie mas guarda. Solo se retira la linea que
+            ' dejo la plataforma, para que no se acumulen una debajo de otra liberacion tras
+            ' liberacion, y debajo va el codigo de la sesion de donde viene esta fecha.
             previousNote = KcmNotaSinMarcador(previousComments(previousComments.Count))
             If Not target.Comment Is Nothing Then target.Comment.Delete
-            target.AddComment KcmNotaConMarcador(previousNote, KcmReleaseMarker(row))
+            target.AddComment KcmNotaConMarcador(previousNote, KcmNotaDeLaSesion(row))
             row.Fijar "applyStatus", "APPLIED"
         End If
     Next row
@@ -387,10 +403,11 @@ Private Function KcmEmployeeRowIndex(ByVal sheet As Worksheet, ByVal employeeCol
     Set KcmEmployeeRowIndex = result
 End Function
 
-''' La nota de una celda sin la linea del marcador de la plataforma.
+''' La nota de una celda sin las lineas que dejo la plataforma.
 '''
 ''' Sirve para dos cosas: recuperar lo que una persona escribio a mano, para no perderlo al
-''' reescribir la nota, y evitar que el marcador se acumule cada vez que se libera esa celda.
+''' reescribir la nota, y evitar que la linea de la plataforma se acumule cada vez que se libera
+''' esa celda.
 Private Function KcmNotaSinMarcador(ByVal texto As String) As String
     Dim lineas() As String
     Dim conservadas As String
@@ -401,7 +418,7 @@ Private Function KcmNotaSinMarcador(ByVal texto As String) As String
     lineas = Split(Replace$(texto, vbCrLf, vbLf), vbLf)
     For indice = 0 To UBound(lineas)
         linea = lineas(indice)
-        If Left$(LTrim$(linea), Len(KCM_MARKER_PREFIX)) <> KCM_MARKER_PREFIX Then
+        If Not KcmEsLineaDeLaPlataforma(linea) Then
             If Len(Trim$(linea)) > 0 Then
                 If Len(conservadas) > 0 Then conservadas = conservadas & vbLf
                 conservadas = conservadas & linea
@@ -411,9 +428,25 @@ Private Function KcmNotaSinMarcador(ByVal texto As String) As String
     KcmNotaSinMarcador = conservadas
 End Function
 
-''' La nota que se escribe en la celda: primero lo que la persona haya anotado, y debajo el
-''' marcador. El marcador va al final a proposito: quien abre la nota lee su apunte, no la clave
-''' tecnica, y la plataforma lo encuentra igual porque lo busca dentro del texto.
+''' Si una linea de la nota la escribio la plataforma: el marcador tecnico que llevaban las notas
+''' hasta el 2026-09-29, o un codigo de sesion solo en su linea, del formato nuevo (KC-0001) o del
+''' anterior (KCM-260803-ABC123). Un apunte que mencione un codigo junto a otras palabras no casa
+''' y se conserva.
+Private Function KcmEsLineaDeLaPlataforma(ByVal linea As String) As Boolean
+    Dim limpia As String
+    limpia = Trim$(linea)
+    If Left$(limpia, Len(KCM_MARKER_PREFIX)) = KCM_MARKER_PREFIX Then
+        KcmEsLineaDeLaPlataforma = True
+    ElseIf limpia Like "KC-####" Then
+        KcmEsLineaDeLaPlataforma = True
+    Else
+        KcmEsLineaDeLaPlataforma = _
+            limpia Like "KCM-######-[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]"
+    End If
+End Function
+
+''' La nota que se escribe en la celda: primero lo que la persona haya anotado, y debajo la linea
+''' de la plataforma. Va al final a proposito: quien abre la nota lee primero su apunte.
 Private Function KcmNotaConMarcador(ByVal nota As String, ByVal marcador As String) As String
     If Len(nota) = 0 Then
         KcmNotaConMarcador = marcador
@@ -422,9 +455,45 @@ Private Function KcmNotaConMarcador(ByVal nota As String, ByVal marcador As Stri
     End If
 End Function
 
+''' La linea que la plataforma deja en la nota: el codigo de la sesion de donde viene la fecha,
+''' como KC-0001, que es lo que una persona reconoce. Si el codigo no llego, queda el marcador
+''' tecnico de antes, que al menos enlaza la celda con su liberacion.
+Private Function KcmNotaDeLaSesion(ByVal row As KcmDiccionario) As String
+    Dim codigo As String
+    codigo = Trim$(CStr(row.Item("sessionCode")))
+    If Len(codigo) > 0 Then
+        KcmNotaDeLaSesion = codigo
+    Else
+        KcmNotaDeLaSesion = KcmReleaseMarker(row)
+    End If
+End Function
+
 Private Function KcmReleaseMarker(ByVal row As KcmDiccionario) As String
     KcmReleaseMarker = KCM_MARKER_PREFIX & "|" & CStr(row.Item("idempotencyKey")) & "|" & _
         CStr(row.Item("targetMappingVersion")) & "|" & CStr(row.Item("completionDate"))
+End Function
+
+''' El codigo visible de cada sesion con fechas pendientes, por su identificador.
+'''
+''' Sale de RELEASE_SESSIONS_V1, la misma consulta del subpanel de entradas. RELEASE_PULL_V1 no
+''' trae el codigo, y agregarle una columna romperia a cualquier libro que siga con los modulos
+''' anteriores: su lector exige las columnas exactas.
+Private Function KcmCodigosDeSesion() As KcmDiccionario
+    Dim codigos As KcmDiccionario
+    Dim respuesta As KcmDiccionario
+    Dim filas As Collection
+    Dim fila As KcmDiccionario
+
+    Set codigos = KcmNuevoDiccionario()
+    Set respuesta = KcmHttpPost("RELEASE_SESSIONS_V1", "")
+    Set filas = KcmParseTsv(KcmDecodeResponsePayload(respuesta), _
+        Array("sessionId", "sessionCode", "trainingId", "completionDate", "pending"))
+    For Each fila In filas
+        If Not codigos.Exists(CStr(fila.Item("sessionId"))) Then
+            codigos.Add CStr(fila.Item("sessionId")), CStr(fila.Item("sessionCode"))
+        End If
+    Next fila
+    Set KcmCodigosDeSesion = codigos
 End Function
 
 ''' El acuse viaja una sola vez por lote y el ledger local se escribe en un bloque. La version

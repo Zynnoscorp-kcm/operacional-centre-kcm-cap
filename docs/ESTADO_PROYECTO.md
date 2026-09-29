@@ -2,6 +2,15 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Sesiones y notas de la matriz · 2026-09-29
+
+Las sesiones nuevas se llaman `KC-0001`, `KC-0002`…: un consecutivo de cuatro
+cifras, sin migración, porque la base sólo exige que el código sea único. La
+nota de cada fecha que la macro escribe en la matriz dice el código de su
+sesión, en lugar de la clave técnica. Verificado con pruebas y con el
+analizador de VBA; falta probar la macro en Excel y publicar la plataforma.
+Acta: `docs/actas/2026-09-29-codigo-kc-y-nota-de-sesion.md`.
+
 ## Ocupaciones · 2026-09-29
 
 La clasificación de `/ocupaciones` va un caso por petición, conducida por el

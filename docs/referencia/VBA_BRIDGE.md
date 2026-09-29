@@ -356,13 +356,20 @@ semana y adivinarla mandaría un libro viejo.
 - El destino viaja como número de fila y de columna. La dirección textual queda
   sólo como dato de reporte: partirla por `!` rompía con un nombre de hoja que
   contuviera ese signo.
-- Cada celda escrita recibe el marcador
-  `KCM_VBA_V1|idempotencyKey|mappingVersion|completionDate`, y una celda con
-  formato `General` recibe formato de fecha para no mostrar el número de serie.
-- La nota que la celda ya tenía **se conserva**: el marcador se agrega debajo,
-  en su propio renglón. Al volver a liberar esa celda se retira el marcador
-  anterior y se escribe el nuevo, de modo que no se acumulan; el apunte humano
-  sobrevive a todas las liberaciones.
+- La nota de cada celda escrita dice **el código de la sesión** de donde viene
+  la fecha, como `KC-0001` (desde el 2026-09-29; antes llevaba la clave técnica
+  `KCM_VBA_V1|idempotencyKey|mappingVersion|completionDate`). El código sale de
+  `RELEASE_SESSIONS_V1`, que se consulta una vez antes de abrir la matriz: si
+  esa consulta falla, no se escribe nada. `RELEASE_PULL_V1` conserva sus doce
+  columnas, porque su lector exige columnas exactas y agregar una rompería a los
+  libros con módulos anteriores. Si una sesión no trae código, su celda recibe
+  la clave técnica de antes. Una celda con formato `General` recibe formato de
+  fecha para no mostrar el número de serie.
+- La nota que la celda ya tenía **se conserva**: el código se agrega debajo, en
+  su propio renglón. Al volver a liberar esa celda se retira la línea que dejó
+  la plataforma —un código solo en su renglón, del formato nuevo o del
+  anterior, o la clave técnica de las notas viejas— y se escribe la nueva, de
+  modo que no se acumulan; el apunte humano sobrevive a todas las liberaciones.
 - El modo de cálculo se restituye y el libro se recalcula **antes** de guardar:
   la matriz no queda archivada en cálculo manual para quien la abra después.
 - Tras guardar, calcula SHA-256 del XLSB y sólo entonces envía `APPLIED` o

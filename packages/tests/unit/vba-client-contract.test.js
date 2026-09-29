@@ -165,12 +165,40 @@ test("las fuentes son ASCII puro para sobrevivir la importacion del editor VBA",
 
 test("la liberacion VBA decide por la fecha de la celda y conserva la nota que ya estaba", () => {
   const source = modules["KcmReleaseSync.bas"];
-  // La nota se reescribe conservando el apunte humano y agregando el marcador debajo.
+  // La nota se reescribe conservando el apunte humano y agregando debajo la linea de la plataforma.
   assert.match(source, /KcmNotaConMarcador/);
   assert.match(source, /KcmNotaSinMarcador/);
   // Una celda vacia con nota ya no es conflicto, y el efecto se reconoce por la fecha sola.
   assert.doesNotMatch(source, /nota ajena/);
   assert.doesNotMatch(source, /currentComment = marker/);
+});
+
+/**
+ * Desde el 2026-09-29 la nota de cada fecha dice el codigo de su sesion (KC-0001) y no la clave
+ * tecnica. El codigo sale de RELEASE_SESSIONS_V1: RELEASE_PULL_V1 no lo trae, y su lector exige
+ * columnas exactas, asi que agregarle una romperia a los libros con modulos anteriores.
+ */
+test("la nota de cada fecha liberada dice el codigo de su sesion", () => {
+  const source = modules["KcmReleaseSync.bas"];
+  assert.match(source, /target\.AddComment KcmNotaConMarcador\(previousNote, KcmNotaDeLaSesion\(row\)\)/);
+  // Los codigos se consultan antes de abrir la matriz: si fallan, no se escribe nada.
+  const aplicar = source.slice(source.indexOf("Public Sub KcmApplyPendingReleases"));
+  const cuerpo = aplicar.slice(0, aplicar.indexOf("End Sub"));
+  const consulta = cuerpo.indexOf("Set codigos = KcmCodigosDeSesion()");
+  assert.ok(consulta > 0 && consulta < cuerpo.indexOf("KcmOpenMaster"),
+    "el codigo de sesion debe conocerse antes de tocar la matriz");
+  assert.match(source, /KcmHttpPost\("RELEASE_SESSIONS_V1", ""\)/);
+  // La descarga conserva sus doce columnas exactas.
+  assert.match(source, /"idempotencyKey", "batchId", "sessionId", "employeeId", "trainingId", _\r?\n\s+"completionDate", "destinationSheet", "destinationColumn", "headerRow", _\r?\n\s+"destinationHeader", "targetMappingVersion", "overwritePolicy"\)/);
+  // Una liberacion posterior reemplaza la linea del codigo en vez de apilar otra, y la clave
+  // tecnica de las notas anteriores tambien se retira.
+  const linea = source.slice(source.indexOf("Private Function KcmEsLineaDeLaPlataforma"));
+  const reconoce = linea.slice(0, linea.indexOf("End Function"));
+  assert.match(reconoce, /Like "KC-####"/);
+  assert.match(reconoce, /KCM_MARKER_PREFIX/);
+  // Sin codigo, la celda conserva el marcador tecnico: nunca queda una fecha sin rastro.
+  const nota = source.slice(source.indexOf("Private Function KcmNotaDeLaSesion"));
+  assert.match(nota.slice(0, nota.indexOf("End Function")), /KcmReleaseMarker\(row\)/);
 });
 
 test("la liberacion VBA hace preflight atomico y gobierna la sobrescritura", () => {

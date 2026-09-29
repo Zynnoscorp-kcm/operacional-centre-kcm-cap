@@ -17,7 +17,13 @@ import type {
 
 export interface KioskSessionRepositoryPort {
   // Sesiones
+  /**
+   * Guarda la sesión. Si otra ya tiene su código, lanza `SessionCodeTakenError`
+   * y no guarda nada: el servicio pide entonces el siguiente consecutivo.
+   */
   createSession(session: SessionRecord): Promise<SessionRecord>;
+  /** El mayor consecutivo `KC-NNNN` en uso, o 0 si todavía no hay ninguno. */
+  getHighestSessionCodeNumber(): Promise<number>;
   updateSession(sessionId: string, updates: Partial<SessionRecord>): Promise<SessionRecord>;
   getSessionById(sessionId: string): Promise<SessionRecord | null>;
   getSessionByCode(sessionCode: string): Promise<SessionRecord | null>;

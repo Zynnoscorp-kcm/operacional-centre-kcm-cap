@@ -7,8 +7,15 @@ import { randomUUID } from "node:crypto";
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
 import {
+  formatearCodigoDeSesion,
+  MAYOR_NUMERO_DE_SESION,
+  normalizarCodigoDeSesion,
+} from "./codigo-de-sesion.ts";
+import {
   InvalidInputError,
   InvalidSessionStateError,
+  SessionCodeTakenError,
+  SessionCodesExhaustedError,
   SessionConflictError,
   SessionNotFoundError,
 } from "./errores.ts";
@@ -35,6 +42,13 @@ import type {
  * cambiaría nada de lo que se lee en pantalla.
  */
 const HORA_DEL_DIA = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
+
+/**
+ * Cuántas veces se pide otro consecutivo cuando el que tocaba ya lo tomó una
+ * sesión creada al mismo tiempo. Dos a la vez ya es raro; cinco seguidas
+ * significaría que algo más está mal, y entonces se deja ver el error.
+ */
+const INTENTOS_POR_CODIGO = 5;
 
 function normalizeStartTime(valor: unknown): string {
   if (valor === undefined || valor === null) return "";
@@ -69,12 +83,28 @@ export class SessionService {
     this.clock = deps.clock;
   }
 
-  private generateSessionCode(now: Date): string {
-    const yy = String(now.getUTCFullYear()).slice(-2);
-    const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(now.getUTCDate()).padStart(2, "0");
-    const suffix = randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
-    return `KCM-${yy}${mm}${dd}-${suffix}`;
+  /**
+   * Guarda la sesión con el siguiente código `KC-NNNN`. Dos sesiones creadas a
+   * la vez pueden pedir el mismo número: la base lo impide con su unicidad y la
+   * segunda vuelve a pedir el siguiente.
+   */
+  private async createWithNextCode(
+    session: Omit<SessionRecord, "sessionCode">,
+  ): Promise<SessionRecord> {
+    for (let intento = 1; ; intento += 1) {
+      const numero = (await this.repo.getHighestSessionCodeNumber()) + 1;
+      if (numero > MAYOR_NUMERO_DE_SESION) throw new SessionCodesExhaustedError();
+      try {
+        return await this.repo.createSession({
+          ...session,
+          sessionCode: formatearCodigoDeSesion(numero),
+        });
+      } catch (error) {
+        if (!(error instanceof SessionCodeTakenError) || intento >= INTENTOS_POR_CODIGO) {
+          throw error;
+        }
+      }
+    }
   }
 
   private validateCreationInput(input: CreateSessionInput): CreateSessionInput {
@@ -184,14 +214,11 @@ export class SessionService {
         return existing;
       }
 
-      const now = this.clock.now();
-      const nowIso = now.toISOString();
-      const sessionCode = this.generateSessionCode(now);
+      const nowIso = this.clock.now().toISOString();
       const sessionId = randomUUID();
 
-      const newSession: SessionRecord = {
+      const newSession: Omit<SessionRecord, "sessionCode"> = {
         sessionId,
-        sessionCode,
         trainingId: intended.trainingId,
         instructor: intended.instructor,
         date: intended.date,
@@ -208,7 +235,7 @@ export class SessionService {
         version: 1,
       };
 
-      const created = await this.repo.createSession(newSession);
+      const created = await this.createWithNextCode(newSession);
 
       // Auditoría append-only
       await this.repo.recordAudit({
@@ -441,9 +468,7 @@ export class SessionService {
    * Obtiene una sesión por su código público.
    */
   async getSessionByCode(sessionCode: string): Promise<SessionRecord> {
-    const normalized = String(sessionCode || "")
-      .trim()
-      .toUpperCase();
+    const normalized = normalizarCodigoDeSesion(String(sessionCode || ""));
     const session = await this.repo.getSessionByCode(normalized);
     if (!session) {
       throw new SessionNotFoundError("No existe ninguna sesión con ese código");
@@ -454,8 +479,8 @@ export class SessionService {
   /**
    * Ficha de la sesión para confirmarla antes de registrar a nadie.
    *
-   * Existe porque el código de sesión no dice nada: son doce caracteres que se
-   * dictan en voz alta y se teclean en una sala donde puede haber dos cursos el
+   * Existe porque el código de sesión no dice nada: es un consecutivo que se
+   * dicta en voz alta y se teclea en una sala donde puede haber dos cursos el
    * mismo día. Con sólo el código, quien capacita no tiene cómo saber que el
    * quiosco quedó vinculado a la sesión que él está impartiendo, y un registro
    * mal dirigido no se nota hasta la liberación, cuando ya hay asistencias

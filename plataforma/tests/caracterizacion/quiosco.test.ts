@@ -107,7 +107,7 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
   });
 
   describe("Ciclo de vida y creación de sesiones (Funciones 2 y 3)", () => {
-    it("crea una sesión en BORRADOR con código KCM-yyMMdd-XXXXXX e idempotencia por creationRequestId", async () => {
+    it("crea una sesión en BORRADOR con código KC-0001 e idempotencia por creationRequestId", async () => {
       const { session, repo } = setupServices();
       const identity: ActorIdentity = { actor: "INSTRUCTOR_1", role: "CAPACITADOR" };
 
@@ -126,7 +126,7 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       assert.equal(created.status, "BORRADOR");
       assert.equal(created.authorized, false);
       assert.equal(created.durationMinutes, 120);
-      assert.ok(/^KCM-260803-[A-Z0-9]{6}$/.test(created.sessionCode));
+      assert.equal(created.sessionCode, "KC-0001");
 
       // Auditoría SESSION_CREATED
       const audits = await repo.listAuditEvents({ sessionId: created.sessionId });
