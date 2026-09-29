@@ -502,7 +502,7 @@ test("el subpanel de entradas escoge sesiones sin volverse un reloj", () => {
   // Recibir todo sigue siendo lo que ocurre sin pedir nada.
   assert.match(release, /Optional ByVal sesiones As String = ""/,
     "el filtro por sesion debe tener valor por omision");
-  assert.match(modules["KcmJornada.bas"], /\n    KcmApplyPendingReleases\n/,
+  assert.match(modules["KcmJornada.bas"], /\r?\n    KcmApplyPendingReleases\r?\n/,
     "Actualizar sigue recibiendo todo por la misma entrada, sin argumentos");
   const filtro = release.slice(release.indexOf("Private Function KcmSesionEscogida"));
   assert.match(filtro.slice(0, filtro.indexOf("End Function")), /If Len\(sesiones\) = 0 Then/,

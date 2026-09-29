@@ -82,6 +82,7 @@ function renderFormulario(datos: DatosDeOcupaciones): Html {
               </p>
               <div class="barra-progreso"><div class="barra-progreso-relleno" id="barra-relleno"></div></div>
               <p class="texto-nota" id="progreso-detalle" style="margin-top:0.5rem">Preparando…</p>
+              <button type="button" id="btn-cancelar" class="boton-secundario" style="display:none;margin-top:0.5rem">Cancelar</button>
             </div>
             <p class="texto-nota nota-bajo-tira">
               Sólo viajan al modelo el puesto y el centro de costos; ningún dato personal sale de la
