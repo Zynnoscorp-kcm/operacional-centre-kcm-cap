@@ -1,6 +1,17 @@
+/**
+ * Ocupaciones: la API que conduce la clasificación caso por caso y la pantalla.
+ *
+ * El agente es un doble y ninguna prueba gasta cupo de un modelo. El padrón es
+ * un XLSX sintético de verdad, leído por el mismo extractor que en producción:
+ * el plan y la escritura dependen de las celdas reales del libro.
+ */
+
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+// @ts-expect-error paquete en JavaScript sin definiciones de tipos
+import { buildZip } from "../../../packages/dc3/ooxml.js";
+import { RosterExtractorAdapter } from "../../src/adapters/archivos/extractor-padron.ts";
 import { loadConfig } from "../../src/config/environment.ts";
 import type {
   ServicioDeOcupacionesPort,
@@ -112,92 +123,42 @@ describe("Ocupaciones · ruta", () => {
 });
 
 describe("Ocupaciones · pantalla", () => {
-  const sugerenciaDePrueba = (entrada: unknown): Promise<SugerenciaDeOcupacion> => {
-    const caso = leerCaso(entrada);
-    const propuesta = {
-      codigo: "552081900",
-      descripcion: "OPERADOR MÁQUINA FABRICACIÓN ARTÍCULOS PAPEL",
-      consecutivo: "2192",
-      subarea: "05.5",
-      denominacionDeSubarea: "Materia orgánica",
-      alternativa: { codigo: "552090402", descripcion: "OPERADOR DE MÁQUINA DE FABRICAR PAPEL" },
-      confianza: "alta" as const,
-      motivo: "Opera una línea de conversión de papel.",
-    };
-    return Promise.resolve({
-      caso,
-      version: "2026-09-26.5",
-      huella: "cf257cdf0f9d7737",
-      estado: "sugerida",
-      sugerencia: propuesta,
-      principal: propuesta,
-      verificador: propuesta,
-      razon: "principal y verificador coinciden",
-      traza: [
-        {
-          nodo: "principal_ocupacion",
-          proveedor: "openrouter",
-          modelo: "nvidia/nemotron-3-super-120b-a12b:free",
-          milisegundos: 27_557,
-          tokensDeEntrada: 5685,
-          tokensDeSalida: 2450,
-          nota: "230 opciones; eligió 552081900",
-        },
-        {
-          nodo: "conciliacion",
-          proveedor: null,
-          modelo: null,
-          milisegundos: 0,
-          tokensDeEntrada: null,
-          tokensDeSalida: null,
-          nota: "sugerida: principal y verificador coinciden",
-        },
-      ],
-    });
-  };
-
   async function pantalla(conServicio: boolean) {
     const app = await buildServer({
       config: loadConfig({ ...ENTORNO }),
-      ...(conServicio
-        ? {
-            occupationService: () =>
-              Promise.resolve({ ...servicioFalso, sugerir: sugerenciaDePrueba }),
-          }
-        : {}),
+      ...(conServicio ? { occupationService: () => Promise.resolve(servicioFalso) } : {}),
     });
-    const res = await app.inject({
-      method: "POST",
-      url: "/acceso",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      payload: new URLSearchParams({ usuario: "Maricela0000", clave: "0000" }).toString(),
-    });
-    const cookie = String(res.headers["set-cookie"]).split(";")[0] ?? "";
+    const cookie = await entrar(app);
     const abrir = (url: string) => app.inject({ method: "GET", url, headers: { cookie } });
-    const consultar = (campos: Record<string, string>) =>
-      app.inject({
-        method: "POST",
-        url: "/ocupaciones",
-        headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-        payload: new URLSearchParams(campos).toString(),
-      });
-    return { abrir, consultar };
+    return { app, cookie, abrir };
   }
 
-  it("dibuja la sección con su lugar en el lateral, la consulta y el catálogo", async () => {
+  it("dibuja la clasificación y el catálogo, sin la lista de pasos", async () => {
     const { abrir } = await pantalla(true);
     const res = await abrir("/ocupaciones");
     assert.equal(res.statusCode, 200);
     assert.match(res.body, /<h1 class="barra-titulo">Ocupaciones<\/h1>/u);
-    assert.match(
-      res.body,
-      /class="lateral-enlace"[^>]*href="\/ocupaciones"[^>]*aria-current="page"|href="\/ocupaciones"[^>]*aria-current="page"/u,
-    );
-    assert.match(res.body, /Consultar una ocupación/u);
-    assert.match(res.body, /Consulta disponible/u);
+    assert.match(res.body, /href="\/ocupaciones"[^>]*aria-current="page"/u);
+    assert.match(res.body, /IA disponible/u);
+    assert.match(res.body, /<form class="formulario" id="form-clasificar">/u);
     assert.match(res.body, /4,737 ocupaciones del catálogo/u);
+    assert.match(res.body, /<script src="\/assets\/ocupaciones-[a-z]+\.js"><\/script>/u);
+    // La lista de «Cómo funciona» se quitó, y con ella la promesa de dos modelos.
+    assert.doesNotMatch(res.body, /Cómo funciona|Flujo de clasificación|dos modelos/u);
     // Sin búsqueda no hay tabla de resultados.
     assert.doesNotMatch(res.body, /N\.º STPS/u);
+  });
+
+  it("la tarjeta de avance nace oculta sin estilos en línea, que la política bloquearía", async () => {
+    const { abrir } = await pantalla(true);
+    const res = await abrir("/ocupaciones");
+    assert.match(String(res.headers["content-security-policy"]), /style-src 'self'/u);
+    assert.match(res.body, /<div id="progreso-ia" class="[^"]*avance-ia[^"]*" hidden>/u);
+    assert.match(
+      res.body,
+      /<button type="button" id="btn-cancelar" class="boton-secundario" hidden>/u,
+    );
+    assert.doesNotMatch(res.body, /\sstyle="/u);
   });
 
   it("busca sin acentos, por palabras, y dice cuántas coincidieron", async () => {
@@ -221,36 +182,327 @@ describe("Ocupaciones · pantalla", () => {
     assert.doesNotMatch(rara.body, /Se muestran/u);
   });
 
-  it("consulta al agente y enseña la clave, la subárea, las dos opiniones y el recorrido", async () => {
-    const { consultar } = await pantalla(true);
-    const res = await consultar({ puesto: "*OPERARIO 2°", centroDeCostos: "HIGIENICOS" });
-    assert.equal(res.statusCode, 200);
-    assert.match(res.body, /\*OPERARIO 2° · HIGIENICOS/u);
-    assert.match(res.body, /<span class="insignia insignia-completado">Sugerida<\/span>/u);
-    assert.match(res.body, /<span class="kpi-cifra">552081900<\/span>/u);
-    assert.match(res.body, /Materia orgánica/u);
-    assert.match(res.body, /552090402 OPERADOR DE MÁQUINA DE FABRICAR PAPEL/u);
-    assert.match(res.body, /Recorrido de la consulta/u);
-    assert.match(res.body, /Primer modelo · ocupación/u);
-    // El formulario vuelve lleno, para ajustar y volver a consultar.
-    assert.match(res.body, /value="\*OPERARIO 2°"/u);
-  });
-
-  it("un dato personal se rechaza en la pantalla, sin llegar al agente", async () => {
-    const { consultar } = await pantalla(true);
-    const res = await consultar({ puesto: "28392", centroDeCostos: "AGUA" });
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body, /class="aviso-error" role="alert"/u);
-    assert.match(res.body, /parece un dato personal/u);
-  });
-
-  it("sin agente, la consulta se apaga y el catálogo sigue buscando", async () => {
-    const { abrir, consultar } = await pantalla(false);
+  it("sin agente, la clasificación se apaga y el catálogo sigue buscando", async () => {
+    const { app, cookie, abrir } = await pantalla(false);
     const res = await abrir("/ocupaciones?q=montacargas");
-    assert.match(res.body, /Consulta apagada/u);
-    assert.doesNotMatch(res.body, /<form method="post" action="\/ocupaciones"/u);
+    assert.match(res.body, /IA apagada/u);
+    assert.doesNotMatch(res.body, /id="form-clasificar"/u);
     assert.match(res.body, /MONTACARGAS/u);
-    const envio = await consultar({ puesto: "*OPERADOR", centroDeCostos: "AGUA" });
-    assert.equal(envio.statusCode, 503);
+    const plan = await app.inject({
+      method: "POST",
+      url: "/api/ocupaciones/plan",
+      headers: { cookie, "content-type": multiparte(PADRON).tipo },
+      payload: multiparte(PADRON).cuerpo,
+    });
+    assert.equal(plan.statusCode, 503);
+  });
+});
+
+// --------------------------------------------------------- el padrón sintético
+
+const armarZip = buildZip as (entradas: readonly (readonly [string, string])[]) => Buffer;
+
+interface Renglon {
+  readonly numero: string;
+  readonly nombre: string;
+  readonly puesto: string;
+  readonly curp: string;
+  readonly centro: string;
+  readonly clave?: string;
+}
+
+const ENCABEZADOS = [
+  "NUMERO",
+  "NOMBRE",
+  "NOMBRE DE PUESTO",
+  "C.U.R.P.",
+  "FEC ALTA",
+  "NOMBRE C COSTOS",
+  "CLAVE DE OCUPACION",
+] as const;
+
+function celda(referencia: string, valor: string): string {
+  const seguro = valor.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return `<c r="${referencia}" t="inlineStr"><is><t>${seguro}</t></is></c>`;
+}
+
+function hoja(renglones: readonly Renglon[]): string {
+  const fila = (numero: number, valores: readonly string[]) =>
+    `<row r="${String(numero)}">${valores
+      .map((valor, indice) =>
+        valor === "" ? "" : celda(`${"ABCDEFG"[indice] ?? "Z"}${String(numero)}`, valor),
+      )
+      .join("")}</row>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${[
+      fila(1, ENCABEZADOS),
+      ...renglones.map((renglon, indice) =>
+        fila(indice + 2, [
+          renglon.numero,
+          renglon.nombre,
+          renglon.puesto,
+          renglon.curp,
+          "2020-01-15",
+          renglon.centro,
+          renglon.clave ?? "",
+        ]),
+      ),
+    ].join("")}</sheetData></worksheet>`;
+}
+
+function libro(hojas: Readonly<Record<string, readonly Renglon[]>>): Buffer {
+  const nombres = Object.keys(hojas);
+  return armarZip([
+    [
+      "[Content_Types].xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+        </Types>`,
+    ],
+    [
+      "_rels/.rels",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+        </Relationships>`,
+    ],
+    [
+      "xl/workbook.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <sheets>${nombres
+            .map(
+              (nombre, indice) =>
+                `<sheet name="${nombre}" sheetId="${String(indice + 1)}" r:id="rId${String(indice + 1)}"/>`,
+            )
+            .join("")}</sheets>
+        </workbook>`,
+    ],
+    [
+      "xl/_rels/workbook.xml.rels",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${nombres
+          .map(
+            (_, indice) =>
+              `<Relationship Id="rId${String(indice + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(indice + 1)}.xml"/>`,
+          )
+          .join("")}</Relationships>`,
+    ],
+    ...nombres.map((nombre, indice): readonly [string, string] => [
+      `xl/worksheets/sheet${String(indice + 1)}.xml`,
+      hoja(hojas[nombre] ?? []),
+    ]),
+  ]);
+}
+
+/** Dos operarios de Higiénicos sin clave, un supervisor que ya la trae y un mecánico sin ella. */
+const PADRON = libro({
+  "SND ACTIVOS": [
+    {
+      numero: "00001",
+      nombre: "PERSONA SINTETICA UNO",
+      puesto: "*OPERARIO 2°",
+      curp: "AAAA000101HDFBBBB0",
+      centro: "HIGIENICOS",
+    },
+    {
+      numero: "00002",
+      nombre: "PERSONA SINTETICA DOS",
+      puesto: "*OPERARIO 2°",
+      curp: "BABC000101MDFCCCC1",
+      centro: "HIGIENICOS",
+    },
+    {
+      numero: "00003",
+      nombre: "PERSONA SINTETICA TRES",
+      puesto: "SUPERVISOR",
+      curp: "CACD000101HDFDDDD2",
+      centro: "HIGIENICOS",
+      clave: "131102100",
+    },
+  ],
+  "EMP ACTIVOS": [
+    {
+      numero: "00004",
+      nombre: "PERSONA SINTETICA CUATRO",
+      puesto: "MECANICO",
+      curp: "DADE000101HDFEEEE3",
+      centro: "MANTENIMIENTO",
+    },
+  ],
+});
+
+function multiparte(
+  archivo: Buffer,
+  campos: Readonly<Record<string, string>> = {},
+  nombre = "sem 31 CAP.xlsx",
+): { readonly cuerpo: Buffer; readonly tipo: string } {
+  const limite = "frontera-de-prueba-kcm";
+  const partes: Buffer[] = [];
+  for (const [campo, valor] of Object.entries(campos)) {
+    partes.push(
+      Buffer.from(
+        `--${limite}\r\nContent-Disposition: form-data; name="${campo}"\r\n\r\n${valor}\r\n`,
+        "utf8",
+      ),
+    );
+  }
+  partes.push(
+    Buffer.from(
+      `--${limite}\r\nContent-Disposition: form-data; name="archivo"; filename="${nombre}"\r\n` +
+        "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n",
+      "utf8",
+    ),
+    archivo,
+    Buffer.from(`\r\n--${limite}--\r\n`, "utf8"),
+  );
+  return { cuerpo: Buffer.concat(partes), tipo: `multipart/form-data; boundary=${limite}` };
+}
+
+async function entrar(app: Awaited<ReturnType<typeof buildServer>>): Promise<string> {
+  const res = await app.inject({
+    method: "POST",
+    url: "/acceso",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: new URLSearchParams({ usuario: "Maricela0000", clave: "0000" }).toString(),
+  });
+  return String(res.headers["set-cookie"]).split(";")[0] ?? "";
+}
+
+interface CasoDelPlan {
+  readonly id: string;
+  readonly puesto: string;
+  readonly centroDeCostos: string;
+  readonly trabajadores: number;
+}
+
+describe("Ocupaciones · clasificación caso por caso", () => {
+  async function consola() {
+    const app = await buildServer({
+      config: loadConfig({ ...ENTORNO }),
+      occupationService: () => Promise.resolve(servicioFalso),
+    });
+    const cookie = await entrar(app);
+    const enviar = (
+      url: string,
+      formulario: { readonly cuerpo: Buffer; readonly tipo: string },
+      conSesion = true,
+    ) =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: { ...(conSesion ? { cookie } : {}), "content-type": formulario.tipo },
+        payload: formulario.cuerpo,
+      });
+    return { enviar };
+  }
+
+  it("el plan agrupa a los faltantes por puesto y centro de costos, sin datos personales", async () => {
+    const { enviar } = await consola();
+    const res = await enviar("/api/ocupaciones/plan", multiparte(PADRON));
+    assert.equal(res.statusCode, 200);
+    const plan = res.json<{
+      casos: CasoDelPlan[];
+      trabajadores: number;
+      conClave: number;
+      pendientes: { casos: number; trabajadores: number };
+    }>();
+    assert.deepEqual(plan.casos, [
+      { id: "C001", puesto: "*OPERARIO 2°", centroDeCostos: "HIGIENICOS", trabajadores: 2 },
+      { id: "C002", puesto: "MECANICO", centroDeCostos: "MANTENIMIENTO", trabajadores: 1 },
+    ]);
+    assert.equal(plan.trabajadores, 3);
+    assert.equal(plan.conClave, 1);
+    assert.deepEqual(plan.pendientes, { casos: 0, trabajadores: 0 });
+    // Al navegador sólo vuelven puestos y centros de costos: ni nombres, ni CURP, ni números.
+    assert.doesNotMatch(res.body, /PERSONA SINTETICA|HDF|0000[1-4]/u);
+  });
+
+  it("sin sesión de consola, el plan no se entrega", async () => {
+    const { enviar } = await consola();
+    const res = await enviar("/api/ocupaciones/plan", multiparte(PADRON), false);
+    assert.equal(res.statusCode, 401);
+  });
+
+  it("un archivo que no es el padrón se rechaza con el motivo", async () => {
+    const { enviar } = await consola();
+    const res = await enviar("/api/ocupaciones/plan", multiparte(Buffer.from("no es un libro")));
+    assert.equal(res.statusCode, 400);
+    assert.match(
+      res.json<{ error: { message: string } }>().error.message,
+      /no tiene la forma del padrón semanal/u,
+    );
+  });
+
+  it("escribir devuelve el padrón con la clave sólo en las celdas vacías de su caso", async () => {
+    const { enviar } = await consola();
+    const codigos = JSON.stringify([
+      {
+        casoId: "C001",
+        puesto: "*OPERARIO 2°",
+        centroDeCostos: "HIGIENICOS",
+        codigo: "552081900",
+      },
+    ]);
+    const res = await enviar(
+      "/api/ocupaciones/escribir",
+      multiparte(PADRON, { codigos }, "sem 31 CAPACITACIÓN.xlsx"),
+    );
+    assert.equal(res.statusCode, 200);
+    assert.match(String(res.headers["content-type"]), /spreadsheetml\.sheet/u);
+    assert.equal(res.headers["x-kcm-celdas-escritas"], "2");
+    // Una cabecera sólo admite latin-1: el nombre real viaja codificado y el simple, sin acento.
+    assert.equal(
+      res.headers["content-disposition"],
+      `attachment; filename="sem 31 CAPACITACION con ocupaciones.xlsx"; ` +
+        `filename*=UTF-8''sem%2031%20CAPACITACI%C3%93N%20con%20ocupaciones.xlsx`,
+    );
+
+    const leido = new RosterExtractorAdapter().extraer(res.rawPayload);
+    const claves = Object.fromEntries(
+      leido.employees.map((empleado) => [empleado.employeeId, empleado.cnoKey]),
+    );
+    assert.deepEqual(claves, {
+      "00001": "552081900",
+      "00002": "552081900",
+      "00003": "131102100",
+      "00004": "",
+    });
+  });
+
+  it("una clave que no cuadra con el plan no escribe nada", async () => {
+    const { enviar } = await consola();
+    const intentar = (clave: Record<string, string>) =>
+      enviar(
+        "/api/ocupaciones/escribir",
+        multiparte(PADRON, {
+          codigos: JSON.stringify([
+            {
+              casoId: "C001",
+              puesto: "*OPERARIO 2°",
+              centroDeCostos: "HIGIENICOS",
+              codigo: "552081900",
+              ...clave,
+            },
+          ]),
+        }),
+      );
+    // Otro par puesto-centro con el mismo número de caso: sería la celda de otra persona.
+    const otroCaso = await intentar({ puesto: "MECANICO" });
+    assert.equal(otroCaso.statusCode, 400);
+    assert.match(
+      otroCaso.json<{ error: { message: string } }>().error.message,
+      /no corresponden a los casos de este padrón/u,
+    );
+    // Una clave que no existe en el catálogo tampoco pasa.
+    const inventada = await intentar({ codigo: "999999999" });
+    assert.equal(inventada.statusCode, 400);
+    // Sin claves no hay nada que escribir.
+    const vacia = await enviar("/api/ocupaciones/escribir", multiparte(PADRON, { codigos: "[]" }));
+    assert.equal(vacia.statusCode, 400);
   });
 });

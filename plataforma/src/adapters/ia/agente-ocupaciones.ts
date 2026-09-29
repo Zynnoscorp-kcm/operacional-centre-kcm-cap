@@ -24,49 +24,40 @@ interface Opciones {
   readonly fetch?: typeof fetch;
 }
 
-/** Catálogo, modelos y huella: lo mismo para un caso suelto que para un lote. */
+/**
+ * Catálogo, modelo y huella: lo mismo para un caso suelto que para un lote. Un
+ * solo modelo contesta cada caso; su cadena sólo pasa al respaldo si él falla.
+ */
 function piezas(parametros: ParametrosDelAgente, opciones: Opciones) {
   const catalogo = catalogoDeLaPlataforma();
-  const cadena = (destinos: readonly DestinoDeModelo[]) =>
-    new ModeloConRespaldo(
-      destinos.map(
-        (destino) =>
-          new ModeloChatCompatible(destino, opciones.fetch ? { fetch: opciones.fetch } : {}),
-      ),
-      parametros.respaldo,
-    );
-  const principal = cadena(parametros.principal);
-  const verificador =
-    parametros.verificador.length > 0 ? cadena(parametros.verificador) : undefined;
+  const principal = new ModeloConRespaldo(
+    parametros.principal.map(
+      (destino) =>
+        new ModeloChatCompatible(destino, opciones.fetch ? { fetch: opciones.fetch } : {}),
+    ),
+    parametros.respaldo,
+  );
 
-  const describir = (papel: string) => (destino: DestinoDeModelo) =>
-    `${papel}:${destino.proveedor}/${destino.modelo}/${destino.esfuerzo ?? "-"}/${destino.formato}/` +
+  const describir = (destino: DestinoDeModelo) =>
+    `principal:${destino.proveedor}/${destino.modelo}/${destino.esfuerzo ?? "-"}/${destino.formato}/` +
     `${destino.campoDeTope ?? "max_completion_tokens"}/${String(destino.maxTokensDeSalida)}/` +
     `${String(destino.tiempoMaximoMs)}/${JSON.stringify(destino.extras ?? {})}`;
   const huella = huellaDeConfiguracion({
     version: parametros.version,
-    modelos: [
-      ...parametros.principal.map(describir("principal")),
-      ...parametros.verificador.map(describir("verificador")),
-    ],
+    modelos: parametros.principal.map(describir),
     limites: { caso: parametros.limites, lote: parametros.lote, respaldo: parametros.respaldo },
     catalogo: catalogo.huella,
   });
 
-  return { catalogo, principal, verificador, huella };
+  return { catalogo, principal, huella };
 }
 
 export function armarServicioDeOcupaciones(
   parametros: ParametrosDelAgente,
   opciones: Opciones = {},
 ): ServicioDeOcupaciones {
-  const { catalogo, principal, verificador, huella } = piezas(parametros, opciones);
-  const agente = new AgenteDeOcupaciones({
-    catalogo,
-    principal,
-    ...(verificador ? { verificador } : {}),
-    limites: parametros.limites,
-  });
+  const { catalogo, principal, huella } = piezas(parametros, opciones);
+  const agente = new AgenteDeOcupaciones({ catalogo, principal, limites: parametros.limites });
   return new ServicioDeOcupaciones({ agente, version: parametros.version, huella });
 }
 
@@ -74,11 +65,10 @@ export function armarClasificadorPorLotes(
   parametros: ParametrosDelAgente,
   opciones: Opciones = {},
 ): ClasificadorPorLotes {
-  const { catalogo, principal, verificador, huella } = piezas(parametros, opciones);
+  const { catalogo, principal, huella } = piezas(parametros, opciones);
   return new ClasificadorPorLotes({
     catalogo,
     principal,
-    ...(verificador ? { verificador } : {}),
     limites: parametros.lote,
     version: parametros.version,
     huella,

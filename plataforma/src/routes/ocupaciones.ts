@@ -1,42 +1,46 @@
 /**
  * Rutas de clasificación de ocupaciones con IA.
  *
- * El flujo es independiente de la base de datos:
+ * La clasificación la conduce el navegador, un caso por petición. La función
+ * publicada corta cada petición a los 120 s y un caso tarda cerca de medio
+ * minuto: quince casos en una sola petición no caben, y cuando el avance
+ * viajaba en una petición larga la plataforma la cortaba en el tercer caso sin
+ * que la pantalla se enterara. Así, además, ninguna petición guarda estado en
+ * el servidor y cualquier instancia atiende cualquier paso:
  *
- * 1. El usuario sube el padrón en `GET /ocupaciones`.
- * 2. El JS intercepta el envío, lo manda a `POST /api/ocupaciones/clasificar`
- *    que responde con Server-Sent Events reportando el avance caso por caso.
- * 3. Al final, el evento `resultado` lleva un `descargaId` que el JS usa para
- *    disparar `GET /api/ocupaciones/descarga/:id` y bajar el Excel con las
- *    claves llenas.
- * 4. Sin JS (fallback), el `POST /ocupaciones` clásico hace lo mismo de un
- *    tirón y devuelve el archivo, aunque sin barra de avance.
+ * 1. `POST /api/ocupaciones/plan` recibe el padrón y devuelve los casos:
+ *    puesto, centro de costos y a cuántos trabajadores cubre cada uno.
+ * 2. `POST /api/ocupaciones/sugerir` clasifica un caso.
+ * 3. `POST /api/ocupaciones/escribir` recibe el mismo padrón y las claves
+ *    sugeridas, vuelve a planear y devuelve el Excel con las celdas llenas.
  *
- * Nada se escribe en la base de datos desde aquí.
+ * Cancelar es dejar de pedir casos: nada sigue corriendo en el servidor ni
+ * gastando cupo del modelo. Nada se escribe en la base de datos desde aquí.
  */
 
-import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
 import { DomainError } from "../domain/comun/errores.ts";
-import type { PadronLeido } from "../domain/padron/tipos.ts";
 import { catalogoDeLaPlataforma, SUBAREAS_CNO } from "../domain/ocupaciones/catalogo.ts";
-import { planearClasificacion } from "../domain/ocupaciones/plan.ts";
 import { escribirCodigosEnXlsx } from "../domain/ocupaciones/escritor-xlsx.ts";
+import { planearClasificacion, type PlanDeClasificacion } from "../domain/ocupaciones/plan.ts";
 import type { ServicioDeOcupacionesPort } from "../domain/ocupaciones/servicio.ts";
+import type { PadronLeido } from "../domain/padron/tipos.ts";
+import { MultipartError, parseMultipart, type ArchivoRecibido } from "../server/multipart.ts";
 import type { HojaDeEstilos } from "../web/estaticos.ts";
-import { MultipartError, parseMultipart } from "../server/multipart.ts";
-import {
-  renderOccupationsPage,
-  type BusquedaEnCatalogo,
-  type DatosDeOcupaciones,
-} from "../web/pages/ocupaciones.ts";
+import { renderOccupationsPage, type BusquedaEnCatalogo } from "../web/pages/ocupaciones.ts";
 
 const MAXIMO_DEL_ARCHIVO = 8 * 1024 * 1024;
 const MAXIMO_EN_LA_NUBE = 4 * 1024 * 1024;
 const LIMITE_DE_BUSQUEDA = 60;
+/**
+ * Casos por corrida, primero los que cubren a más trabajadores. Cada caso gasta
+ * dos peticiones del cupo gratuito de OpenRouter, que da 50 al día: quince
+ * dejan lugar para reintentos y para una segunda corrida corta.
+ */
 const CASOS_POR_CORRIDA = 15;
+const TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 const POLITICA_DE_OCUPACIONES = [
   "default-src 'none'",
@@ -76,15 +80,120 @@ function busquedaDe(consulta: Record<string, unknown>): BusquedaEnCatalogo {
   return { texto: palabras, subarea, realizada: true, total, ocupaciones };
 }
 
-/** Archivos generados esperando descarga. Se podan a los cinco minutos. */
-const descargas = new Map<string, { buffer: Buffer; nombre: string; creadoEn: number }>();
-const VIDA_DE_DESCARGA_MS = 5 * 60 * 1000;
-
-function podarDescargas(): void {
-  const ahora = Date.now();
-  for (const [id, descarga] of descargas) {
-    if (ahora - descarga.creadoEn > VIDA_DE_DESCARGA_MS) descargas.delete(id);
+/** El padrón del formulario y los demás campos que lo acompañen. */
+function leerFormulario(peticion: FastifyRequest): {
+  readonly archivo: ArchivoRecibido;
+  readonly campos: Readonly<Record<string, string>>;
+} {
+  let formulario;
+  try {
+    formulario = parseMultipart(peticion.body as Buffer, peticion.headers["content-type"]);
+  } catch (error) {
+    if (!(error instanceof MultipartError)) throw error;
+    throw new DomainError("FORMULARIO_DANADO", "El formulario llegó incompleto o dañado.");
   }
+  const archivo = formulario.archivos.find((parte) => parte.campo === "archivo");
+  if (!archivo || archivo.contenido.length === 0) {
+    throw new DomainError("SIN_ARCHIVO", "No se recibió ningún archivo.");
+  }
+  return { archivo, campos: formulario.campos };
+}
+
+/** El plan de la corrida. El mismo archivo da siempre el mismo plan. */
+function planDe(
+  archivo: ArchivoRecibido,
+  extraer: (archivo: Buffer) => PadronLeido,
+): PlanDeClasificacion {
+  let padron: PadronLeido;
+  try {
+    padron = extraer(archivo.contenido);
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : String(error);
+    throw new DomainError(
+      "PADRON_ILEGIBLE",
+      `El archivo no tiene la forma del padrón semanal: ${mensaje}`,
+    );
+  }
+  return planearClasificacion(padron, CASOS_POR_CORRIDA);
+}
+
+/**
+ * Las claves que juntó el navegador, contra el plan que se acaba de rehacer con
+ * el mismo archivo. Cada una tiene que venir del mismo caso —número, puesto y
+ * centro de costos— y existir en el catálogo. Si una no cuadra no se escribe
+ * ninguna: una clave fuera de su caso terminaría en la celda de otra persona.
+ */
+function codigosDelPlan(
+  enviados: string | undefined,
+  plan: PlanDeClasificacion,
+): Array<{ casoId: string; codigo: string }> {
+  let lista: unknown;
+  try {
+    lista = JSON.parse(enviados ?? "");
+  } catch {
+    lista = undefined;
+  }
+  if (!Array.isArray(lista) || lista.length === 0) {
+    throw new DomainError("SIN_CLAVES", "No llegaron claves que escribir.");
+  }
+  const casos = new Map(plan.casos.map((caso) => [caso.id, caso]));
+  const catalogo = catalogoDeLaPlataforma();
+  const codigos = new Map<string, string>();
+  for (const elemento of lista as unknown[]) {
+    const campos: Record<string, unknown> =
+      typeof elemento === "object" && elemento !== null
+        ? (elemento as Record<string, unknown>)
+        : {};
+    const caso = typeof campos.casoId === "string" ? casos.get(campos.casoId) : undefined;
+    const codigo = campos.codigo;
+    if (
+      !caso ||
+      caso.puesto !== campos.puesto ||
+      caso.centroDeCostos !== campos.centroDeCostos ||
+      typeof codigo !== "string" ||
+      !catalogo.ocupacion(codigo)
+    ) {
+      throw new DomainError(
+        "CLAVES_DE_OTRO_PLAN",
+        "Las claves no corresponden a los casos de este padrón. Hace falta clasificarlo de nuevo.",
+      );
+    }
+    codigos.set(caso.id, codigo);
+  }
+  return [...codigos].map(([casoId, codigo]) => ({ casoId, codigo }));
+}
+
+function nombreDeSalida(original: string): string {
+  const base = original.trim().replace(/\.xlsx$/iu, "");
+  return `${base || "padron"} con ocupaciones.xlsx`;
+}
+
+/**
+ * La cabecera de la descarga. Una cabecera HTTP sólo admite latin-1: el nombre
+ * real viaja codificado en `filename*` y `filename` lleva su versión sin
+ * acentos para quien no entienda la otra.
+ */
+function adjunto(nombre: string): string {
+  const ascii =
+    nombre
+      .normalize("NFD")
+      .replace(/[^\x20-\x7e]/gu, "")
+      .replace(/["\\]/gu, "") || "padron con ocupaciones.xlsx";
+  const codificado = encodeURIComponent(nombre).replace(
+    /['()*]/gu,
+    (letra) => `%${letra.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${codificado}`;
+}
+
+function sinAgente(peticion: FastifyRequest, respuesta: FastifyReply): FastifyReply {
+  return respuesta.code(503).send({
+    error: {
+      code: "IA_SIN_CONFIGURAR",
+      message: "El agente de ocupaciones está apagado.",
+      requestId: String(peticion.id),
+    },
+  });
 }
 
 export function registerOccupationRoutes(
@@ -96,15 +205,13 @@ export function registerOccupationRoutes(
     readonly guion?: HojaDeEstilos;
   },
 ): void {
-  const pantalla = (
-    respuesta: FastifyReply,
-    codigo: number,
-    datos: Partial<DatosDeOcupaciones>,
-  ): FastifyReply =>
+  const bodyLimit = deps.config.role === "nube" ? MAXIMO_EN_LA_NUBE : MAXIMO_DEL_ARCHIVO;
+
+  app.get("/ocupaciones", (peticion, respuesta) =>
     respuesta
       .type("text/html; charset=utf-8")
       .header("content-security-policy", POLITICA_DE_OCUPACIONES)
-      .code(codigo)
+      .code(200)
       .send(
         renderOccupationsPage({
           entorno: deps.config.environment,
@@ -112,276 +219,35 @@ export function registerOccupationRoutes(
           subareas: SUBAREAS_CNO,
           tamanoDelCatalogo: catalogoDeLaPlataforma().tamano,
           limiteDeBusqueda: LIMITE_DE_BUSQUEDA,
-          busqueda: SIN_BUSQUEDA,
+          busqueda: busquedaDe((peticion.query ?? {}) as Record<string, unknown>),
           guion: deps.guion,
-          ...datos,
         }),
-      );
-
-  app.get("/ocupaciones", (peticion, respuesta) =>
-    pantalla(respuesta, 200, {
-      busqueda: busquedaDe((peticion.query ?? {}) as Record<string, unknown>),
-    }),
+      ),
   );
 
-  // ---- fallback sin JS: POST clásico que devuelve el archivo directamente ----
-  app.post(
-    "/ocupaciones",
-    {
-      bodyLimit: deps.config.role === "nube" ? MAXIMO_EN_LA_NUBE : MAXIMO_DEL_ARCHIVO,
-      errorHandler: (error, _peticion, respuesta) => {
-        if (error.statusCode !== 413) throw error;
-        void pantalla(respuesta, 413, {
-          error: "El archivo supera el tamaño máximo aceptado.",
-        });
-      },
-    },
-    async (peticion: FastifyRequest, respuesta: FastifyReply) => {
-      if (!deps.servicio) {
-        return pantalla(respuesta, 503, {
-          error: "El agente de ocupaciones no está disponible en esta instalación.",
-        });
-      }
-
-      let archivo;
-      try {
-        const formulario = parseMultipart(
-          peticion.body as Buffer,
-          peticion.headers["content-type"],
-        );
-        archivo = formulario.archivos.find((parte) => parte.campo === "archivo");
-      } catch (error) {
-        if (!(error instanceof MultipartError)) throw error;
-        return pantalla(respuesta, 400, { error: "El formulario llegó incompleto o dañado." });
-      }
-
-      if (!archivo || archivo.contenido.length === 0) {
-        return pantalla(respuesta, 400, { error: "No se recibió ningún archivo." });
-      }
-
-      let padron: PadronLeido;
-      try {
-        padron = deps.extraer(archivo.contenido);
-      } catch (error) {
-        const mensaje = error instanceof Error ? error.message : String(error);
-        return pantalla(respuesta, 422, {
-          error: `El archivo no tiene la forma del padrón semanal: ${mensaje}`,
-        });
-      }
-
-      let plan;
-      try {
-        plan = planearClasificacion(padron, CASOS_POR_CORRIDA);
-      } catch (error) {
-        if (!(error instanceof DomainError)) throw error;
-        return pantalla(respuesta, 422, { error: error.message });
-      }
-
-      if (plan.casos.length === 0) {
-        return pantalla(respuesta, 200, {
-          resultado: {
-            faltantes: 0,
-            consultados: 0,
-            escritos: 0,
-            conClave: plan.conClave,
-            pendientes: plan.pendientes,
-          },
-        });
-      }
-
-      const servicio = await deps.servicio();
-      const codigos: Array<{ casoId: string; codigo: string }> = [];
-
-      for (const caso of plan.casos) {
-        try {
-          const sugerencia = await servicio.sugerir({
-            puesto: caso.puesto,
-            centroDeCostos: caso.centroDeCostos,
-          });
-          if (sugerencia.sugerencia && sugerencia.estado === "sugerida") {
-            codigos.push({ casoId: caso.id, codigo: sugerencia.sugerencia.codigo });
-          }
-        } catch {
-          continue;
-        }
-      }
-
-      if (codigos.length === 0) {
-        return pantalla(respuesta, 200, {
-          resultado: {
-            faltantes: plan.filas.length,
-            consultados: plan.casos.length,
-            escritos: 0,
-            conClave: plan.conClave,
-            pendientes: plan.pendientes,
-          },
-        });
-      }
-
-      const { buffer } = escribirCodigosEnXlsx(archivo.contenido, plan.filas, codigos);
-      const nombre = archivo.nombre
-        ? archivo.nombre.replace(/\.xlsx$/i, " — con ocupaciones.xlsx")
-        : "padron-con-ocupaciones.xlsx";
-
-      return respuesta
-        .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        .header("content-disposition", `attachment; filename="${nombre}"`)
-        .code(200)
-        .send(buffer);
-    },
-  );
-
-  // ---- ruta SSE: clasificación con avance en tiempo real ----
-  app.post(
-    "/api/ocupaciones/clasificar",
-    { bodyLimit: deps.config.role === "nube" ? MAXIMO_EN_LA_NUBE : MAXIMO_DEL_ARCHIVO },
-    async (peticion: FastifyRequest, respuesta: FastifyReply) => {
-      respuesta.raw.writeHead(200, {
-        "content-type": "text/event-stream; charset=utf-8",
-        "cache-control": "no-cache, no-store",
-        connection: "keep-alive",
-      });
-
-      const enviar = (datos: Record<string, unknown>): void => {
-        respuesta.raw.write(`data: ${JSON.stringify(datos)}\n\n`);
-      };
-
-      if (!deps.servicio) {
-        enviar({ tipo: "error", mensaje: "El agente de ocupaciones no está disponible." });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      let archivo;
-      try {
-        const formulario = parseMultipart(
-          peticion.body as Buffer,
-          peticion.headers["content-type"],
-        );
-        archivo = formulario.archivos.find((parte) => parte.campo === "archivo");
-      } catch {
-        enviar({ tipo: "error", mensaje: "El formulario llegó incompleto o dañado." });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      if (!archivo || archivo.contenido.length === 0) {
-        enviar({ tipo: "error", mensaje: "No se recibió ningún archivo." });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      let padron: PadronLeido;
-      try {
-        padron = deps.extraer(archivo.contenido);
-      } catch (error) {
-        const mensaje = error instanceof Error ? error.message : String(error);
-        enviar({ tipo: "error", mensaje: `Archivo no válido: ${mensaje}` });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      let plan;
-      try {
-        plan = planearClasificacion(padron, CASOS_POR_CORRIDA);
-      } catch (error) {
-        const mensaje = error instanceof DomainError ? error.message : "Error al planear.";
-        enviar({ tipo: "error", mensaje });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      enviar({ tipo: "plan", faltantes: plan.filas.length, casos: plan.casos.length, conClave: plan.conClave });
-
-      if (plan.casos.length === 0) {
-        enviar({ tipo: "resultado", faltantes: 0, consultados: 0, escritos: 0 });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      const servicio = await deps.servicio();
-      const codigos: Array<{ casoId: string; codigo: string }> = [];
-      let consultados = 0;
-
-      for (const caso of plan.casos) {
-        consultados += 1;
-        let estado = "sin_respuesta";
-        let codigo = "";
-        try {
-          const sugerencia = await servicio.sugerir({
-            puesto: caso.puesto,
-            centroDeCostos: caso.centroDeCostos,
-          });
-          estado = sugerencia.estado;
-          if (sugerencia.sugerencia && sugerencia.estado === "sugerida") {
-            codigo = sugerencia.sugerencia.codigo;
-            codigos.push({ casoId: caso.id, codigo });
-          }
-        } catch {
-          estado = "sin_respuesta";
-        }
-        enviar({
-          tipo: "avance",
-          actual: consultados,
-          total: plan.casos.length,
-          estado,
-          codigo,
-          puesto: caso.puesto,
-        });
-      }
-
-      peticion.log.info(
-        { faltantes: plan.filas.length, consultados, escritos: codigos.length },
-        "clasificación de ocupaciones completada",
-      );
-
-      if (codigos.length === 0) {
-        enviar({ tipo: "resultado", faltantes: plan.filas.length, consultados, escritos: 0 });
-        respuesta.raw.end();
-        return respuesta;
-      }
-
-      const { buffer } = escribirCodigosEnXlsx(archivo.contenido, plan.filas, codigos);
-      const nombre = archivo.nombre
-        ? archivo.nombre.replace(/\.xlsx$/i, " — con ocupaciones.xlsx")
-        : "padron-con-ocupaciones.xlsx";
-
-      podarDescargas();
-      const descargaId = randomUUID();
-      descargas.set(descargaId, { buffer, nombre, creadoEn: Date.now() });
-
-      enviar({ tipo: "resultado", faltantes: plan.filas.length, consultados, escritos: codigos.length, descargaId });
-      respuesta.raw.end();
-      return respuesta;
-    },
-  );
-
-  // ---- descarga del archivo generado ----
-  app.get("/api/ocupaciones/descarga/:id", (peticion, respuesta) => {
-    const id = (peticion.params as { id: string }).id;
-    const descarga = descargas.get(id);
-    if (!descarga) {
-      return respuesta.code(404).send({ error: "El archivo ya no está disponible." });
+  app.post("/api/ocupaciones/plan", { bodyLimit }, (peticion, respuesta) => {
+    if (!deps.servicio) return sinAgente(peticion, respuesta);
+    const { archivo } = leerFormulario(peticion);
+    const plan = planDe(archivo, deps.extraer);
+    const trabajadores = new Map<string, number>();
+    for (const fila of plan.filas) {
+      trabajadores.set(fila.caso, (trabajadores.get(fila.caso) ?? 0) + 1);
     }
-    descargas.delete(id);
-    return respuesta
-      .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-      .header("content-disposition", `attachment; filename="${descarga.nombre}"`)
-      .code(200)
-      .send(descarga.buffer);
+    return respuesta.send({
+      casos: plan.casos.map((caso) => ({
+        id: caso.id,
+        puesto: caso.puesto,
+        centroDeCostos: caso.centroDeCostos,
+        trabajadores: trabajadores.get(caso.id) ?? 0,
+      })),
+      trabajadores: plan.filas.length,
+      conClave: plan.conClave,
+      pendientes: plan.pendientes,
+    });
   });
 
-  // ---- API JSON de un caso suelto ----
   app.post("/api/ocupaciones/sugerir", async (peticion, respuesta) => {
-    if (!deps.servicio) {
-      return respuesta.code(503).send({
-        error: {
-          code: "IA_SIN_CONFIGURAR",
-          message: "El agente de ocupaciones está apagado.",
-          requestId: String(peticion.id),
-        },
-      });
-    }
+    if (!deps.servicio) return sinAgente(peticion, respuesta);
     const servicio = await deps.servicio();
     const inicio = Date.now();
     const sugerencia = await servicio.sugerir(peticion.body);
@@ -395,5 +261,26 @@ export function registerOccupationRoutes(
       "ocupación sugerida",
     );
     return respuesta.send(sugerencia);
+  });
+
+  app.post("/api/ocupaciones/escribir", { bodyLimit }, (peticion, respuesta) => {
+    const { archivo, campos } = leerFormulario(peticion);
+    const plan = planDe(archivo, deps.extraer);
+    const codigos = codigosDelPlan(campos.codigos, plan);
+    const { buffer, celdasEscritas } = escribirCodigosEnXlsx(
+      archivo.contenido,
+      plan.filas,
+      codigos,
+    );
+    peticion.log.info(
+      { casos: codigos.length, celdas: celdasEscritas },
+      "claves de ocupación escritas en la copia del padrón",
+    );
+    return respuesta
+      .type(TIPO_XLSX)
+      .header("content-disposition", adjunto(nombreDeSalida(archivo.nombre)))
+      .header("x-kcm-celdas-escritas", String(celdasEscritas))
+      .code(200)
+      .send(buffer);
   });
 }

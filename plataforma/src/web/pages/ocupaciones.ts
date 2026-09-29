@@ -1,11 +1,11 @@
 /**
- * Ocupaciones: clasificación automática con IA.
+ * Ocupaciones: la clave de ocupación de los trabajadores que no la traen.
  *
- * El flujo:
- * 1. Subir el padrón (`sem NN CAP.xlsx`).
- * 2. La IA clasifica los trabajadores sin clave de ocupación.
- * 3. Se descarga el Excel con las claves llenas.
- * 4. Se revisa fuera de línea; si es correcto, se sube a `/padron`.
+ * La pantalla recibe el padrón semanal y el guion `ocupaciones.js` conduce la
+ * clasificación contra la API, un caso por petición: pide el plan, consulta los
+ * casos de uno en uno y al final baja el Excel con las claves llenas, que se
+ * revisa antes de aplicarlo desde `/padron`. Sin guion no hay clasificación: la
+ * función publicada no alcanza a hacerla entera en una sola petición.
  *
  * La búsqueda en el catálogo se conserva como herramienta de verificación.
  */
@@ -24,19 +24,9 @@ export interface BusquedaEnCatalogo {
   readonly ocupaciones: readonly Ocupacion[];
 }
 
-export interface ResultadoDeClasificacion {
-  readonly faltantes: number;
-  readonly consultados: number;
-  readonly escritos: number;
-  readonly conClave: number;
-  readonly pendientes: { readonly casos: number; readonly trabajadores: number };
-}
-
 export interface DatosDeOcupaciones {
   readonly entorno: EnvironmentName;
   readonly iaDisponible: boolean;
-  readonly error?: string;
-  readonly resultado?: ResultadoDeClasificacion;
   readonly busqueda: BusquedaEnCatalogo;
   readonly subareas: readonly Subarea[];
   readonly tamanoDelCatalogo: number;
@@ -48,139 +38,58 @@ function cifra(valor: number): string {
   return valor.toLocaleString("es-MX");
 }
 
+/**
+ * El formulario y la tarjeta de avance. La tarjeta nace oculta con `hidden` y
+ * no con `style`: la política de la pantalla no admite estilos en línea.
+ */
 function renderFormulario(datos: DatosDeOcupaciones): Html {
   return html`<section class="tarjeta" aria-labelledby="titulo-clasificacion">
     <div class="seccion-cabecera">
       <span class="capta-rotulo">Clasificación</span>
       <h2 id="titulo-clasificacion">Clasificar ocupaciones con IA</h2>
       <p>
-        Sube el padrón semanal. Los trabajadores activos sin clave de ocupación se clasifican
-        automáticamente. El archivo regresa con las claves llenas para que lo revises antes de
-        aplicarlo a la base desde <a href="/padron">Padrón</a>.
+        El padrón semanal regresa con la clave de ocupación llena en los trabajadores activos que no
+        la traían, para revisarlo antes de aplicarlo desde <a href="/padron">Padrón</a>.
       </p>
     </div>
-    ${datos.error ? html`<p class="aviso-error" role="alert">${datos.error}</p>` : ""}
     ${
       datos.iaDisponible
-        ? html`<form
-              method="POST"
-              action="/ocupaciones"
-              enctype="multipart/form-data"
-              class="formulario"
-              id="form-clasificar"
-            >
+        ? html`<form class="formulario" id="form-clasificar">
               <label>
                 Archivo del padrón
                 <input type="file" name="archivo" accept=".xlsx" required />
               </label>
               <button type="submit" id="btn-clasificar">Clasificar faltantes</button>
             </form>
-            <div id="progreso-ia" class="tarjeta-aviso tarjeta-aviso-ia" style="display:none">
-              <p id="progreso-texto">
-                <strong>Clasificando ocupaciones…</strong> Cada caso se consulta con dos modelos de IA.
-                No cierres ni recargues esta pestaña.
+            <noscript>
+              <p class="aviso-error">
+                La clasificación necesita JavaScript activo en el navegador.
               </p>
-              <div class="barra-progreso"><div class="barra-progreso-relleno" id="barra-relleno"></div></div>
-              <p class="texto-nota" id="progreso-detalle" style="margin-top:0.5rem">Preparando…</p>
-              <button type="button" id="btn-cancelar" class="boton-secundario" style="display:none;margin-top:0.5rem">Cancelar</button>
+            </noscript>
+            <div id="progreso-ia" class="tarjeta-aviso-ia avance-ia" hidden>
+              <p id="progreso-texto" class="avance-ia-titulo" aria-live="polite"></p>
+              <div class="barra-progreso">
+                <div class="barra-progreso-relleno" id="barra-relleno"></div>
+              </div>
+              <p class="texto-nota avance-ia-detalle" id="progreso-detalle"></p>
+              <details id="progreso-casos" class="avance-ia-casos" hidden>
+                <summary></summary>
+                <ul></ul>
+              </details>
+              <button type="button" id="btn-cancelar" class="boton-secundario" hidden>
+                Cancelar
+              </button>
             </div>
             <p class="texto-nota nota-bajo-tira">
-              Sólo viajan al modelo el puesto y el centro de costos; ningún dato personal sale de la
-              plataforma. Puede tardar uno o dos minutos.
+              Al modelo sólo viajan el puesto y el centro de costos; ningún dato personal sale de la
+              plataforma. Cada caso tarda cerca de medio minuto, y cerrar o recargar la pestaña
+              detiene la clasificación.
             </p>`
         : html`<p class="texto-vacio">
             El agente de ocupaciones no está disponible en esta instalación. La búsqueda en el
             catálogo sí funciona.
           </p>`
     }
-  </section>`;
-}
-
-function renderResultado(r: ResultadoDeClasificacion): Html {
-  if (r.faltantes === 0) {
-    return html`<section class="tarjeta">
-      <p class="texto-nota">
-        Todos los ${cifra(r.conClave)} trabajadores ya tienen clave de ocupación. No hay nada que
-        clasificar.
-      </p>
-    </section>`;
-  }
-  return html`<section class="tarjeta">
-    <h3>Clasificación sin resultado para descargar</h3>
-    <div class="kpi-tira">
-      <div class="kpi">
-        <span class="kpi-etiqueta">Faltantes</span>
-        <span class="kpi-dato"><span class="kpi-cifra">${r.faltantes}</span></span>
-        <span class="kpi-pista">Trabajadores activos sin clave</span>
-      </div>
-      <div class="kpi">
-        <span class="kpi-etiqueta">Consultados</span>
-        <span class="kpi-dato"><span class="kpi-cifra">${r.consultados}</span></span>
-        <span class="kpi-pista">Combinaciones únicas</span>
-      </div>
-      <div class="kpi kpi-aviso">
-        <span class="kpi-etiqueta">Escritos</span>
-        <span class="kpi-dato"><span class="kpi-cifra">${r.escritos}</span></span>
-        <span class="kpi-pista">Ningún caso fue sugerido con confianza</span>
-      </div>
-    </div>
-    ${
-      r.pendientes.casos > 0
-        ? html`<p class="texto-nota">
-            Quedan ${cifra(r.pendientes.casos)} casos (${cifra(r.pendientes.trabajadores)}
-            trabajadores) para la siguiente corrida.
-          </p>`
-        : ""
-    }
-  </section>`;
-}
-
-function renderLeyenda(): Html {
-  return html`<section class="tarjeta" aria-labelledby="titulo-leyenda">
-    <div class="seccion-cabecera">
-      <span class="capta-rotulo">Cómo funciona</span>
-      <h2 id="titulo-leyenda">Flujo de clasificación</h2>
-    </div>
-    <ul class="lista-tablero">
-      <li class="lista-fila">
-        <span class="foco foco-verde"></span>
-        <span class="lista-cuerpo">
-          <span class="lista-titulo">1. Subir el padrón</span>
-          <span class="lista-pista"
-            >El archivo <code>sem NN CAP.xlsx</code> con sus hojas de activos.</span
-          >
-        </span>
-      </li>
-      <li class="lista-fila">
-        <span class="foco foco-ambar"></span>
-        <span class="lista-cuerpo">
-          <span class="lista-titulo">2. Clasificación con IA</span>
-          <span class="lista-pista"
-            >Dos modelos resuelven cada caso. Sólo se llenan las celdas vacías con claves
-            sugeridas.</span
-          >
-        </span>
-      </li>
-      <li class="lista-fila">
-        <span class="foco foco-verde"></span>
-        <span class="lista-cuerpo">
-          <span class="lista-titulo">3. Descargar y revisar</span>
-          <span class="lista-pista"
-            >Se descarga el Excel con las claves llenas. Nada se escribe en la base de datos.</span
-          >
-        </span>
-      </li>
-      <li class="lista-fila">
-        <span class="foco foco-verde"></span>
-        <span class="lista-cuerpo">
-          <span class="lista-titulo">4. Aplicar desde Padrón</span>
-          <span class="lista-pista"
-            >Si las claves son correctas, se sube el archivo revisado a
-            <a href="/padron">Padrón</a> para aplicar.</span
-          >
-        </span>
-      </li>
-    </ul>
   </section>`;
 }
 
@@ -299,8 +208,7 @@ function renderResultadosDelCatalogo(datos: DatosDeOcupaciones): Html {
 
 export function renderOccupationsPage(datos: DatosDeOcupaciones): string {
   const contenido = html`
-    <div class="rejilla-dos">${renderFormulario(datos)} ${renderLeyenda()}</div>
-    ${datos.resultado ? renderResultado(datos.resultado) : ""} ${renderCatalogo(datos)}
+    ${renderFormulario(datos)} ${renderCatalogo(datos)}
     ${datos.guion ? html`<script src="${datos.guion.ruta}"></script>` : ""}
   `;
 

@@ -1,8 +1,12 @@
 /**
  * El agente de ocupaciones, como grafo de LangGraph.
  *
- * Un caso —puesto y centro de costos— lo resuelven dos modelos **a la vez y
- * sin verse**, cada uno en su propio subgrafo, y un nodo sin modelo concilia:
+ * Desde el 2026-09-29 la configuración declara un solo modelo: el papel del
+ * verificador no recibe modelo, no corre, y la conciliación sólo da por
+ * «sugerida» la confianza alta. El grafo conserva los dos papeles para cuando
+ * se quiera una segunda opinión; con ella, un caso —puesto y centro de
+ * costos— lo resuelven dos modelos **a la vez y sin verse**, cada uno en su
+ * propio subgrafo, y un nodo sin modelo concilia:
  *
  *            ┌─ papel_principal:   subareas → ocupacion → validacion ─┐
  *   START ───┤                                                        ├─→ conciliacion → END

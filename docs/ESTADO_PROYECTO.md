@@ -2,6 +2,15 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Ocupaciones · 2026-09-29
+
+La clasificación de `/ocupaciones` va un caso por petición, conducida por el
+navegador: la corrida en una sola petición la cortaba Vercel a los 120 s. Un
+solo modelo, Nemotron 3 Super, con Gemma 4 de respaldo, todo por OpenRouter
+con la misma llave. Verificado con pruebas, en Chrome sin interfaz con un
+agente falso y con una consulta real a Nemotron. Acta:
+`docs/actas/2026-09-29-ocupaciones-un-caso-por-peticion.md`.
+
 ## Resultado actual
 
 El OCR y la plataforma de registro para las computadoras de la sala de

@@ -223,31 +223,70 @@ describe("IA · parámetros del agente", () => {
     assert.equal(leerAgenteDelEntorno({ KCM_IA_OPENROUTER_LLAVE: "  " }), undefined);
   });
 
-  it("con la llave de OpenRouter: Nemotron principal; Dots y Qwen verifican, sin cruzarse", () => {
+  it("un solo modelo: Nemotron y, de respaldo, las dos Gemma, con la llave de OpenRouter", () => {
     const parametros = leerAgenteDelEntorno({ KCM_IA_OPENROUTER_LLAVE: "o" });
     assert.deepEqual(
       parametros?.principal.map((destino) => destino.modelo),
-      ["nvidia/nemotron-3-super-120b-a12b:free"],
+      [
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
+        "google/gemma-4-26b-a4b-it:free",
+      ],
     );
-    assert.deepEqual(
-      parametros?.verificador.map((destino) => destino.modelo),
-      ["dots-studio/dots-3-note-preview:free", "qwen/qwen3.8-27b:free"],
-    );
-    // Dos opiniones del mismo modelo serían una: el verificador nunca cae en el principal.
-    const principales = new Set(parametros?.principal.map((destino) => destino.modelo));
-    for (const destino of parametros?.verificador ?? []) {
-      assert.equal(principales.has(destino.modelo), false);
-    }
-    for (const destino of [...(parametros?.principal ?? []), ...(parametros?.verificador ?? [])]) {
-      assert.equal(destino.formato, "json_schema");
+    // Ya no hay segunda opinión: los parámetros no traen verificador.
+    assert.equal(parametros && "verificador" in parametros, false);
+    for (const destino of parametros?.principal ?? []) {
+      assert.equal(destino.url, "https://openrouter.ai/api/v1");
+      assert.equal(destino.llave, "o");
       assert.equal(destino.campoDeTope, "max_tokens");
       assert.deepEqual(destino.extras, {
         reasoning: { effort: "high", exclude: true },
         provider: { require_parameters: true },
       });
     }
+    // Nemotron admite esquema estricto; Gemma sólo JSON simple.
+    assert.deepEqual(
+      parametros?.principal.map((destino) => destino.formato),
+      ["json_schema", "json_object", "json_object"],
+    );
     // El plazo del caso cabe en los 120 s de la función publicada.
     assert.ok((parametros?.limites.tiempoMaximoMs ?? 0) <= 110_000);
+  });
+
+  it("el cuerpo para Gemma pide JSON simple, sin esquema, con los campos de OpenRouter", async () => {
+    const [, gemma] = leerAgenteDelEntorno({ KCM_IA_OPENROUTER_LLAVE: "o" })?.principal ?? [];
+    assert.ok(gemma);
+    const { fetch, llamadas } = fetchDeMentira([exito('{"e": 5}')]);
+    await new ModeloChatCompatible(gemma, { fetch }).responderJson(SOLICITUD);
+    const cuerpo = cuerpoDe(llamadas[0]);
+    assert.equal(llamadas[0]?.url, "https://openrouter.ai/api/v1/chat/completions");
+    assert.equal(cuerpo.model, "google/gemma-4-31b-it:free");
+    assert.deepEqual(cuerpo.response_format, { type: "json_object" });
+    assert.equal(cuerpo.max_tokens, 16_000);
+    assert.deepEqual(cuerpo.reasoning, { effort: "high", exclude: true });
+    assert.deepEqual(cuerpo.provider, { require_parameters: true });
+  });
+
+  it("si Nemotron responde 429, contesta Gemma y la respuesta lo dice", async () => {
+    const parametros = leerAgenteDelEntorno({ KCM_IA_OPENROUTER_LLAVE: "o" });
+    assert.ok(parametros);
+    const { fetch, llamadas } = fetchDeMentira([
+      new Response("{}", { status: 429 }),
+      exito('{"e": 5}', { model: "google/gemma-4-31b-it:free" }),
+    ]);
+    const cadena = new ModeloConRespaldo(
+      parametros.principal.map((destino) => new ModeloChatCompatible(destino, { fetch })),
+      parametros.respaldo,
+    );
+    const respuesta = await cadena.responderJson(SOLICITUD, { tiempoMaximoMs: 100_000 });
+    assert.equal(respuesta.modelo, "google/gemma-4-31b-it:free");
+    assert.deepEqual(
+      llamadas.map(
+        (llamada) => (JSON.parse(llamada.init.body as string) as { model: string }).model,
+      ),
+      ["nvidia/nemotron-3-super-120b-a12b:free", "google/gemma-4-31b-it:free"],
+    );
+    assert.match(respuesta.desvios.join("; "), /nemotron.*respondió 429/u);
   });
 
   it("el cuerpo para OpenRouter lleva el razonamiento, el enrutamiento y max_tokens", async () => {

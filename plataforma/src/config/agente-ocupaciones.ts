@@ -7,30 +7,37 @@
  * revisión, y `VERSION_DEL_AGENTE` sube con él; cada sugerencia lleva la versión
  * y la huella con que se hizo.
  *
- * Por qué estos modelos (medido el 2026-09-26, todo por OpenRouter y gratis):
+ * Un solo modelo responde cada caso (decisión del departamento, 2026-09-29),
+ * todo por OpenRouter y con la misma llave:
  *
- * - **Principal: `nvidia/nemotron-3-super-120b-a12b:free`.** Razona, admite
- *   esquema estricto y respondió en la primera prueba: 552081900, subárea 05.5,
- *   para «*OPERARIO 2°» de Higiénicos, en ~35 s por caso.
- * - **Verificador: `dots-studio/dots-3-note-preview:free`, con respaldo en
- *   `qwen/qwen3.8-27b:free`.** Otras familias, para que la segunda opinión no
- *   repita el sesgo de la primera. Dots coincidió con Nemotron en la prueba,
- *   con ~60 s por caso; es una versión «preview» y por eso lleva respaldo.
- *   Ninguno de los dos cae nunca en Nemotron: dos opiniones del mismo modelo
- *   serían una.
- * - **Gemma quedó fuera.** Su cupo gratuito lo comparten todos los usuarios de
- *   OpenRouter y devolvió 429 en cada intento; el departamento decidió no
- *   conectar una llave propia de Google.
+ * - **`nvidia/nemotron-3-super-120b-a12b:free`.** Razona, admite esquema
+ *   estricto y en la prueba del 2026-09-29 resolvió «*OPERARIO 2°» de
+ *   Higiénicos en 19 s: 552081900, subárea 05.5, confianza alta.
+ * - **Respaldo: Gemma 4, `google/gemma-4-31b-it:free` y después
+ *   `google/gemma-4-26b-a4b-it:free`.** Sólo contesta cuando Nemotron no puede:
+ *   su proveedor saturado, caída o demora. No admite esquema estricto, así que
+ *   se le pide JSON simple; las instrucciones ya describen la forma y la cadena
+ *   la valida igual. Lo sirve Google AI Studio con un cupo gratuito que
+ *   comparten todos los usuarios de OpenRouter, uno por variante: el
+ *   2026-09-29 la de 31B respondió 429 («rate-limited upstream», fuente
+ *   `upstream_provider_shared_pool`) mientras la de 26B contestaba. Por eso van
+ *   las dos: la de 31B razona mejor cuando tiene cupo, y la de 26B cubre cuando
+ *   no. Una variante que respondió 429 se salta cinco minutos.
  *
- * Los dos papeles corren a la vez: juntos tardan lo que el más lento, ~60 s,
- * dentro de los 120 s que da la función publicada.
+ * El tope diario de OpenRouter es de la cuenta y no del modelo: cuando se
+ * agota, Gemma tampoco contesta. El respaldo cubre a Nemotron cuando falla él,
+ * no cuando se acaba el cupo de la cuenta.
+ *
+ * Ya no hay verificador. Con un solo modelo, la conciliación sólo da por
+ * «sugerida» la confianza alta; lo demás va a «revisar» y no se escribe.
  *
  * Tope del plan gratuito de OpenRouter: 20 peticiones por minuto y 50 por día
  * (1 000 por día tras una compra única de 10 dólares en créditos). Un caso usa
- * cuatro peticiones, así que el plan gratuito alcanza para unos 12 casos al día.
+ * dos peticiones —subáreas y ocupación—, así que el plan gratuito alcanza para
+ * unos 25 casos al día.
  *
- * Los proveedores gratuitos no prometen privacidad: sólo viajan puesto y centro
- * de costos, nunca datos de una persona. Los planes cambian sin aviso;
+ * Los proveedores gratuitos no prometen privacidad: sólo viajan puesto y
+ * centro de costos, nunca datos de una persona. Los planes cambian sin aviso;
  * reemplazar un modelo es editar este archivo, subir la versión y volver a
  * evaluar.
  */
@@ -44,7 +51,7 @@ import type { LimitesDelAgente } from "../domain/ocupaciones/agente.ts";
 import type { LimitesDelLote } from "../domain/ocupaciones/lote.ts";
 import { ConfigError, type EnvSource } from "./environment.ts";
 
-export const VERSION_DEL_AGENTE = "2026-09-26.6";
+export const VERSION_DEL_AGENTE = "2026-09-29.2";
 
 const OPENROUTER = "https://openrouter.ai/api/v1";
 
@@ -75,7 +82,11 @@ interface ModeloDeclarado {
   readonly extras?: Readonly<Record<string, unknown>>;
 }
 
-const PRINCIPAL: readonly ModeloDeclarado[] = [
+/**
+ * La cadena del modelo, en orden: responde el primero que pueda. Una sola
+ * opinión por caso; cada eslabón sólo entra cuando fallaron los anteriores.
+ */
+const MODELOS: readonly ModeloDeclarado[] = [
   {
     proveedor: "openrouter",
     url: OPENROUTER,
@@ -85,27 +96,19 @@ const PRINCIPAL: readonly ModeloDeclarado[] = [
     campoDeTope: "max_tokens",
     extras: EN_OPENROUTER,
   },
-];
-
-const VERIFICADOR: readonly ModeloDeclarado[] = [
-  {
-    proveedor: "openrouter",
-    url: OPENROUTER,
-    modelo: "dots-studio/dots-3-note-preview:free",
-    variableDeLlave: "KCM_IA_OPENROUTER_LLAVE",
-    formato: "json_schema",
-    campoDeTope: "max_tokens",
-    extras: EN_OPENROUTER,
-  },
-  {
-    proveedor: "openrouter",
-    url: OPENROUTER,
-    modelo: "qwen/qwen3.8-27b:free",
-    variableDeLlave: "KCM_IA_OPENROUTER_LLAVE",
-    formato: "json_schema",
-    campoDeTope: "max_tokens",
-    extras: EN_OPENROUTER,
-  },
+  // Gemma no admite esquema estricto: JSON simple, con la forma dicha en las
+  // instrucciones. Cada variante tiene su propio cupo compartido.
+  ...["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free"].map(
+    (modelo): ModeloDeclarado => ({
+      proveedor: "openrouter",
+      url: OPENROUTER,
+      modelo,
+      variableDeLlave: "KCM_IA_OPENROUTER_LLAVE",
+      formato: "json_object",
+      campoDeTope: "max_tokens",
+      extras: EN_OPENROUTER,
+    }),
+  ),
 ];
 
 /**
@@ -125,22 +128,23 @@ export const LIMITES_DEL_AGENTE: LimitesDelAgente = {
   intentosPorLlamada: 2,
   esperaInicialMs: 5000,
   limiteDePasos: 20,
-  // Por debajo de los 120 s que la función publicada da a una petición.
+  // Cada caso es una petición propia y cabe, con el arranque, en los 120 s que
+  // la función publicada da a cada una.
   tiempoMaximoMs: 105_000,
   // Una llamada a estos modelos no baja de ~15 s; con menos, ni se empieza.
   tiempoMinimoPorLlamadaMs: 15_000,
 };
 
 /**
- * Topes del botón «Clasificar faltantes», que clasifica por lotes.
+ * Topes de la clasificación por lotes, que hoy sólo usa `npm run ia:ocupaciones`.
  *
  * - Subáreas de 20 casos por petición: es la pregunta fácil, 55 opciones.
  * - Ocupación de 4 casos por petición, agrupados por subárea: pocas opciones y
  *   pocos casos a la vez, para que el lote no le quite atención a cada caso.
- * - Dos tandas en vuelo por papel: con los dos papeles son cuatro peticiones a
- *   la vez, lejos de las 20 por minuto del plan gratuito.
+ * - Dos tandas en vuelo: dos peticiones a la vez, lejos de las 20 por minuto
+ *   del plan gratuito.
  * - Cada paso dura hasta 95 s y sólo empieza una tanda si cabe su llamada
- *   entera; Excel vuelve a llamar hasta terminar.
+ *   entera; quien llama repite hasta terminar.
  */
 export const LIMITES_DEL_LOTE: LimitesDelLote = {
   // El cupo gratuito da 50 peticiones al día. En la prueba real, 8 casos
@@ -168,16 +172,16 @@ export const LIMITES_DEL_LOTE: LimitesDelLote = {
 };
 
 /**
- * La cadena del verificador. Un modelo que no contestó a tiempo o se quedó sin
- * cupo se salta cinco minutos, y mientras tanto su respaldo recibe el tiempo
- * completo. Con menos de 15 s por delante no se empieza ninguno.
+ * La cadena del modelo. Uno que no contestó a tiempo o se quedó sin cupo se
+ * salta cinco minutos, y mientras tanto su respaldo recibe el tiempo completo.
+ * Con menos de 15 s por delante no se empieza ninguno.
  */
 export const RESPALDO: OpcionesDelRespaldo = { enfriamientoMs: 300_000, tiempoMinimoMs: 15_000 };
 
 export interface ParametrosDelAgente {
   readonly version: string;
+  /** La cadena del único modelo: Nemotron y, de respaldo, Gemma. */
   readonly principal: readonly DestinoDeModelo[];
-  readonly verificador: readonly DestinoDeModelo[];
   readonly limites: LimitesDelAgente;
   readonly lote: LimitesDelLote;
   readonly respaldo: OpcionesDelRespaldo;
@@ -218,13 +222,13 @@ function resolver(
 }
 
 /**
- * Los modelos con llave en el entorno, o `undefined` si no hay ninguno para el
- * papel principal: sin llave el agente no existe y su ruta lo explica.
+ * Los modelos con llave en el entorno, o `undefined` si no hay ninguno: sin
+ * llave el agente no existe y su ruta lo explica.
  */
 export function leerAgenteDelEntorno(
   source: EnvSource = process.env,
 ): ParametrosDelAgente | undefined {
-  const principal = resolver(PRINCIPAL, source);
+  const principal = resolver(MODELOS, source);
   if (principal.length === 0) return undefined;
 
   // Sólo se vigila con el agente encendido: sin llave, LangChain nunca se carga.
@@ -241,7 +245,6 @@ export function leerAgenteDelEntorno(
   return {
     version: VERSION_DEL_AGENTE,
     principal,
-    verificador: resolver(VERIFICADOR, source),
     limites: LIMITES_DEL_AGENTE,
     lote: LIMITES_DEL_LOTE,
     respaldo: RESPALDO,
