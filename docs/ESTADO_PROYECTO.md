@@ -8,7 +8,8 @@ Las sesiones nuevas se llaman `KC-0001`, `KC-0002`…: un consecutivo de cuatro
 cifras, sin migración, porque la base sólo exige que el código sea único. La
 nota de cada fecha que la macro escribe en la matriz dice el código de su
 sesión, en lugar de la clave técnica. Verificado con pruebas y con el
-analizador de VBA; falta probar la macro en Excel y publicar la plataforma.
+analizador de VBA, y publicado en Vercel el mismo día (`cf8ab76`); falta
+importar los módulos en el libro y probar una liberación en Excel.
 Acta: `docs/actas/2026-09-29-codigo-kc-y-nota-de-sesion.md`.
 
 ## Ocupaciones · 2026-09-29
@@ -17,7 +18,8 @@ La clasificación de `/ocupaciones` va un caso por petición, conducida por el
 navegador: la corrida en una sola petición la cortaba Vercel a los 120 s. Un
 solo modelo, Nemotron 3 Super, con Gemma 4 de respaldo, todo por OpenRouter
 con la misma llave. Verificado con pruebas, en Chrome sin interfaz con un
-agente falso y con una consulta real a Nemotron. Acta:
+agente falso y con una consulta real a Nemotron; publicado en Vercel el mismo
+día (`bd93e97`). Acta:
 `docs/actas/2026-09-29-ocupaciones-un-caso-por-peticion.md`.
 
 ## Resultado actual
