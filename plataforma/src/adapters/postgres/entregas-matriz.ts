@@ -39,6 +39,7 @@ interface FilaEntrega {
   entregadas: number;
   rechazadas: number;
   entregada_en: string | Date | null;
+  motivo: string | null;
 }
 
 /**
@@ -53,12 +54,14 @@ const CUENTAS_DEL_LOTE = `
   SELECT count(*)::int AS total,
          count(*) FILTER (WHERE ef.efectiva)::int AS entregadas,
          count(*) FILTER (WHERE ef.efectiva IS NOT TRUE AND ef.rechazada)::int AS rechazadas,
-         max(ef.recibido_en) FILTER (WHERE ef.efectiva) AS entregada_en
+         max(ef.recibido_en) FILTER (WHERE ef.efectiva) AS entregada_en,
+         max(ef.detalle) FILTER (WHERE ef.efectiva IS NOT TRUE AND ef.rechazada) AS motivo
     FROM matriz.liberacion l
     CROSS JOIN LATERAL (
       SELECT bool_or(a.estado IN ('APPLIED', 'RECOVERED')) AS efectiva,
              bool_or(a.estado NOT IN ('APPLIED', 'RECOVERED')) AS rechazada,
-             max(a.recibido_en) FILTER (WHERE a.estado IN ('APPLIED', 'RECOVERED')) AS recibido_en
+             max(a.recibido_en) FILTER (WHERE a.estado IN ('APPLIED', 'RECOVERED')) AS recibido_en,
+             max(a.detalle) FILTER (WHERE a.estado NOT IN ('APPLIED', 'RECOVERED')) AS detalle
         FROM matriz.liberacion_acuse a
        WHERE a.clave_idempotencia = l.clave_idempotencia
     ) ef
@@ -80,7 +83,8 @@ const ENTREGAS = `
          cuentas.total,
          cuentas.entregadas,
          cuentas.rechazadas,
-         cuentas.entregada_en
+         cuentas.entregada_en,
+         cuentas.motivo
     FROM matriz.liberacion_lote lo
     JOIN operacion.sesion s ON s.sesion_id = lo.sesion_id
     LEFT JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
@@ -187,5 +191,6 @@ function aEntrega(fila: FilaEntrega): MatrixDelivery {
     rejected: Number(fila.rechazadas),
     state: estadoDe(fila),
     deliveredAt: fila.entregada_en === null ? null : iso(fila.entregada_en),
+    conflictDetail: fila.motivo ?? "",
   };
 }

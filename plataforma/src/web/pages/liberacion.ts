@@ -51,6 +51,7 @@ const ETIQUETAS_DE_ESTADO: Readonly<Record<string, string>> = {
   COURSE_NOT_FOUND: "Curso ausente del catálogo",
   EXISTING_VALUE_CONFLICT: "La celda ya tiene un valor",
   OVERWRITE_NOT_ALLOWED: "El destino no admite sobrescritura",
+  NEWER_DATE_PRESENT: "La matriz ya tiene una fecha más reciente",
   OVERWRITE_REASON_REQUIRED: "Motivo no declarado",
   IDEMPOTENCY_CONFLICT: "Ya se había liberado con otros datos",
 };
@@ -410,7 +411,11 @@ function renderEntrega(entrega: MatrixDelivery): Html {
       ${entrega.delivered} de ${entrega.total}
       ${
         entrega.rejected > 0
-          ? html`<br /><span class="texto-secundario">${entrega.rejected} con conflicto</span>`
+          ? html`<br /><span class="texto-secundario">${entrega.rejected} con conflicto</span>${
+                entrega.conflictDetail
+                  ? html`<br /><span class="texto-secundario">${entrega.conflictDetail}</span>`
+                  : ""
+              }`
           : ""
       }
     </td>

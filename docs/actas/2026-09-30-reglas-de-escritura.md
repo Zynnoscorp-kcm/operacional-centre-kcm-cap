@@ -1,0 +1,7 @@
+# Acta · Reglas de escritura en la matriz · 2026-09-30
+
+- Plataforma (`pasarela-matriz.ts`): fecha vigente más reciente que la liberada → `NEWER_DATE_PRESENT`, conflicto; aborta el lote aunque haya motivo.
+- `RELEASE_CONTEXT_V1` (integracion.ts): por clave de idempotencia, nombre del padrón y `expectedPreviousDate` (el `fecha_anterior` del cambio `SOBRESCRITA` que asentó el mismo lote). `RELEASE_PULL_V1` no cambia.
+- Macro (`KcmReleaseSync.bas`): pide el contexto antes de abrir la matriz (si falla, no escribe). Por renglón: `NAME_MISMATCH` si el nombre de la columna siguiente a la nómina no coincide (`KcmMismoNombre`: palabras sin acentos, en cualquier orden, todas las del nombre más corto menos una y al menos dos); `NEWER_DATE_CONFLICT`; sólo sobrescribe si la celda trae la fecha esperada, si no `UNEXPECTED_DATE_CONFLICT`.
+- Defecto previo corregido: los estados de conflicto de la macro (`EMPLOYEE_NOT_FOUND`, `HEADER_CONFLICT`, `ATOMIC_BATCH_ABORTED`…) no existen en `comun.estado_acuse` y el `INSERT` fallaba. Ahora se traducen (`DESTINATION_MISSING`, `HEADER_MISMATCH`, `EXISTING_VALUE`, `REJECTED`) con el código original al inicio del detalle; el tablero de entregas muestra ese motivo.
+- Evidencia: plataforma 779 pruebas por archivo sin fallas (nuevas en `liberacion-sobrescritura` y `excel-integracion`); `npm test` 118/118; `check:vba` sin hallazgos. Pendiente: importar `KcmReleaseSync` y probar en Excel.

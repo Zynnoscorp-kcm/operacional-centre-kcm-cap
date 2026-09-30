@@ -28,6 +28,7 @@ const ACTIONS = new Set([
   "ROSTER_SCAN_V1",
   "RELEASE_PULL_V1",
   "RELEASE_SESSIONS_V1",
+  "RELEASE_CONTEXT_V1",
   "RELEASE_ACK_V1",
   "DC3_REPORT_V1",
   "STATUS_V1",
@@ -35,6 +36,39 @@ const ACTIONS = new Set([
   "UPLOAD_PART_V1",
 ]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+
+/**
+ * Los estados que la macro contesta, traducidos a `comun.estado_acuse`.
+ *
+ * La macro nombra cada conflicto por su causa —EMPLOYEE_NOT_FOUND,
+ * NAME_MISMATCH…— y la base sólo admite seis valores. Sin esta traducción el
+ * `INSERT` fallaba con cualquier conflicto: el acuse se perdía, el lote seguía
+ * «esperando a Excel» y nadie veía por qué. El código original no se pierde:
+ * va al principio del detalle.
+ */
+const ESTADO_DE_ACUSE: Readonly<Record<string, string>> = {
+  APPLIED: "APPLIED",
+  RECOVERED: "RECOVERED",
+  HEADER_MISMATCH: "HEADER_MISMATCH",
+  EXISTING_VALUE: "EXISTING_VALUE",
+  DESTINATION_MISSING: "DESTINATION_MISSING",
+  REJECTED: "REJECTED",
+  HEADER_CONFLICT: "HEADER_MISMATCH",
+  EMPLOYEE_NOT_FOUND: "DESTINATION_MISSING",
+  EXISTING_VALUE_CONFLICT: "EXISTING_VALUE",
+  NEWER_DATE_CONFLICT: "EXISTING_VALUE",
+  UNEXPECTED_DATE_CONFLICT: "EXISTING_VALUE",
+};
+
+function estadoDeAcuse(estado: string): string {
+  return ESTADO_DE_ACUSE[estado] ?? "REJECTED";
+}
+
+function detalleDeAcuse(estado: string, detalle: string): string {
+  const traducido = estadoDeAcuse(estado);
+  if (traducido === estado || estado === "") return detalle;
+  return `${estado}: ${detalle}`.slice(0, 500);
+}
 
 /**
  * Lo que puede llegar en partes: las acciones que suben datos. Las que sólo
@@ -485,7 +519,7 @@ export class ExcelIntegrationService {
         payload: encodePayload(
           tsv(
             headers,
-            pending.map((row) => headers.map((key) => row[key as keyof PendingExcelRelease])),
+            pending.map((row) => headers.map((key) => row[key as keyof PendingExcelRelease] ?? "")),
           ),
         ),
       };
@@ -507,6 +541,25 @@ export class ExcelIntegrationService {
               fila.trainingId,
               fila.completionDate,
               String(fila.pending),
+            ]),
+          ),
+        ),
+      };
+    }
+    if (request.action === "RELEASE_CONTEXT_V1") {
+      // Lo que Excel necesita para decidir si escribe y que `RELEASE_PULL_V1`
+      // no trae: su lector exige las columnas exactas, así que no se le agregan.
+      const pendientes = await this.#repository.listPendingReleases();
+      const headers = ["idempotencyKey", "workerName", "expectedPreviousDate"];
+      return {
+        count: pendientes.length,
+        payload: encodePayload(
+          tsv(
+            headers,
+            pendientes.map((fila) => [
+              fila.idempotencyKey,
+              fila.workerName ?? "",
+              fila.expectedPreviousDate ?? "",
             ]),
           ),
         ),
@@ -800,10 +853,10 @@ export class ExcelIntegrationService {
         batchId: row.batchId ?? "",
         targetMappingVersion: row.targetMappingVersion ?? "",
         completionDate: row.completionDate ?? "",
-        status: row.status ?? "",
+        status: estadoDeAcuse(row.status ?? ""),
         workbookSha256: row.workbookSha256 ?? "",
         destinationAddress: row.destinationAddress ?? "",
-        detail: row.detail ?? "",
+        detail: detalleDeAcuse(row.status ?? "", row.detail ?? ""),
         receivedAt: this.#clock.nowIso(),
       });
     }

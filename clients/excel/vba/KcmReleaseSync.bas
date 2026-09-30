@@ -29,6 +29,9 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
     Dim master As Workbook
     Dim escogidas As Long
     Dim codigos As KcmDiccionario
+    Dim nombres As KcmDiccionario
+    Dim fechasPrevias As KcmDiccionario
+    Dim clave As String
 
     KcmResetCaches
     Set response = KcmHttpPost("RELEASE_PULL_V1", "")
@@ -66,6 +69,12 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
     ' Cada fecha lleva en su nota el codigo de su sesion (KC-0001). Se consulta antes de abrir
     ' la matriz: si la consulta falla, no se escribe nada, igual que si fallara la descarga.
     Set codigos = KcmCodigosDeSesion()
+    ' Y el nombre del padron y la fecha que la plataforma autorizo reemplazar, para no escribir
+    ' en la persona equivocada ni pisar una fecha que nadie reviso. Si la consulta falla, tampoco
+    ' se escribe nada.
+    Set nombres = KcmNuevoDiccionario()
+    Set fechasPrevias = KcmNuevoDiccionario()
+    KcmContextoDeLiberacion nombres, fechasPrevias
     For Each batchKey In batches.Keys
         Set batchRows = batches.Objeto(CStr(batchKey))
         For Each row In batchRows
@@ -73,6 +82,17 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
                 row.Add "sessionCode", CStr(codigos.Item(CStr(row.Item("sessionId"))))
             Else
                 row.Add "sessionCode", ""
+            End If
+            clave = CStr(row.Item("idempotencyKey"))
+            If nombres.Exists(clave) Then
+                row.Add "workerName", CStr(nombres.Item(clave))
+            Else
+                row.Add "workerName", ""
+            End If
+            If fechasPrevias.Exists(clave) Then
+                row.Add "expectedPreviousDate", CStr(fechasPrevias.Item(clave))
+            Else
+                row.Add "expectedPreviousDate", ""
             End If
         Next row
     Next batchKey
@@ -240,6 +260,10 @@ Private Sub KcmInspectReleaseRow(ByVal master As Workbook, ByVal row As KcmDicci
     Dim headerRow As Long
     Dim indexKey As String
     Dim currentDate As String
+    Dim employeeColumn As Long
+    Dim nombrePadron As String
+    Dim nombreMatriz As String
+    Dim fechaEsperada As String
 
     row.Add "applyStatus", ""
     row.Add "detail", ""
@@ -274,9 +298,10 @@ Private Sub KcmInspectReleaseRow(ByVal master As Workbook, ByVal row As KcmDicci
     End If
 
     indexKey = sheet.Name & "|" & CStr(headerRow)
+    employeeColumn = KcmColumnNumber(KcmConfigValue("EMPLOYEE_COLUMN"))
     If Not employeeIndexes.Exists(indexKey) Then
         employeeIndexes.AgregarObjeto indexKey, KcmEmployeeRowIndex(sheet, _
-            KcmColumnNumber(KcmConfigValue("EMPLOYEE_COLUMN")), headerRow + 1)
+            employeeColumn, headerRow + 1)
     End If
     Set employeeRows = employeeIndexes.Objeto(indexKey)
     If Not employeeRows.Exists(CStr(row.Item("employeeId"))) Then
@@ -289,6 +314,21 @@ Private Sub KcmInspectReleaseRow(ByVal master As Workbook, ByVal row As KcmDicci
     Set target = sheet.Cells(CLng(row.Item("destinationRow")), columnNumber)
     row.Fijar "destinationAddress", sheet.Name & "!" & KcmColumnLetters(columnNumber) & _
         CStr(row.Item("destinationRow"))
+
+    ' La nomina encontro un renglon, pero hay que confirmar que es la misma persona: una nomina
+    ' mal capturada en la matriz puede ser la de otro trabajador, y la fecha se escribiria en el
+    ' renglon equivocado sin que nada lo delatara. El nombre va en la columna siguiente a la
+    ' nomina, la misma que lee el barrido.
+    nombrePadron = KcmTextoDeFila(row, "workerName")
+    If Len(nombrePadron) > 0 Then
+        nombreMatriz = KcmCellText(sheet.Cells(CLng(row.Item("destinationRow")), employeeColumn + 1).Value)
+        If Not KcmMismoNombre(nombreMatriz, nombrePadron) Then
+            KcmSetRowStatus row, "NAME_MISMATCH", "La nomina " & CStr(row.Item("employeeId")) & _
+                " es de " & Left$(Trim$(nombreMatriz), 60) & " en la matriz y de " & _
+                Left$(nombrePadron, 60) & " en el padron"
+            Exit Sub
+        End If
+    End If
 
     If target.HasFormula Then
         KcmSetRowStatus row, "EXISTING_VALUE_CONFLICT", "La celda destino contiene una formula"
@@ -305,10 +345,23 @@ Private Sub KcmInspectReleaseRow(ByVal master As Workbook, ByVal row As KcmDicci
         ' Antes se exigia ademas que la nota fuera identica al marcador: una nota agregada
         ' despues, o el marcador conviviendo con un apunte del area, convertia un renglon ya
         ' aplicado en conflicto. Lo que decide es el numero de la celda; la nota acompana.
+        fechaEsperada = KcmTextoDeFila(row, "expectedPreviousDate")
         If currentDate = CStr(row.Item("completionDate")) Then
             KcmSetRowStatus row, "RECOVERED", "Efecto recuperado por la fecha de la celda"
+        ElseIf Len(currentDate) > 0 And currentDate > CStr(row.Item("completionDate")) Then
+            ' Nunca se reemplaza una fecha mas reciente por una mas vieja, ni con motivo. Las
+            ' fechas van en ISO, asi que comparar el texto es comparar el calendario.
+            KcmSetRowStatus row, "NEWER_DATE_CONFLICT", "La matriz ya tiene una fecha mas reciente: " & _
+                currentDate
+        ElseIf CStr(row.Item("overwritePolicy")) = "OVERWRITE_WITH_HISTORY" And _
+            Len(fechaEsperada) > 0 And currentDate = fechaEsperada Then
+            ' La plataforma vio esta misma fecha, pidio el motivo y autorizo reemplazarla.
+            KcmSetRowStatus row, "READY", "Sobrescritura autorizada en la plataforma"
         ElseIf CStr(row.Item("overwritePolicy")) = "OVERWRITE_WITH_HISTORY" Then
-            KcmSetRowStatus row, "READY", "Sobrescritura gobernada por la plataforma"
+            ' La celda trae algo que la plataforma no conocia: una fecha capturada despues del
+            ' ultimo barrido. Reemplazarla aqui seria sobrescribir sin que nadie lo revisara.
+            KcmSetRowStatus row, "UNEXPECTED_DATE_CONFLICT", "La celda tiene " & _
+                Left$(KcmCellText(target.Value), 20) & " y la plataforma no autorizo reemplazarla"
         Else
             KcmSetRowStatus row, "EXISTING_VALUE_CONFLICT", "La celda ya contiene otro valor o marcador"
         End If
@@ -500,6 +553,84 @@ End Function
 ''' Sale de RELEASE_SESSIONS_V1, la misma consulta del subpanel de entradas. RELEASE_PULL_V1 no
 ''' trae el codigo, y agregarle una columna romperia a cualquier libro que siga con los modulos
 ''' anteriores: su lector exige las columnas exactas.
+''' El nombre del padron y la fecha que la liberacion autorizo reemplazar, por clave de
+''' idempotencia. Sale de RELEASE_CONTEXT_V1 por la misma razon que los codigos: RELEASE_PULL_V1
+''' conserva sus columnas exactas.
+Private Sub KcmContextoDeLiberacion(ByVal nombres As KcmDiccionario, _
+    ByVal fechasPrevias As KcmDiccionario)
+    Dim respuesta As KcmDiccionario
+    Dim filas As Collection
+    Dim fila As KcmDiccionario
+    Dim clave As String
+
+    Set respuesta = KcmHttpPost("RELEASE_CONTEXT_V1", "")
+    Set filas = KcmParseTsv(KcmDecodeResponsePayload(respuesta), _
+        Array("idempotencyKey", "workerName", "expectedPreviousDate"))
+    For Each fila In filas
+        clave = CStr(fila.Item("idempotencyKey"))
+        If Not nombres.Exists(clave) Then nombres.Add clave, CStr(fila.Item("workerName"))
+        If Not fechasPrevias.Exists(clave) Then _
+            fechasPrevias.Add clave, CStr(fila.Item("expectedPreviousDate"))
+    Next fila
+End Sub
+
+''' El valor de `clave` en la fila, o cadena vacia si la fila no lo trae.
+Private Function KcmTextoDeFila(ByVal row As KcmDiccionario, ByVal clave As String) As String
+    If row.Exists(clave) Then KcmTextoDeFila = Trim$(CStr(row.Item(clave)))
+End Function
+
+''' Si dos nombres son de la misma persona, sin exigir que esten escritos igual.
+'''
+''' Se comparan por palabras, sin acentos ni mayusculas y en cualquier orden, porque la matriz y
+''' el padron no siempre ponen apellidos y nombres en el mismo lugar. Basta con que coincidan todas
+''' las palabras del nombre mas corto menos una, y al menos dos: asi una letra de mas o un apellido
+''' mal escrito no detienen el lote, pero un renglon de otra persona si.
+Private Function KcmMismoNombre(ByVal enMatriz As String, ByVal enPadron As String) As Boolean
+    Dim a As String
+    Dim b As String
+    Dim palabrasA As Variant
+    Dim palabrasB As Variant
+    Dim termino As Variant
+    Dim otra As Variant
+    Dim contadasA As Long
+    Dim contadasB As Long
+    Dim comunes As Long
+    Dim menor As Long
+
+    a = KcmNormalizeLabel(enMatriz)
+    b = KcmNormalizeLabel(enPadron)
+    If Len(a) = 0 Or Len(b) = 0 Then Exit Function
+    If a = b Then
+        KcmMismoNombre = True
+        Exit Function
+    End If
+    palabrasA = Split(a, " ")
+    palabrasB = Split(b, " ")
+    For Each termino In palabrasA
+        If Len(termino) >= 2 Then contadasA = contadasA + 1
+    Next termino
+    For Each otra In palabrasB
+        If Len(otra) >= 2 Then contadasB = contadasB + 1
+    Next otra
+    For Each termino In palabrasA
+        If Len(termino) >= 2 Then
+            For Each otra In palabrasB
+                If CStr(otra) = CStr(termino) Then
+                    comunes = comunes + 1
+                    Exit For
+                End If
+            Next otra
+        End If
+    Next termino
+    menor = contadasA
+    If contadasB < menor Then menor = contadasB
+    If menor <= 1 Then
+        KcmMismoNombre = (comunes >= 1)
+    Else
+        KcmMismoNombre = (comunes >= 2 And comunes >= menor - 1)
+    End If
+End Function
+
 Private Function KcmCodigosDeSesion() As KcmDiccionario
     Dim codigos As KcmDiccionario
     Dim respuesta As KcmDiccionario

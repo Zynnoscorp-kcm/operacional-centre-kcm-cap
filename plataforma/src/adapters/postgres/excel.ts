@@ -177,6 +177,8 @@ export class SupabaseExcelRepository implements ExcelRepository {
       target_mapping_version: string;
       overwrite_policy: "NO_OVERWRITE" | "OVERWRITE_WITH_HISTORY";
       codigo_sesion: string | null;
+      nombre_trabajador: string | null;
+      fecha_anterior_esperada: string | null;
     }>(
       // El código de la sesión no sale de la función de lectura y se recoge
       // aquí, no dentro de ella: cambiarle la firma obligaría a una migración
@@ -184,9 +186,30 @@ export class SupabaseExcelRepository implements ExcelRepository {
       // no puede quitar renglones —una liberación sin sesión no existe—, y si
       // alguna vez faltara, la fila sigue viniendo con el código vacío en vez de
       // desaparecer de la carga que Excel debe escribir.
-      `SELECT p.*, s.codigo_sesion
+      //
+      // El nombre del padrón y la fecha que la liberación autorizó sobrescribir
+      // se recogen igual, para `RELEASE_CONTEXT_V1`. La fecha anterior sale del
+      // cambio `SOBRESCRITA` que asentó ese mismo lote: sin él, la plataforma
+      // esperaba la celda libre.
+      `SELECT p.*, s.codigo_sesion,
+              t.nombre_completo AS nombre_trabajador,
+              to_char(ca.fecha_anterior, 'YYYY-MM-DD') AS fecha_anterior_esperada
          FROM lectura.obtener_liberaciones_pendientes(500) p
-         LEFT JOIN operacion.sesion s ON s.sesion_id = p.session_id::uuid;`,
+         LEFT JOIN operacion.sesion s ON s.sesion_id = p.session_id::uuid
+         LEFT JOIN organizacion.trabajador t ON t.numero_trabajador = p.employee_id
+         LEFT JOIN matriz.liberacion l ON l.clave_idempotencia = p.idempotency_key
+         LEFT JOIN matriz.liberacion_lote lo ON lo.lote_id = l.lote_id
+         LEFT JOIN LATERAL (
+           SELECT c.fecha_anterior
+             FROM operacion.historial_capacitacion_cambio c
+            WHERE c.trabajador_id = l.trabajador_id
+              AND c.capacitacion_id = l.capacitacion_id
+              AND c.tipo_cambio = 'SOBRESCRITA'
+              AND c.fecha_nueva = l.fecha_efectiva
+              AND c.solicitud_id = lo.solicitud_id
+            ORDER BY c.registrado_en DESC
+            LIMIT 1
+         ) ca ON true;`,
     );
 
     return rows.map((r) => ({
@@ -203,6 +226,8 @@ export class SupabaseExcelRepository implements ExcelRepository {
       destinationHeader: r.destination_header,
       targetMappingVersion: r.target_mapping_version,
       overwritePolicy: r.overwrite_policy,
+      workerName: r.nombre_trabajador ?? "",
+      expectedPreviousDate: r.fecha_anterior_esperada ?? "",
     }));
   }
 

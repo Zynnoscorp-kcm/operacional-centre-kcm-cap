@@ -23,6 +23,8 @@ const pending = {
   destinationHeader: "QMS",
   targetMappingVersion: "v1",
   overwritePolicy: "NO_OVERWRITE",
+  workerName: "TRABAJADOR SINTETICO",
+  expectedPreviousDate: "2026-02-01",
 } as const;
 
 function service() {
@@ -203,6 +205,86 @@ describe("E11/E14 · credenciales, puente VBA y Power Query", () => {
     );
     assert.match(replay, /repeated=1/u);
     assert.equal((await repository.listReleaseAcks()).length, 1);
+  });
+
+  it("un acuse con conflicto de la macro se guarda traducido y la fecha sigue pendiente", async () => {
+    // La base sólo admite seis estados de acuse. Antes, un EMPLOYEE_NOT_FOUND
+    // de la macro hacía fallar el INSERT y el conflicto no llegaba nunca.
+    const { repository, service: target } = service();
+    const issued = await target.issueCredential({
+      clientId: "client-1",
+      principal: "usuario",
+      windowsProfile: "perfil",
+      equipment: "equipo",
+      scope: "PUENTE_VBA",
+      resource: "bridge",
+      expiresAt: "2026-08-04T12:00:00.000Z",
+    });
+    const headers = [
+      "idempotencyKey",
+      "batchId",
+      "targetMappingVersion",
+      "completionDate",
+      "status",
+      "workbookSha256",
+      "destinationAddress",
+      "detail",
+    ];
+    const values = [
+      pending.idempotencyKey,
+      pending.batchId,
+      pending.targetMappingVersion,
+      pending.completionDate,
+      "NAME_MISMATCH",
+      "a".repeat(64),
+      "HC!H5",
+      "La nomina es de otra persona",
+    ];
+    const payload = [headers, values]
+      .map((row) => row.map(encodeURIComponent).join("\t"))
+      .join("\n");
+    await bridgeCall(target, issued.secret, "RELEASE_ACK_V1", payload, "nonce-c", "request-c");
+
+    const [acuse] = await repository.listReleaseAcks();
+    assert.equal(acuse?.status, "REJECTED");
+    assert.equal(acuse?.detail, "NAME_MISMATCH: La nomina es de otra persona");
+    assert.equal((await repository.listPendingReleases()).length, 1);
+  });
+
+  it("RELEASE_CONTEXT_V1 entrega el nombre del padrón y la fecha que se autorizó reemplazar", async () => {
+    const { service: target } = service();
+    const issued = await target.issueCredential({
+      clientId: "client-1",
+      principal: "usuario",
+      windowsProfile: "perfil",
+      equipment: "equipo",
+      scope: "PUENTE_VBA",
+      resource: "bridge",
+      expiresAt: "2026-08-04T12:00:00.000Z",
+    });
+    const respuesta = await bridgeCall(
+      target,
+      issued.secret,
+      "RELEASE_CONTEXT_V1",
+      "",
+      "nonce-contexto",
+      "request-contexto",
+    );
+    const carga = Buffer.from(
+      /payload=([^\n]*)/u.exec(respuesta)?.[1] ?? "",
+      "base64url",
+    ).toString();
+    const [encabezados, renglon] = carga.split("\n").map((linea) => linea.split("\t"));
+    assert.deepEqual(encabezados?.map(decodeURIComponent), [
+      "idempotencyKey",
+      "workerName",
+      "expectedPreviousDate",
+    ]);
+    assert.deepEqual(renglon?.map(decodeURIComponent), [
+      pending.idempotencyKey,
+      "TRABAJADOR SINTETICO",
+      "2026-02-01",
+    ]);
   });
 
   /**

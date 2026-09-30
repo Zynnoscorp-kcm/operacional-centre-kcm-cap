@@ -2,6 +2,21 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Reglas de escritura en la matriz · 2026-09-30
+
+Tres reglas nuevas, en plataforma y macro: (1) nunca se reemplaza una fecha
+más reciente por una más vieja, ni con motivo (`NEWER_DATE_PRESENT` en la
+plataforma, `NEWER_DATE_CONFLICT` en Excel); (2) Excel sólo sobrescribe la
+fecha que la plataforma vio y autorizó con motivo, que le llega por la acción
+nueva `RELEASE_CONTEXT_V1`; otra fecha es `UNEXPECTED_DATE_CONFLICT`; (3) el
+nombre del renglón de la matriz se compara con el del padrón, por palabras y
+sin acentos (`NAME_MISMATCH`). Además se corrigió un defecto previo: los acuses
+de conflicto de la macro no cabían en `comun.estado_acuse` y el `INSERT`
+fallaba; ahora se traducen y el tablero muestra el motivo. Verificado con 779
+pruebas de plataforma, `npm test` y el analizador de VBA; falta importar
+`KcmReleaseSync` en el libro y probar en Excel.
+Acta: `docs/actas/2026-09-30-reglas-de-escritura.md`.
+
 ## Quién liberó, en Entregas a la matriz · 2026-09-30
 
 El tablero «Entregas a la matriz» de `/liberacion` tiene la columna «Liberó»

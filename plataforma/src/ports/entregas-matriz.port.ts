@@ -44,6 +44,8 @@ export interface MatrixDelivery {
   readonly state: MatrixDeliveryState;
   /** Acuse más reciente del lote. Vacío mientras no haya ninguno. */
   readonly deliveredAt: string | null;
+  /** Por qué Excel no pudo escribir, tal como lo contestó. Vacío sin conflicto. */
+  readonly conflictDetail?: string;
 }
 
 export interface MatrixDeliveryPort {

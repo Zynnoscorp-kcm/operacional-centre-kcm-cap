@@ -7,6 +7,7 @@ export type BridgeAction =
   | "ROSTER_SCAN_V1"
   | "RELEASE_PULL_V1"
   | "RELEASE_SESSIONS_V1"
+  | "RELEASE_CONTEXT_V1"
   | "RELEASE_ACK_V1"
   | "DC3_REPORT_V1"
   | "STATUS_V1"
@@ -51,6 +52,19 @@ export interface PendingExcelRelease {
   readonly destinationHeader: string;
   readonly targetMappingVersion: string;
   readonly overwritePolicy: "NO_OVERWRITE" | "OVERWRITE_WITH_HISTORY";
+  /**
+   * Nombre del trabajador en el padrón. No viaja en `RELEASE_PULL_V1`: lo pide
+   * Excel con `RELEASE_CONTEXT_V1` para comprobar que el renglón de la matriz
+   * con esa nómina es la misma persona antes de escribir.
+   */
+  readonly workerName?: string;
+  /**
+   * La fecha que la plataforma esperaba encontrar en la celda cuando la
+   * liberación autorizó sobrescribir (con motivo). Vacía si esperaba la celda
+   * libre: una fecha distinta que sólo Excel ve es un conflicto, no una
+   * sobrescritura.
+   */
+  readonly expectedPreviousDate?: string;
 }
 
 /**
