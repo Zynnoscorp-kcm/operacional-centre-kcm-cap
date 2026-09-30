@@ -2,6 +2,14 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Logotipo en talón y acta de preliberación · 2026-09-30
+
+El talón de sesión concluida y el acta de hallazgos leían el logotipo de
+`referencias/privado`, que no se publica: en Vercel salían sin logotipo. Ahora
+usan el membrete de la DC-3 (`plataforma/src/web/pdf/membrete/empresa.png`).
+Prueba de regresión nueva que falla con el código anterior.
+Acta: `docs/actas/2026-09-30-logotipo-preliberacion.md`.
+
 ## PIN 2026, agenda sin nómina y sesiones con hora de fin · 2026-09-30
 
 El PIN de quiosco (`REGISTRO_QUIOSCO`), el de apertura y autorización de

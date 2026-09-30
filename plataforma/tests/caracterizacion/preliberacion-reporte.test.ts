@@ -131,6 +131,24 @@ describe("Reporte de preliberación — composición", () => {
     assert.match(texto, /Tal\\363n de sesi\\363n concluida/);
   });
 
+  it("lleva el logotipo de la empresa aunque no exista referencias/privado", async () => {
+    // Así corre en Vercel: la raíz publicada no trae la carpeta privada.
+    const { repo, workbench } = setup();
+    const service = new PreReleaseReportService({
+      repository: repo,
+      workbench,
+      clock: testClock,
+      projectRoot: "/ruta/que/no/existe",
+    });
+    const reporte = await service.generate(
+      { sessionId: "ses-001", mode: "VISTA_PREVIA" },
+      IDENTITY,
+    );
+
+    const texto = Buffer.from(reporte.content).toString("latin1");
+    assert.match(texto, /\/Subtype \/Image/, "el talón debe llevar el logotipo");
+  });
+
   it("emite el acta de hallazgos cuando la revisión encontró algo", async () => {
     const { service } = setup({
       attendances: [

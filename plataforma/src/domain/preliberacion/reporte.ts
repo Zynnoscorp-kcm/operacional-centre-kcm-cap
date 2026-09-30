@@ -27,6 +27,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { PreReleaseRepositoryPort } from "../../ports/preliberacion.port.ts";
 import type { ActorIdentity } from "../quiosco/tipos.ts";
@@ -81,11 +82,14 @@ const CONTENT_WIDTH = PAGE.width - PAGE.margin * 2;
  * lector de PNG del escritor de PDF lo rechaza—, y de todas formas el logotipo
  * con el nombre es lo que corresponde a un documento impreso.
  *
- * Si el archivo falta —un clon nuevo no trae `referencias/privado`— el
- * encabezado cae al nombre de la empresa en texto. Un logotipo ausente no puede
- * impedir que se imprima el acta de una sesión.
+ * Es el mismo archivo del membrete de la DC-3, junto al compositor de PDF.
+ * Antes se leía de `referencias/privado`, que no se publica en Vercel, y el
+ * talón y el acta salían sin logotipo en la nube.
+ *
+ * Si el archivo falta, el encabezado cae al nombre de la empresa en texto. Un
+ * logotipo ausente no puede impedir que se imprima el acta de una sesión.
  */
-const LOGO_PATH = "referencias/privado/logotipos/empresa.png";
+const LOGO_PATH = fileURLToPath(new URL("../../web/pdf/membrete/empresa.png", import.meta.url));
 
 /** Alto del logotipo en puntos. Manda sobre el ancho, que se deriva del original. */
 const LOGO_HEIGHT = 34;
