@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppConfig } from "../config/environment.ts";
 import { DomainError } from "../domain/comun/errores.ts";
+import { InvalidPreReleaseStateError } from "../domain/preliberacion/errores.ts";
 import type { WorkbenchService } from "../domain/preliberacion/banco-de-trabajo.ts";
 import type { PreReleaseReportService } from "../domain/preliberacion/reporte.ts";
 import type { ActorIdentity } from "../domain/quiosco/tipos.ts";
@@ -72,7 +73,17 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
     "/preliberacion/:sessionId",
     async (req: FastifyRequest<{ Params: { sessionId: string } }>, reply: FastifyReply) => {
       const query = req.query as { aviso?: string };
-      const estado = await workbenchService.openForStage(req.params.sessionId);
+      let estado;
+      try {
+        estado = await workbenchService.openForStage(req.params.sessionId);
+      } catch (error) {
+        // Una sesión que ya salió de revisión —liberada, o abierta todavía— no
+        // tiene banco: desde una recarga o el botón «atrás» se vuelve a la
+        // bandeja con el motivo, en lugar de una página de error 409.
+        if (!(error instanceof InvalidPreReleaseStateError) || !prefiereHtml(req)) throw error;
+        const aviso = query.aviso ?? "La sesión ya no está en revisión.";
+        return reply.redirect(`/preliberacion?aviso=${encodeURIComponent(aviso)}`, 303);
+      }
       const reportes = await reportService.bySession(req.params.sessionId);
 
       const html = renderPreReleaseWorkbenchPage({
@@ -236,7 +247,12 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
           "La liberación se detuvo por conflicto con la matriz.",
         );
       }
-      return redirigirAlBanco(reply, sessionId, "Sesión revisada y liberada.");
+      // Liberada, la sesión ya no es revisable: su pantalla respondería 409.
+      // Se vuelve a la bandeja con el acuse.
+      return reply.redirect(
+        `/preliberacion?aviso=${encodeURIComponent("Sesión revisada y liberada.")}`,
+        303,
+      );
     } catch (error) {
       if (!esHtml || !(error instanceof DomainError)) throw error;
       req.log.warn({ codigo: error.code }, "liberación directa rechazada");

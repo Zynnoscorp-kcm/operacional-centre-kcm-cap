@@ -425,6 +425,23 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.equal((await repo.getSessionById("ses-001"))?.status, "PRELIBERACION");
   });
 
+  it("una sesión ya liberada vuelve a la bandeja con el acuse, no a un 409", async () => {
+    // Así caía el atajo de liberar: tras liberar redirigía al banco de la sesión,
+    // que ya no es revisable, y la persona veía «Error 409».
+    const { app } = await createTestApp({
+      sessions: [makeSession({ authorized: true, status: "LIBERADA_TOTAL" })],
+    });
+
+    const banco = await app.inject({
+      method: "GET",
+      url: "/preliberacion/ses-001?aviso=Sesi%C3%B3n%20revisada%20y%20liberada.",
+      headers: { accept: "text/html" },
+    });
+
+    assert.equal(banco.statusCode, 303);
+    assert.match(String(banco.headers.location), /^\/preliberacion\?aviso=Sesi%C3%B3n%20revisada/u);
+  });
+
   it("recorre guardar, entrar y pasar a liberación por formularios", async () => {
     const { app, repo } = await createTestApp({
       sessions: [makeSession({ authorized: true })],

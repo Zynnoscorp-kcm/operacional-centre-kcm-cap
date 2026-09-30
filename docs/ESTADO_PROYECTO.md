@@ -2,6 +2,15 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Liberar desde preliberación sin «Error 409» · 2026-09-30
+
+El atajo «revisar y liberar» sí liberaba (KC-0002 quedó `LIBERADA_TOTAL` con
+seis asistencias en la matriz), pero después redirigía a la pantalla de la
+sesión, que sólo abre sesiones revisables, y se veía «Error 409 · La sesión no
+está en una etapa revisable». Ahora vuelve a la bandeja con el acuse, y abrir
+una sesión que ya salió de revisión también regresa a la bandeja.
+Acta: `docs/actas/2026-09-30-preliberacion-409.md`.
+
 ## Logotipo en talón y acta de preliberación · 2026-09-30
 
 El talón de sesión concluida y el acta de hallazgos leían el logotipo de
