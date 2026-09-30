@@ -2,6 +2,17 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## DC-3: emitir o imprimir con relación · 2026-09-29
+
+La relación de constancias ya no lleva columna de firma de recibido. Donde se
+emite o reimprime varias (barra de marcadas, «emitir la lista», expediente e
+historial) hay dos botones: «Emitir» baja sólo las constancias y «Imprimir con
+relación» baja la relación delante de ellas. Quien ya tiene una constancia
+emitida lleva una palomita verde junto al nombre en bandeja, búsqueda,
+expediente e historial. «Para repartir» es un orden de la lista (confianza y
+luego sindicalizados, por nómina), no una acción. Verificado con 775 pruebas.
+Acta: `docs/actas/2026-09-29-dc3-emitir-o-imprimir-con-relacion.md`.
+
 ## Sesiones y notas de la matriz · 2026-09-29
 
 Las sesiones nuevas se llaman `KC-0001`, `KC-0002`…: un consecutivo de cuatro

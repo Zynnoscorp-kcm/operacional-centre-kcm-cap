@@ -15,6 +15,7 @@ import {
   ANIO_DEL_CORTE,
   claveDeRenglon,
   etiquetaCortaDeCurso,
+  marcaDeEmitida,
   renderBarraDeModulo,
 } from "./kit.ts";
 
@@ -65,7 +66,7 @@ function fichaDeCursoDePersona(
   const etiqueta = etiquetaCortaDeCurso(curso.courseName);
   if (emision) {
     return html`<span class="estado-curso estado-emitida" title="${curso.courseName}: emitida"
-      >${etiqueta} · emitida</span
+      >${etiqueta} · emitida ✓</span
     >`;
   }
   if (!curso.completionDate) {
@@ -118,7 +119,13 @@ export function renderDc3BusquedaPage(input: Dc3BusquedaInput): string {
                   (persona) =>
                     html`<li class="persona-fila">
                       <a class="persona-enlace" href="/dc3/trabajador/${persona.workerNumber}">
-                        <span class="persona-nombre">${persona.workerName}</span>
+                        <span class="persona-nombre"
+                          >${persona.workerName}${marcaDeEmitida(
+                            persona.cursos.some((curso) =>
+                              input.emisiones.has(claveDeRenglon(curso)),
+                            ),
+                          )}</span
+                        >
                         <span class="persona-meta"
                           ><span class="celda-mono">${persona.workerNumber}</span> ·
                           ${persona.area || "Sin área"} · ${persona.position || "Sin puesto"}</span

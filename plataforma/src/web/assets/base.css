@@ -893,6 +893,24 @@ a:hover {
   white-space: nowrap;
 }
 
+.marca-emitida {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: 0.3rem;
+  border-radius: 999px;
+  background: var(--kcm-ok);
+  color: #fff;
+  vertical-align: -0.15rem;
+  flex: none;
+}
+
+.marca-emitida svg {
+  stroke-width: 2.6;
+}
+
 .insignia-completado,
 .insignia-activo,
 .insignia-declarada {

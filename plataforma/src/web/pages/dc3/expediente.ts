@@ -32,6 +32,7 @@ import {
   fechaCorta,
   fichaDeCurso,
   idDeClave,
+  marcaDeEmitida,
   ojoDeVistaPrevia,
   renderAcuse,
   renderBarraDeModulo,
@@ -155,7 +156,12 @@ function renderCabecera(
     <div class="expediente-identidad">
       <span class="avatar-placeholder" aria-hidden="true">${iniciales(persona.workerName)}</span>
       <div class="expediente-nombre">
-        <h2 id="titulo-expediente" class="perfil-nombre">${persona.workerName}</h2>
+        <h2 id="titulo-expediente" class="perfil-nombre">
+          ${persona.workerName}${marcaDeEmitida(
+            emitidas > 0,
+            `${String(emitidas)} constancia(s) DC-3 ya emitida(s)`,
+          )}
+        </h2>
         <p class="perfil-puesto">
           <span class="insignia insignia-nomina">Nómina ${persona.workerNumber}</span>
           ${persona.position || "Sin puesto"} · ${persona.area || "Sin área"} ·
@@ -201,13 +207,15 @@ function renderCabecera(
         ? html`<form method="post" action="/dc3/emitir-tanda" class="expediente-tanda">
             <input type="hidden" name="volver" value="${volver}" />
             <input type="hidden" name="pestana" value="incompletos" />
-            <input type="hidden" name="formato" value="pdf" />
             ${emitibles.map(
               (curso) =>
                 html`<input type="hidden" name="clave" value="${claveDeRenglon(curso)}" />`,
             )}
-            <button type="submit" class="boton-kcm">
-              ${ICONO_IMPRESORA} Emitir las ${emitibles.length} pendientes en un PDF
+            <button type="submit" name="formato" value="pdf" class="boton-kcm">
+              Emitir las ${emitibles.length} pendientes
+            </button>
+            <button type="submit" name="entrega" value="1" class="boton-kcm">
+              ${ICONO_IMPRESORA} Imprimir con relación
             </button>
             <span class="texto-nota"
               >${emitibles.map((curso) => etiquetaCortaDeCurso(curso.courseName)).join(", ")}</span
@@ -237,7 +245,9 @@ function renderCurso(curso: Dc3CandidateDetail, input: Dc3ExpedienteInput): Html
   >
     <header class="curso-expediente-cabecera">
       ${fichaDeCurso(curso.courseName)}
-      <span class="insignia ${rotulo.clase}">${rotulo.texto}</span>
+      <span class="insignia ${rotulo.clase}">${rotulo.texto}</span>${marcaDeEmitida(
+        Boolean(emision),
+      )}
     </header>
     <h3 class="curso-expediente-nombre" title="${curso.courseName}">${curso.courseName}</h3>
 

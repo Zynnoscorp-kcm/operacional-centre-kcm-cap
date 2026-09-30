@@ -5,7 +5,7 @@
  * al archivo. Hasta ahora el reparto se llevaba en una hoja aparte que alguien
  * escribía a mano con los mismos nombres que acababa de imprimir. Esta hoja es
  * esa lista, compuesta con los mismos datos y en el mismo orden que las
- * constancias que la siguen, con una columna para que quien recibe firme.
+ * constancias que la siguen.
  *
  * Va delante de las constancias en el mismo PDF, así que una tanda es un solo
  * trabajo de impresión y la hoja no se separa de lo que enumera.
@@ -41,17 +41,15 @@ const ALTO_DE_ENCABEZADO = 17;
 const FIN_DE_TABLA = PAGINA.alto - PAGINA.margen - 22;
 
 /**
- * Las columnas, con su ancho en puntos. Suman el ancho útil de la hoja; la de
- * firma es la más ancha después del nombre porque ahí se escribe a mano.
+ * Las columnas, con su ancho en puntos. Suman el ancho útil de la hoja.
  */
 const COLUMNAS = [
   { titulo: "#", ancho: 20, alinear: "right" },
   { titulo: "Nómina", ancho: 44, alinear: "left" },
-  { titulo: "Nombre", ancho: 168, alinear: "left" },
-  { titulo: "Área", ancho: 86, alinear: "left" },
-  { titulo: "Curso", ancho: 52, alinear: "left" },
-  { titulo: "Fecha del curso", ancho: 62, alinear: "left" },
-  { titulo: "Recibí: nombre y firma", ancho: 92, alinear: "left" },
+  { titulo: "Nombre", ancho: 214, alinear: "left" },
+  { titulo: "Área", ancho: 116, alinear: "left" },
+  { titulo: "Curso", ancho: 58, alinear: "left" },
+  { titulo: "Fecha del curso", ancho: 72, alinear: "left" },
 ] as const;
 
 const MESES = [
@@ -205,7 +203,6 @@ export function componerRelacionDc3(
         renglon.area || "—",
         `${renglon.courseLabel}${renglon.partial ? " *" : ""}`,
         renglon.completionDate ? fechaCorta(renglon.completionDate) : "sin fecha",
-        "",
       ];
       x = izquierda;
       celdas.forEach((texto, posicion) => {

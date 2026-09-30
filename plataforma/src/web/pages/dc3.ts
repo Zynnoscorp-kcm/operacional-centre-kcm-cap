@@ -46,6 +46,7 @@ import {
   fechaCorta,
   fichaDeCurso,
   fichaDeEmision,
+  marcaDeEmitida,
   idDeClave,
   ojoDeVistaPrevia,
   renderAcuse,
@@ -498,7 +499,8 @@ function renderRenglon(fila: Dc3Candidate, input: Dc3PageInput, sinOcupacionComu
       />
     </td>
     <td class="celda-persona">
-      <a class="persona-nombre" href="/dc3/trabajador/${fila.workerNumber}">${fila.workerName}</a>
+      <a class="persona-nombre" href="/dc3/trabajador/${fila.workerNumber}">${fila.workerName}</a
+      >${marcaDeEmitida(Boolean(emision))}
       <span
         class="persona-meta"
         title="${fila.area || "Sin área"} · ${fila.position || "Sin puesto"}"
@@ -627,13 +629,10 @@ function renderConfirmacionDeLista(input: Dc3PageInput, volver: string): Html {
       <input type="hidden" name="pestana" value="${input.pestana}" />
       <input type="hidden" name="orden" value="${input.orden}" />
       ${camposDeFiltros(input.selected, true)}
-      <label class="casilla-con-rotulo">
-        <input type="checkbox" name="entrega" value="1" class="casilla-opcion" checked />
-        Hoja de entrega al inicio, con columna para firma de recibido
-      </label>
       <div class="confirmacion-acciones">
-        <button type="submit" name="formato" value="pdf" class="boton-exito">
-          Sí, emitir en un PDF
+        <button type="submit" name="formato" value="pdf" class="boton-exito">Sí, emitir</button>
+        <button type="submit" name="entrega" value="1" class="boton-kcm">
+          Imprimir con relación
         </button>
         ${
           input.total <= input.topeDeZip
@@ -733,13 +732,10 @@ function renderBarraDeSeleccion(input: Dc3PageInput): Html {
       <span class="seleccion-numero" aria-hidden="true"></span>
       <span>marcadas</span>
     </p>
-    <label class="casilla-con-rotulo seleccion-opcion">
-      <input type="checkbox" name="entrega" value="1" class="casilla-opcion" checked />
-      Hoja de entrega
-    </label>
     <div class="seleccion-acciones">
-      <button type="submit" name="formato" value="pdf" class="boton-kcm">
-        ${ICONO_IMPRESORA} Emitir en un PDF
+      <button type="submit" name="formato" value="pdf" class="boton-kcm">Emitir</button>
+      <button type="submit" name="entrega" value="1" class="boton-kcm">
+        ${ICONO_IMPRESORA} Imprimir con relación
       </button>
       <button type="submit" name="formato" value="zip" class="boton-secundario boton-pequeno">
         En ZIP

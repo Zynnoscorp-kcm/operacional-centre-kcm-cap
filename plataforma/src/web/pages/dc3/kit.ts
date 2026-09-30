@@ -289,6 +289,18 @@ export function fichaDeEmision(resumen: Dc3EmissionSummary | undefined): Html {
       >`;
 }
 
+/**
+ * La palomita verde junto al nombre: ya salió al menos una constancia suya.
+ * Va en todas las vistas del módulo para que no haga falta abrir el historial
+ * para saberlo.
+ */
+export function marcaDeEmitida(emitida: boolean, detalle = "Constancia DC-3 ya emitida"): Html {
+  if (!emitida) return html``;
+  return html`<span class="marca-emitida" title="${detalle}" role="img" aria-label="${detalle}"
+    >${ICONO_PALOMITA}</span
+  >`;
+}
+
 /** Ficha con la etiqueta corta del curso y su nombre completo al pasar el puntero. */
 export function fichaDeCurso(nombre: string): Html {
   return html`<span class="curso-ficha" title="${nombre}">${etiquetaCortaDeCurso(nombre)}</span>`;
@@ -329,6 +341,8 @@ export const ICONO_IMPRESORA = icono(
   '<path d="M5.6 7.4V3.4h8.8v4"/><rect x="2.8" y="7.4" width="14.4" height="6.6" rx="1.6"/>' +
     '<path d="M5.6 11.8h8.8v4.8H5.6z"/>',
 );
+
+const ICONO_PALOMITA = icono('<path d="m5.2 10.4 3.2 3.2 6.4-7"/>', 12);
 
 export const ICONO_BUSCAR = icono('<circle cx="8.8" cy="8.8" r="5.2"/><path d="m13 13 4 4"/>', 16);
 

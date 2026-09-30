@@ -22,6 +22,7 @@ import {
   etiquetaCortaDeCurso,
   fechaCorta,
   fichaDeCurso,
+  marcaDeEmitida,
   renderBarraDeModulo,
 } from "./kit.ts";
 
@@ -115,8 +116,8 @@ function renderFila(emision: Dc3EmissionRecord): Html {
       ${
         emision.workerName
           ? html`<a class="persona-nombre" href="/dc3/trabajador/${emision.workerNumber}"
-              >${emision.workerName}</a
-            >`
+                >${emision.workerName}</a
+              >${marcaDeEmitida(true)}`
           : html`<span class="texto-atenuado">Fuera del padrón activo</span>`
       }
       <span class="persona-meta celda-mono">${emision.workerNumber}</span>
@@ -325,13 +326,12 @@ export function renderDc3HistorialPage(input: Dc3HistorialInput): string {
                     <span class="seleccion-numero" aria-hidden="true"></span>
                     <span>marcadas</span>
                   </p>
-                  <label class="casilla-con-rotulo seleccion-opcion">
-                    <input type="checkbox" name="entrega" value="1" class="casilla-opcion" />
-                    Hoja de entrega
-                  </label>
                   <div class="seleccion-acciones">
                     <button type="submit" name="formato" value="pdf" class="boton-kcm">
-                      ${ICONO_IMPRESORA} Reimprimir en un PDF
+                      Reimprimir
+                    </button>
+                    <button type="submit" name="entrega" value="1" class="boton-kcm">
+                      ${ICONO_IMPRESORA} Imprimir con relación
                     </button>
                     <button
                       type="submit"
