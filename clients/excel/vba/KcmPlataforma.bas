@@ -823,9 +823,12 @@ End Function
 
 ''' La carpeta con los modulos nuevos del cliente: KCM-VBA-CRLF en el escritorio.
 '''
-''' Si no esta ahi, se elige cualquier modulo de la carpeta que los traiga. En
-''' macOS se concede ademas el permiso de leerla, que el editor de VBA necesita
-''' para importar desde fuera de la caja de arena; el sistema lo pide una vez y
+''' En macOS se prefiere la copia dentro del contenedor compartido de Office
+''' (~/Library/Group Containers/UBF8T346G9.Office/KCM-VBA-CRLF): Excel lee ahi sin
+''' pedir permiso, y el cuadro de permisos del escritorio solo dejaba conceder un
+''' archivo a la vez. Si no esta ni ahi ni en el escritorio, se elige cualquier
+''' modulo de la carpeta que los traiga. Fuera del contenedor se concede ademas el
+''' permiso de leerla, que el editor de VBA necesita; el sistema lo pide una vez y
 ''' lo recuerda. Cadena vacia si se cancela.
 Public Function KcmCarpetaDeModulos() As String
     Dim carpeta As String
@@ -834,6 +837,11 @@ Public Function KcmCarpetaDeModulos() As String
 
     #If Mac Then
         separador = "/"
+        carpeta = KcmCarpetaPersonal() & "/Library/Group Containers/UBF8T346G9.Office/KCM-VBA-CRLF"
+        If KcmCarpetaExiste(carpeta) Then
+            KcmCarpetaDeModulos = carpeta
+            Exit Function
+        End If
     #Else
         separador = "\"
     #End If
@@ -895,6 +903,9 @@ Public Function KcmConcederAccesoArchivos(ByVal archivos As Collection) As Strin
     Dim atributos As Long
 
     If archivos.Count = 0 Then Exit Function
+    ' Si todos se leen ya -la carpeta del contenedor de Office-, no se abre
+    ' ningun cuadro de permisos.
+    If Len(KcmPrimerIlegible(archivos)) = 0 Then Exit Function
     #If Mac Then
         Dim rutas() As Variant
         Dim indice As Long
@@ -916,6 +927,24 @@ Public Function KcmConcederAccesoArchivos(ByVal archivos As Collection) As Strin
             Err.Clear
             On Error GoTo 0
             KcmConcederAccesoArchivos = CStr(archivo)
+            Exit Function
+        End If
+        On Error GoTo 0
+    Next archivo
+End Function
+
+''' El primero de `archivos` que no se deja leer; cadena vacia si se leen todos.
+Private Function KcmPrimerIlegible(ByVal archivos As Collection) As String
+    Dim archivo As Variant
+    Dim atributos As Long
+
+    For Each archivo In archivos
+        On Error Resume Next
+        atributos = GetAttr(CStr(archivo))
+        If Err.Number <> 0 Then
+            Err.Clear
+            On Error GoTo 0
+            KcmPrimerIlegible = CStr(archivo)
             Exit Function
         End If
         On Error GoTo 0

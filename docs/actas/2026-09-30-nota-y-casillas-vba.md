@@ -9,3 +9,10 @@
 - En el Excel del usuario la columna seguía viéndose como texto: los controles de formulario no aparecieron. Las casillas pasan a ser formas redondeadas con `OnAction = "KcmEntradasAlternar"` (mismo mecanismo que los botones del panel); el clic cambia VERDADERO/FALSO en la celda y repinta la forma (azul con ✓ o blanca).
 - La columna IDENTIFICADOR (H) queda oculta y sin título; el curso (D) se ensancha lo que ocupaba. El identificador se conserva porque es lo que filtra la escritura.
 - Evidencia: `npm run check:vba` sin hallazgos; `npm test` 118/118. Pendiente: probar en Excel.
+
+## Permisos de macOS al actualizar módulos
+
+- El cuadro de `GrantAccessToMultipleFiles` sólo dejó al usuario conceder un archivo de `~/Desktop/KCM-VBA-CRLF`, y `KcmActualizarModulos` se detenía.
+- Copia de los módulos en `~/Library/Group Containers/UBF8T346G9.Office/KCM-VBA-CRLF`, que Excel lee sin permiso. `KcmCarpetaDeModulos` (KcmPlataforma) prefiere esa carpeta en macOS y `KcmConcederAccesoArchivos` ya no abre el cuadro si todos los archivos se leen.
+- Como el libro todavía trae el `KcmPlataforma` anterior, la primera vez se importan a mano `KcmPlataforma`, `KcmEntradas` y `KcmReleaseSync`; después basta la macro.
+- Evidencia: `npm run check:vba` sin hallazgos; `npm test` 118/118.
