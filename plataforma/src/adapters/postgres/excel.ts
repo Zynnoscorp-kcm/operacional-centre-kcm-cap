@@ -188,28 +188,22 @@ export class SupabaseExcelRepository implements ExcelRepository {
       // desaparecer de la carga que Excel debe escribir.
       //
       // El nombre del padrón y la fecha que la liberación autorizó sobrescribir
-      // se recogen igual, para `RELEASE_CONTEXT_V1`. La fecha anterior sale del
-      // cambio `SOBRESCRITA` que asentó ese mismo lote: sin él, la plataforma
-      // esperaba la celda libre.
+      // se recogen igual, para `RELEASE_CONTEXT_V1`. La fecha anterior es la
+      // vigente del historial: el historial no cambia hasta que Excel confirma,
+      // así que es la misma que la liberación vio y por la que pidió motivo.
+      // Sin registro vigente, la plataforma esperaba la celda libre.
       `SELECT p.*, s.codigo_sesion,
               t.nombre_completo AS nombre_trabajador,
-              to_char(ca.fecha_anterior, 'YYYY-MM-DD') AS fecha_anterior_esperada
+              CASE WHEN h.fecha_capacitacion IS DISTINCT FROM l.fecha_efectiva
+                   THEN to_char(h.fecha_capacitacion, 'YYYY-MM-DD') END AS fecha_anterior_esperada
          FROM lectura.obtener_liberaciones_pendientes(500) p
          LEFT JOIN operacion.sesion s ON s.sesion_id = p.session_id::uuid
          LEFT JOIN organizacion.trabajador t ON t.numero_trabajador = p.employee_id
          LEFT JOIN matriz.liberacion l ON l.clave_idempotencia = p.idempotency_key
-         LEFT JOIN matriz.liberacion_lote lo ON lo.lote_id = l.lote_id
-         LEFT JOIN LATERAL (
-           SELECT c.fecha_anterior
-             FROM operacion.historial_capacitacion_cambio c
-            WHERE c.trabajador_id = l.trabajador_id
-              AND c.capacitacion_id = l.capacitacion_id
-              AND c.tipo_cambio = 'SOBRESCRITA'
-              AND c.fecha_nueva = l.fecha_efectiva
-              AND c.solicitud_id = lo.solicitud_id
-            ORDER BY c.registrado_en DESC
-            LIMIT 1
-         ) ca ON true;`,
+         LEFT JOIN operacion.historial_capacitacion h
+           ON h.trabajador_id = l.trabajador_id
+          AND h.capacitacion_id = l.capacitacion_id
+          AND h.estado_registro = 'VIGENTE';`,
     );
 
     return rows.map((r) => ({
@@ -320,6 +314,12 @@ export class SupabaseExcelRepository implements ExcelRepository {
             row.receivedAt,
           ],
         );
+        // Con el acuse efectivo la fecha ya está en la matriz: sólo entonces
+        // entra al historial. Misma transacción, para que no haya acuse sin
+        // registro ni registro sin acuse.
+        if (row.status === "APPLIED" || row.status === "RECOVERED") {
+          await materializarLiberacion(tx, row.idempotencyKey);
+        }
       }
     });
   }
@@ -536,4 +536,104 @@ export class SupabaseExcelRepository implements ExcelRepository {
       expiresAt: new Date(r.vence_en).toISOString(),
     }));
   }
+}
+
+/**
+ * Pasa al historial una fecha liberada que Excel ya escribió en la matriz.
+ *
+ * Idempotente: si el historial ya tiene la clave, no hace nada. Si había una
+ * fecha vigente distinta, primero asienta el cambio `SOBRESCRITA` con el motivo
+ * y el actor del lote, después retira la vigente y al final agrega la nueva.
+ */
+async function materializarLiberacion(
+  tx: { query: SqlExecutor["query"] },
+  clave: string,
+): Promise<void> {
+  const { rows } = await tx.query<{
+    trabajador_id: string;
+    capacitacion_id: string;
+    fecha: string;
+    sesion_id: string;
+    version_mapeo: string;
+    lote_id: string;
+    marcador: string;
+    solicitud_id: string | null;
+    motivo_sobrescritura: string | null;
+    creado_por: string | null;
+  }>(
+    `SELECT l.trabajador_id, l.capacitacion_id, to_char(l.fecha_efectiva, 'YYYY-MM-DD') AS fecha,
+            l.sesion_id, l.version_mapeo, l.lote_id, l.marcador,
+            lo.solicitud_id, lo.motivo_sobrescritura, lo.creado_por
+       FROM matriz.liberacion l
+       JOIN matriz.liberacion_lote lo ON lo.lote_id = l.lote_id
+      WHERE l.clave_idempotencia = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM operacion.historial_capacitacion h
+           WHERE h.clave_idempotencia = l.clave_idempotencia
+        );`,
+    [clave],
+  );
+  const l = rows[0];
+  if (!l) return;
+
+  const previo = (
+    await tx.query<{ registro_id: string; fecha: string }>(
+      `SELECT registro_id, to_char(fecha_capacitacion, 'YYYY-MM-DD') AS fecha
+         FROM operacion.historial_capacitacion
+        WHERE trabajador_id = $1 AND capacitacion_id = $2 AND estado_registro = 'VIGENTE'
+        FOR UPDATE;`,
+      [l.trabajador_id, l.capacitacion_id],
+    )
+  ).rows[0];
+
+  if (previo && previo.fecha !== l.fecha) {
+    await tx.query(
+      `INSERT INTO operacion.historial_capacitacion_cambio (
+         registro_id, trabajador_id, capacitacion_id, tipo_cambio, fecha_anterior, fecha_nueva,
+         estado_anterior, estado_nuevo, procedencia, actor_id, motivo, solicitud_id
+       ) VALUES (
+         $1, $2, $3, 'SOBRESCRITA', $4, $5, 'VIGENTE', 'VIGENTE', 'SESSION_RELEASE',
+         COALESCE($6::uuid, (SELECT actor_id FROM seguridad.actor
+                              WHERE identificador = 'SISTEMA' LIMIT 1)),
+         $7, $8
+       );`,
+      [
+        previo.registro_id,
+        l.trabajador_id,
+        l.capacitacion_id,
+        previo.fecha,
+        l.fecha,
+        l.creado_por,
+        (l.motivo_sobrescritura ?? "").trim() || "Liberación de sesión confirmada por Excel",
+        l.solicitud_id,
+      ],
+    );
+  }
+  if (previo) {
+    await tx.query(
+      `UPDATE operacion.historial_capacitacion
+          SET estado_registro = 'RETIRADO'
+        WHERE registro_id = $1 AND estado_registro = 'VIGENTE';`,
+      [previo.registro_id],
+    );
+  }
+
+  await tx.query(
+    `INSERT INTO operacion.historial_capacitacion (
+       clave_idempotencia, trabajador_id, capacitacion_id, fecha_capacitacion, procedencia,
+       estado_registro, sesion_id, liberacion_id, version_mapeo, lote_id, marcador, solicitud_id
+     ) VALUES ($1, $2, $3, $4, 'SESSION_RELEASE', 'VIGENTE', $5, $6, $7, $6, $8, $9)
+     ON CONFLICT (clave_idempotencia) DO NOTHING;`,
+    [
+      clave,
+      l.trabajador_id,
+      l.capacitacion_id,
+      l.fecha,
+      l.sesion_id,
+      l.lote_id,
+      l.version_mapeo,
+      l.marcador,
+      l.solicitud_id,
+    ],
+  );
 }

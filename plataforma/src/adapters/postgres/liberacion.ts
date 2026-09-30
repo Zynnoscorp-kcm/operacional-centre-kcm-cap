@@ -7,10 +7,10 @@
  *
  * Tres invariantes que aquí no son estilo sino contrato:
  *
- * 1. El historial va antes que el valor. En `applyWrites`, la fila de
- *    `historial_sobrescritura_fecha` se escribe primero y en la misma
- *    transacción. Si algo revienta, lo que puede faltar es el valor nuevo,
- *    nunca el rastro del anterior.
+ * 1. Nada entra al historial sin que Excel lo confirme. `applyWrites` sólo
+ *    encola en `matriz.liberacion`; el registro vigente y el rastro de la
+ *    sobrescritura se crean con el acuse efectivo, en una transacción y con el
+ *    rastro antes que el valor.
  * 2. Un registro vigente por par. El índice parcial de `registro_hc` lo
  *    impone; la sobrescritura cierra el vigente y agrega otro, no lo edita.
  * 3. El bloqueo es del servidor. `withLock` usa `pg_advisory_xact_lock`, así
@@ -404,6 +404,47 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
   // ------------------------------------------------- destino: réplica consultable
 
   async getHcRecord(workerNumber: WorkerNumber, trainingId: string): Promise<HcRecord | null> {
+    // Primero lo liberado que Excel todavía no confirma: para el journal y para
+    // la siguiente liberación del mismo par, esa fecha ya ocupa la celda.
+    const pendiente = await this.#db.query<Record<string, unknown>>(
+      `SELECT l.liberacion_id, l.clave_idempotencia, l.fecha_efectiva, l.version_mapeo,
+              l.lote_id, l.marcador, l.sesion_id, l.creada_en, lo.solicitud_id
+         FROM matriz.liberacion l
+         JOIN matriz.liberacion_lote lo ON lo.lote_id = l.lote_id
+         JOIN organizacion.trabajador t ON t.trabajador_id = l.trabajador_id
+         JOIN catalogo.capacitacion c ON c.capacitacion_id = l.capacitacion_id
+        WHERE t.numero_trabajador = $1 AND c.clave_curso = $2
+          AND NOT EXISTS (
+            SELECT 1 FROM operacion.historial_capacitacion h
+             WHERE h.clave_idempotencia = l.clave_idempotencia
+          )
+        ORDER BY l.creada_en DESC
+        LIMIT 1;`,
+      [String(workerNumber), trainingId],
+    );
+    const p = pendiente.rows[0];
+    if (p) {
+      return {
+        recordId: texto(p["liberacion_id"]),
+        idempotencyKey: texto(p["clave_idempotencia"]),
+        workerNumber,
+        trainingId,
+        completionDate: fecha(p["fecha_efectiva"] as string | Date),
+        provenance: "SESSION_RELEASE",
+        status: "VIGENTE",
+        sessionId: (p["sesion_id"] as string | null) ?? null,
+        releaseId: (p["lote_id"] as string | null) ?? null,
+        mappingVersion: texto(p["version_mapeo"]),
+        batchId: (p["lote_id"] as string | null) ?? null,
+        marker: (p["marcador"] as string | null) ?? null,
+        importId: null,
+        requestId: (p["solicitud_id"] as string | null) ?? null,
+        createdAt: iso(p["creada_en"] as string | Date),
+        updatedAt: iso(p["creada_en"] as string | Date),
+        version: 1,
+      };
+    }
+
     const { rows } = await this.#db.query<Record<string, unknown>>(
       `SELECT r.*, t.numero_trabajador, c.clave_curso
          FROM operacion.historial_capacitacion r
@@ -453,87 +494,49 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
   }
 
   /**
-   * Todo el lote en una transacción, y dentro de cada operación el historial
-   * antes del valor. La sobrescritura retira el registro vigente y agrega otro:
-   * el índice parcial de `registro_hc` no admite dos vigentes del mismo par, y
-   * editar la fila borraría el hecho anterior.
+   * Deja las fechas del lote en la cola de Excel, sin tocar el historial.
+   *
+   * La fecha no entra a `operacion.historial_capacitacion` al liberar: entra
+   * cuando Excel confirma que la escribió en la matriz (`materializeReleases`
+   * del adaptador de Excel). Mientras tanto vive sólo en `matriz.liberacion`,
+   * que es lo que `RELEASE_PULL_V1` entrega, y `getHcRecord` la presenta como
+   * vigente para que el journal del lote la reconozca como efecto propio. Así
+   * una fecha que Excel no pudo escribir —trabajador ausente, nombre distinto,
+   * fecha más reciente— nunca aparece como tomada en la DC-3 ni en la ficha.
+   *
+   * La sobrescritura se asienta también al confirmarse: el motivo queda en el
+   * lote y la fecha anterior es la vigente en ese momento.
    */
   async applyWrites(operations: readonly MatrixWriteOperation[]): Promise<void> {
     if (operations.length === 0) return;
     await this.#db.transaction(async (tx) => {
       for (const op of operations) {
-        if (op.history) {
-          const actor = await this.#actorId(op.history.actorId);
-          await tx.query(
-            `INSERT INTO operacion.historial_capacitacion_cambio (
-               historial_id, registro_id, trabajador_id, capacitacion_id,
-               tipo_cambio, fecha_anterior, fecha_nueva, estado_anterior,
-               estado_nuevo, procedencia, actor_id, motivo, solicitud_id, registrado_en
-             ) VALUES (
-               $1, $2,
-               (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
-               (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
-               'SOBRESCRITA', $5, $6, 'VIGENTE', 'VIGENTE', 'SESSION_RELEASE',
-               $7, $8, $9, $10
-             );`,
-            [
-              op.history.historyId,
-              op.history.recordId,
-              String(op.history.workerNumber),
-              op.history.trainingId,
-              op.history.previousCompletionDate,
-              op.history.completionDate,
-              actor,
-              op.history.reason,
-              op.history.requestId,
-              op.history.recordedAt,
-            ],
-          );
-
-          await tx.query(
-            `UPDATE operacion.historial_capacitacion
-                SET estado_registro = 'RETIRADO'
-              WHERE registro_id = $1 AND estado_registro = 'VIGENTE';`,
-            [op.history.recordId],
-          );
-        }
-
         const rec = op.record;
         await tx.query(
-          `INSERT INTO operacion.historial_capacitacion (
-             registro_id, clave_idempotencia, trabajador_id, capacitacion_id,
-             fecha_capacitacion, procedencia, estado_registro, sesion_id,
-             liberacion_id, version_mapeo, lote_id, marcador, solicitud_id,
-             creado_en, actualizado_en, version
+          `INSERT INTO matriz.liberacion (
+             liberacion_id, clave_idempotencia, lote_id, sesion_id,
+             trabajador_id, capacitacion_id, fecha_efectiva, version_mapeo,
+             resultado, marcador, creada_en, asistencia_id
            ) VALUES (
-             $1, $2,
-             (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
-             (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
-             $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+             $1, $2, $3, $4,
+             (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $5),
+             (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $6),
+             $7, $8, $9, $10, $11, $12
            )
-           ON CONFLICT (clave_idempotencia) DO UPDATE
-             SET fecha_capacitacion = EXCLUDED.fecha_capacitacion,
-                 estado_registro = EXCLUDED.estado_registro,
-                 marcador = EXCLUDED.marcador,
-                 actualizado_en = EXCLUDED.actualizado_en,
-                 version = operacion.historial_capacitacion.version + 1;`,
+           ON CONFLICT (clave_idempotencia) DO NOTHING;`,
           [
-            rec.recordId,
+            randomUUID(),
             rec.idempotencyKey,
+            rec.batchId,
+            rec.sessionId,
             String(rec.workerNumber),
             rec.trainingId,
             rec.completionDate,
-            rec.provenance,
-            rec.status,
-            rec.sessionId,
-            rec.releaseId,
             rec.mappingVersion,
-            rec.batchId,
+            op.result ?? "WRITTEN",
             rec.marker,
-            rec.requestId,
-            rec.createdAt,
             rec.updatedAt,
-            rec.version,
+            op.attendanceId || null,
           ],
         );
       }

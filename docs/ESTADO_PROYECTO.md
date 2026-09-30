@@ -2,6 +2,18 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## La fecha entra al historial sólo con el acuse de Excel · 2026-09-30
+
+Liberar ya no escribe en `operacion.historial_capacitacion`: deja la fecha en
+la cola de Excel (`matriz.liberacion`). El registro vigente —y el cambio
+`SOBRESCRITA`, con el motivo del lote— se crean en la misma transacción que
+guarda el acuse efectivo (`APPLIED`/`RECOVERED`). Mientras tanto, la DC-3, la
+ficha y el padrón no ven esa fecha; el journal de liberación sí la reconoce
+porque `getHcRecord` presenta lo encolado como vigente. Sin migración. Probado
+con 780 pruebas de plataforma y con una simulación en la base dentro de una
+transacción revertida.
+Acta: `docs/actas/2026-09-30-historial-con-acuse.md`.
+
 ## Reglas de escritura en la matriz · 2026-09-30
 
 Tres reglas nuevas, en plataforma y macro: (1) nunca se reemplaza una fecha

@@ -26,6 +26,14 @@ export interface MatrixWriteOperation {
   readonly record: HcRecord;
   readonly history: OverwriteHistoryEntry | null;
   readonly isUpdate: boolean;
+  /**
+   * La asistencia y el resultado del renglón. El adaptador de la base los usa
+   * para dejar la fecha en la cola de Excel (`matriz.liberacion`) en lugar de
+   * escribirla ya en el historial: la fecha entra al historial cuando Excel
+   * confirma que la escribió en la matriz.
+   */
+  readonly attendanceId?: string;
+  readonly result?: string;
 }
 
 export interface MatrixWritePort {

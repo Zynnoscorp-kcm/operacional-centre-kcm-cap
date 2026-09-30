@@ -274,6 +274,8 @@ export class MatrixGateway {
         record,
         history,
         isUpdate: Boolean(existing),
+        attendanceId: entry.attendanceId,
+        result: result.status === "READY_OVERWRITE" ? "OVERWRITTEN" : "WRITTEN",
       });
 
       applied.push({
