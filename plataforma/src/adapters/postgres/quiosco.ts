@@ -85,6 +85,7 @@ interface SesionOperativaRow {
   estado: SessionStatus;
   autorizada: boolean | null;
   total_asistencias: string | number | null;
+  creador: string | null;
 }
 
 interface AsistenciaRow {
@@ -432,8 +433,10 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
         s.duracion_minutos,
         s.estado,
         s.autorizada,
+        cre.nombre_visible AS creador,
         COUNT(a.asistencia_id) AS total_asistencias
       FROM operacion.sesion s
+      LEFT JOIN seguridad.actor cre ON cre.actor_id = s.creada_por
       JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
       LEFT JOIN seguridad.actor act ON act.actor_id = s.capacitador_id
       LEFT JOIN operacion.asistencia a ON a.sesion_id = s.sesion_id
@@ -441,7 +444,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
          OR (s.estado IN ('BORRADOR', 'LIBERADA_TOTAL') AND s.fecha_sesion >= $1::date)
       GROUP BY s.sesion_id, s.codigo_sesion, c.capacitacion_id, c.clave_curso, c.nombre,
                act.nombre_visible, s.fecha_sesion, s.turno, s.duracion_minutos, s.estado,
-               s.autorizada
+               s.autorizada, cre.nombre_visible
       ORDER BY s.fecha_sesion DESC, s.codigo_sesion;
     `;
     const corte =
@@ -470,6 +473,7 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
       status: r.estado as SessionStatus,
       authorized: Boolean(r.autorizada),
       totalAttendances: Number(r.total_asistencias || 0),
+      createdBy: r.creador ?? "",
     }));
   }
 

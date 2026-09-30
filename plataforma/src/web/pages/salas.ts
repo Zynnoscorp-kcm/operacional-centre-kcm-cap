@@ -65,16 +65,6 @@ export function renderRoomsPage(input: {
         <label>Inicio <input type="time" name="startTime" step="1800" required /></label>
         <label>Fin <input type="time" name="endTime" step="1800" required /></label>
         <label>Nombre <input name="requesterName" maxlength="160" required /></label>
-        <label
-          >Nómina
-          <input
-            name="requesterWorkerNumber"
-            inputmode="numeric"
-            pattern="[0-9]{5}"
-            maxlength="5"
-            title="Cinco dígitos"
-            required
-        /></label>
         <label>Puesto <input name="requesterPosition" maxlength="160" /></label>
         <label>Área <input name="requesterArea" maxlength="160" /></label>
         <label>Motivo <textarea name="reason" maxlength="300" required></textarea></label>

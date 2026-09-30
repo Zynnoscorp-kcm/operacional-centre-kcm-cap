@@ -2,6 +2,19 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## PIN 2026, agenda sin nómina y sesiones con hora de fin · 2026-09-30
+
+El PIN de quiosco (`REGISTRO_QUIOSCO`), el de apertura y autorización de
+sesión (`APERTURA_SESION`) y la contraseña de agenda (`KCM_ROOM_PASSWORD` en
+Vercel) son `2026`; los anteriores quedaron revocados en `seguridad.secreto`.
+La agenda pública y la de la consola ya no piden nómina: el nombre de quien
+reserva cumple el dato de contacto que exige la base. La alta de sesiones pide
+hora de inicio y hora de fin (la duración se calcula y la sala se aparta en ese
+tramo); la tabla muestra el horario y la cuenta que creó la sesión. En DC-3 se
+quitó de «Datos del formato» el recuadro de datos del trabajador en blanco, y
+el orden «Para repartir» se llama «Confianza y sindicalizados».
+Acta: `docs/actas/2026-09-30-pin-agenda-y-sesiones.md`.
+
 ## DC-3: emitir o imprimir con relación · 2026-09-29
 
 La relación de constancias ya no lleva columna de firma de recibido. Donde se

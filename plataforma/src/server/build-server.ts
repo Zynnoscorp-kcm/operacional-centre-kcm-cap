@@ -478,12 +478,20 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerShutdownRoutes(app, { config, ...(deps.apagar ? { apagar: deps.apagar } : {}) });
   registerWorkerSystemRoutes(app, config, workerSystemRepository);
   registerKioskRoutes(app, { config, kioskService, sessionService, authService });
+  // Una sola instancia: dos códecs con llaves distintas emitirían cookies que el
+  // otro no puede leer. `/acceso` la emite, y la consola interna y el módulo
+  // DC-3 la verifican para saber con qué nombre firmar la bitácora. Con llave
+  // declarada, todas las instancias publicadas leen las cookies de todas.
+  const consoleSessions = deps.sessionSecret
+    ? new ConsoleSessionCodec(createHash("sha256").update(deps.sessionSecret).digest())
+    : new ConsoleSessionCodec();
   registerSessionRoutes(app, {
     config,
     sessionService,
     kioskService,
     repository: kioskSessionRepository,
     roomService,
+    sessions: consoleSessions,
   });
   registerPreReleaseRoutes(app, {
     config,
@@ -504,13 +512,6 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       : {}),
   });
   registerRoomRoutes(app, { config, service: roomService });
-  // Una sola instancia: dos códecs con llaves distintas emitirían cookies que el
-  // otro no puede leer. `/acceso` la emite, y la consola interna y el módulo
-  // DC-3 la verifican para saber con qué nombre firmar la bitácora. Con llave
-  // declarada, todas las instancias publicadas leen las cookies de todas.
-  const consoleSessions = deps.sessionSecret
-    ? new ConsoleSessionCodec(createHash("sha256").update(deps.sessionSecret).digest())
-    : new ConsoleSessionCodec();
   registerDc3Routes(app, {
     config,
     workers: workerSystemRepository,

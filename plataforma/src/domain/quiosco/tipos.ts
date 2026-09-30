@@ -209,6 +209,8 @@ export interface OperativeSessionSummary {
   readonly status: SessionStatus;
   readonly authorized: boolean;
   readonly totalAttendances: number;
+  /** La cuenta que dio de alta la sesión. */
+  readonly createdBy?: string | undefined;
 }
 
 /**

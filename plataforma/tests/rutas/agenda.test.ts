@@ -1,10 +1,9 @@
 /**
  * Agenda pública de salas: que la pantalla ofrezca todo lo que el servidor exige.
  *
- * Esta pantalla puede quedar inservible sin fallar: si el formulario pierde el
- * campo de nómina, que el dominio exige por la restricción
- * `reserva_solicitante_identificado`, toda reservación muere con «Falta la
- * nómina de quien reserva» y no hay dónde escribirla.
+ * Esta pantalla puede quedar inservible sin fallar: la base exige identificar
+ * a quien reserva (`reserva_solicitante_identificado`). La agenda ya no pide
+ * nómina, así que el nombre cumple ese dato y la reservación no debe morir.
  *
  * Estas pruebas fijan la regla que faltaba: lo que el servidor pide, la
  * pantalla lo dibuja. Por eso comprueban el formulario y el POST juntos.
@@ -42,7 +41,6 @@ const reserva = {
   startTime: "09:00",
   endTime: "10:00",
   requesterName: "SOLICITANTE SINTETICO",
-  requesterWorkerNumber: "10001",
   requesterPosition: "PUESTO SINTETICO",
   requesterArea: "AREA SINTETICA",
   reason: "CAPACITACION SINTETICA",
@@ -54,12 +52,12 @@ function comoFormulario(campos: Record<string, string>): string {
 }
 
 describe("Agenda pública de salas", () => {
-  it("el formulario pide la nómina que el dominio exige", async () => {
+  it("el formulario ya no pide la nómina", async () => {
     const app = await servidor();
     const pantalla = await app.inject({ method: "GET", url: "/agenda" });
 
     assert.equal(pantalla.statusCode, 200);
-    assert.match(pantalla.body, /name="requesterWorkerNumber"/u);
+    assert.doesNotMatch(pantalla.body, /name="requesterWorkerNumber"/u);
   });
 
   it("reserva de punta a punta con los campos que la pantalla ofrece", async () => {
@@ -73,7 +71,7 @@ describe("Agenda pública de salas", () => {
 
     assert.equal(respuesta.statusCode, 200);
     assert.match(respuesta.body, /Reservación confirmada/u);
-    assert.doesNotMatch(respuesta.body, /Falta la nómina/u);
+    assert.doesNotMatch(respuesta.body, /Falta el nombre/u);
   });
 
   it("una nómina mal escrita vuelve a la pantalla con lo capturado", async () => {

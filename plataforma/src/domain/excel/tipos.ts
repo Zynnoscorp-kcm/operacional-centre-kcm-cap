@@ -11,8 +11,7 @@ export type BridgeAction =
   | "DC3_REPORT_V1"
   | "STATUS_V1"
   | "LOCAL_SHUTDOWN_V1"
-  | "UPLOAD_PART_V1"
-;
+  | "UPLOAD_PART_V1";
 
 export interface DeviceCredential {
   readonly credentialId: string;

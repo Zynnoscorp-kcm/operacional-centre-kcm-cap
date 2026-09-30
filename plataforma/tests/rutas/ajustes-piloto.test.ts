@@ -247,40 +247,24 @@ describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
    * pantalla moría con un 500 de la restricción. La persistencia en memoria no
    * tiene restricciones, así que la regla vive en el dominio o no se prueba.
    */
-  it("agendar sin nómina se rechaza como error de captura, no como falla del servidor", async () => {
+  it("agendar sin nómina ya no se rechaza: el nombre identifica a quien reserva", async () => {
     const app = await servidor();
-    const datos = {
-      requestId: "req-sin-nomina",
-      roomId: "VOGUE",
-      date: "2026-08-10",
-      startTime: "09:00",
-      endTime: "10:00",
-      requesterName: "MARICELA",
-      reason: "Curso de inducción",
-      estimatedAttendees: "12",
-      clave: "0000",
-    };
-
     const enJson = await app.inject({
       method: "POST",
       url: "/api/rooms/reservations",
-      payload: datos,
+      payload: {
+        requestId: "req-sin-nomina",
+        roomId: "VOGUE",
+        date: "2026-08-10",
+        startTime: "09:00",
+        endTime: "10:00",
+        requesterName: "MARICELA",
+        reason: "Curso de inducción",
+        estimatedAttendees: "12",
+        clave: "0000",
+      },
     });
-    assert.equal(enJson.statusCode, 400);
-    assert.match(enJson.body, /nómina/u);
-
-    // Desde la pantalla vuelve al formulario con el motivo, no a un JSON crudo.
-    const enPantalla = await app.inject({
-      method: "POST",
-      url: "/api/rooms/reservations",
-      ...formulario(datos),
-    });
-    assert.equal(enPantalla.statusCode, 303);
-    assert.match(String(enPantalla.headers.location), /error=/u);
-
-    const agenda = await app.inject({ method: "GET", url: "/api/rooms/reservations" });
-    const { reservations } = JSON.parse(agenda.body) as { reservations: readonly unknown[] };
-    assert.equal(reservations.length, 0, "no se guardó nada sin quien la solicita");
+    assert.equal(enJson.statusCode, 201);
   });
 
   it("una nómina que no es de cinco dígitos se rechaza", async () => {
@@ -305,14 +289,11 @@ describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
     assert.match(res.body, /cinco dígitos/u);
   });
 
-  it("el formulario de salas pide la nómina de quien reserva", async () => {
+  it("el formulario de salas ya no pide la nómina", async () => {
     const app = await servidor();
     const res = await app.inject({ method: "GET", url: "/salas" });
 
-    assert.match(res.body, /name="requesterWorkerNumber"/u);
-    // El patrón se escribe con clase explícita: `\d` no sobrevive a la
-    // plantilla etiquetada y dejaría un patrón que rechaza toda nómina.
-    assert.match(res.body, /pattern="\[0-9\]\{5\}"/u);
+    assert.doesNotMatch(res.body, /name="requesterWorkerNumber"/u);
   });
 
   it("la pantalla de salas ofrece cancelar y la cancelación pide la misma contraseña", async () => {

@@ -39,8 +39,7 @@ function escapeXml(texto: string): string {
  * `<sheetData>`.
  */
 function establecerCelda(xml: string, ref: string, fila: number, valor: string): string {
-  const celdaXml =
-    `<c r="${ref}" t="inlineStr"><is><t>${escapeXml(valor)}</t></is></c>`;
+  const celdaXml = `<c r="${ref}" t="inlineStr"><is><t>${escapeXml(valor)}</t></is></c>`;
 
   const rowPattern = new RegExp(
     `(<(?:\\w+:)?row\\b[^>]*\\br\\s*=\\s*"${fila}"[^>]*>)([\\s\\S]*?)(</(?:\\w+:)?row>)`,
@@ -87,7 +86,10 @@ export function escribirCodigosEnXlsx(
     sheetByName(name: string): { name: string; part: string };
   };
 
-  const cambiosPorHoja = new Map<string, Array<{ fila: number; columna: string; codigo: string }>>();
+  const cambiosPorHoja = new Map<
+    string,
+    Array<{ fila: number; columna: string; codigo: string }>
+  >();
 
   let celdasEscritas = 0;
   for (const f of filas) {

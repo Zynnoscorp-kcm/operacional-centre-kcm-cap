@@ -194,6 +194,7 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
           status: s.status,
           authorized: s.authorized,
           totalAttendances: count,
+          createdBy: s.createdBy,
         });
       }
     }

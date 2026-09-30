@@ -72,11 +72,13 @@ function identificarSolicitante(input: CreateReservationInput): string {
     return nomina;
   }
 
-  const contacto = (input.requesterContact ?? "").trim().slice(0, 160);
+  // La agenda ya no pide nómina: sin nómina ni contacto, el nombre de quien
+  // reserva cumple el dato de contacto que exige la base.
+  const contacto = (input.requesterContact ?? "").trim() || (input.requesterName ?? "").trim();
   if (!contacto) {
-    throw new DomainError("INVALID_ROOM_RESERVATION", "Falta la nómina de quien reserva.");
+    throw new DomainError("INVALID_ROOM_RESERVATION", "Falta el nombre de quien reserva.");
   }
-  return contacto;
+  return contacto.slice(0, 160);
 }
 
 function overlaps(left: RoomReservation, startTime: string, endTime: string): boolean {

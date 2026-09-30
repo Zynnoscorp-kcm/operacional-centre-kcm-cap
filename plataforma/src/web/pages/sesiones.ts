@@ -55,8 +55,8 @@ export function renderSessionsPage(props: SessionsPageProps): string {
               <th>Curso</th>
               <th>Instructor</th>
               <th>Fecha</th>
-              <th>Hora</th>
-              <th>Duración</th>
+              <th>Horario</th>
+              <th>Creada por</th>
               <th>Asistencias</th>
               <th>Estado</th>
               <th class="columna-angosta">Autorizada</th>
@@ -107,20 +107,6 @@ export function renderSessionsPage(props: SessionsPageProps): string {
               value="${new Date().toISOString().slice(0, 10)}"
             />
           </div>
-
-          <div class="grupo-campo">
-            <label for="durationMinutes">Duración en minutos *</label>
-            <input
-              type="number"
-              id="durationMinutes"
-              name="durationMinutes"
-              min="1"
-              max="1440"
-              value="60"
-              required
-              class="control-formulario"
-            />
-          </div>
         </div>
 
         <div class="fila-campos">
@@ -162,6 +148,14 @@ export function renderSessionsPage(props: SessionsPageProps): string {
           </div>
 
           <div class="grupo-campo">
+            <label for="endTime">Hora de fin</label>
+            <select id="endTime" name="endTime" class="control-formulario">
+              <option value="">Sin hora definida</option>
+              ${horasDeLaJornada().map((hora) => html`<option value="${hora}">${hora}</option>`)}
+            </select>
+          </div>
+
+          <div class="grupo-campo">
             <label for="estimatedAttendees">Asistentes estimados</label>
             <input
               type="number"
@@ -187,8 +181,8 @@ export function renderSessionsPage(props: SessionsPageProps): string {
         </div>
 
         <p class="help">
-          La sala seleccionada se aparta en la agenda por la duración de la sesión, redondeada a
-          bloques de 30 minutos. Sin sala, la sesión no ocupa agenda.
+          La sala seleccionada se aparta en la agenda de la hora de inicio a la hora de fin. Sin
+          hora de fin, la sesión dura 60 minutos. Sin sala, la sesión no ocupa agenda.
         </p>
 
         <div class="acciones-formulario">
@@ -205,6 +199,16 @@ export function renderSessionsPage(props: SessionsPageProps): string {
     entorno: props.entorno,
     contenido,
   });
+}
+
+/** «09:00–10:30»: el fin se deduce del inicio y la duración asentada. */
+function horario(s: OperativeSessionSummary): string {
+  const partes = /^(\d{2}):(\d{2})/u.exec(s.startTime ?? "");
+  if (!partes) return "—";
+  const fin = Number(partes[1]) * 60 + Number(partes[2]) + s.durationMinutes;
+  const hh = String(Math.floor(fin / 60) % 24).padStart(2, "0");
+  const mm = String(fin % 60).padStart(2, "0");
+  return `${partes[1]}:${partes[2]}–${hh}:${mm}`;
 }
 
 function renderFilaSesion(s: OperativeSessionSummary, pidePin: boolean): Html {
@@ -229,8 +233,8 @@ function renderFilaSesion(s: OperativeSessionSummary, pidePin: boolean): Html {
       <td>${s.trainingName}</td>
       <td>${s.instructor}</td>
       <td class="celda-fecha">${fechaCorta(s.date)}</td>
-      <td class="celda-mono">${s.startTime || "—"}</td>
-      <td>${s.durationMinutes} min</td>
+      <td class="celda-mono">${horario(s)}</td>
+      <td>${s.createdBy || "—"}</td>
       <td><strong>${s.totalAttendances}</strong> / 40</td>
       <td><span class="insignia ${insigniaClase}">${etiquetaDeEstadoDeSesion(s.status)}</span></td>
       <td class="columna-angosta">

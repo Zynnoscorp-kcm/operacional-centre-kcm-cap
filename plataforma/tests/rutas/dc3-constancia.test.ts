@@ -1201,7 +1201,7 @@ describe("DC-3 · emitidas, cobertura y datos del formato", () => {
     assert.doesNotMatch(panel.body, /vencid|lote/iu);
   });
 
-  it("los datos del formato dicen qué se imprime y qué sale en blanco", async () => {
+  it("los datos del formato dicen qué se imprime", async () => {
     const app = await servidor(new PadronFalso());
 
     const datos = await app.inject({ method: "GET", url: "/dc3/datos" });
@@ -1211,7 +1211,8 @@ describe("DC-3 · emitidas, cobertura y datos del formato", () => {
     assert.match(datos.body, /AGENTE SINTETICO/u);
     assert.ok(datos.body.includes(LEYENDAS_DC3.employerName));
     assert.match(datos.body, /Constancias desde<\/dt>\s*<dd>1 ene 2026/u);
-    assert.match(datos.body, /1 <span class="hueco-de">de 3<\/span>/u);
+    // El recuadro de datos del trabajador en blanco se retiró de esta pestaña.
+    assert.doesNotMatch(datos.body, /Datos del trabajador que salen en blanco/u);
     // Nada de nombres de tabla, archivos privados ni plazo.
     assert.doesNotMatch(
       datos.body,

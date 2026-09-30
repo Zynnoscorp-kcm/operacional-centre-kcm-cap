@@ -27,7 +27,7 @@ import type { SessionService } from "../domain/quiosco/sesiones.ts";
 import type { RoomReservationService } from "../domain/salas/reservaciones.ts";
 import { ROOMS, type RoomReservation } from "../domain/salas/tipos.ts";
 import type { KioskSessionRepositoryPort } from "../ports/quiosco.port.ts";
-import { igualEnTiempoConstante } from "../server/sesion-consola.ts";
+import { igualEnTiempoConstante, type ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { renderSessionsPage } from "../web/pages/sesiones.ts";
 
 /** Quien agenda desde aquí es la administración, no un capacitador externo. */
@@ -91,6 +91,8 @@ export interface SessionRouteDeps {
   readonly repository: KioskSessionRepositoryPort;
   /** La agenda de salas, para apartar el aula al crear la sesión. */
   readonly roomService: RoomReservationService;
+  /** La cookie de la consola: de ahí sale quién da de alta la sesión. */
+  readonly sessions?: ConsoleSessionCodec;
 }
 
 export function registerSessionRoutes(app: FastifyInstance, deps: SessionRouteDeps): void {
@@ -140,20 +142,43 @@ export function registerSessionRoutes(app: FastifyInstance, deps: SessionRouteDe
       /** Texto libre heredado. Se conserva para quien llame la API como antes. */
       room?: string;
       startTime?: string;
+      /** Hora de fin `HH:mm`: la duración se calcula contra el inicio. */
+      endTime?: string;
       eventType?: string;
       estimatedAttendees?: number | string;
       requestId?: string;
     };
 
     const opRequestId = String(body.requestId || randomUUID());
-    const identity = { actor: "USUARIO_CAPACITACION", role: "CAPACITACION" as const };
+    const cuenta = deps.sessions?.leer(req.headers.cookie, new Date())?.usuario;
+    const identity = { actor: cuenta || "USUARIO_CAPACITACION", role: "CAPACITACION" as const };
     const enHtml = prefiereHtml(req);
 
     const trainingId = String(body.trainingId || "");
     const instructor = String(body.instructor || "");
     const date = String(body.date || new Date().toISOString().slice(0, 10));
-    const durationMinutes = Number(body.durationMinutes || 60);
     const startTime = String(body.startTime ?? "").trim();
+    const endTime = String(body.endTime ?? "").trim();
+    const inicioEnMinutos = minutosDeHora(startTime);
+    const finEnMinutos = minutosDeHora(endTime);
+    if (endTime && (inicioEnMinutos === undefined || finEnMinutos === undefined)) {
+      if (!enHtml)
+        throw new DomainError("INVALID_INPUT", "La hora de fin necesita hora de inicio.");
+      return volverASesiones(reply, "La hora de fin necesita una hora de inicio.", true);
+    }
+    if (
+      inicioEnMinutos !== undefined &&
+      finEnMinutos !== undefined &&
+      finEnMinutos <= inicioEnMinutos
+    ) {
+      if (!enHtml)
+        throw new DomainError("INVALID_INPUT", "La hora de fin debe ser posterior al inicio.");
+      return volverASesiones(reply, "La hora de fin debe ser posterior a la de inicio.", true);
+    }
+    const durationMinutes =
+      inicioEnMinutos !== undefined && finEnMinutos !== undefined
+        ? finEnMinutos - inicioEnMinutos
+        : Number(body.durationMinutes || 60);
 
     const claveDeSala = String(body.roomId ?? "").trim();
     const sala = claveDeSala ? ROOMS.find((row) => row.roomId === claveDeSala) : undefined;

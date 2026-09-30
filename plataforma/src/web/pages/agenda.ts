@@ -336,21 +336,6 @@ function renderFormulario(datos: DatosAgenda): Html {
         />
       </div>
 
-      <div class="agenda-campo">
-        <label for="reserva-nomina">Número de nómina</label>
-        <input
-          id="reserva-nomina"
-          name="requesterWorkerNumber"
-          inputmode="numeric"
-          pattern="[0-9]{5}"
-          maxlength="5"
-          placeholder="Cinco dígitos"
-          title="Cinco dígitos"
-          value="${antes("requesterWorkerNumber")}"
-          required
-        />
-      </div>
-
       <div class="agenda-dos">
         <div class="agenda-campo">
           <label for="reserva-puesto">Puesto</label>
@@ -410,8 +395,8 @@ function renderFormulario(datos: DatosAgenda): Html {
       }
 
       <p class="agenda-privacidad">
-        Nombre, nómina, puesto y área sólo se muestran al personal autorizado de Capacitación. La
-        agenda pública muestra sala y horario.
+        Nombre, puesto y área sólo se muestran al personal autorizado de Capacitación. La agenda
+        pública muestra sala y horario.
       </p>
 
       <button class="agenda-primario" type="submit">Confirmar reservación</button>

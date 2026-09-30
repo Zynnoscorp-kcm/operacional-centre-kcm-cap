@@ -19,13 +19,7 @@ import type {
 } from "../../../ports/dc3-constancia.port.ts";
 import { html, type Html } from "../../kit/html.ts";
 import { renderLayout } from "../../layout.ts";
-import {
-  ANIO_DEL_CORTE,
-  ICONO_DESCARGA,
-  fechaCorta,
-  fichaDeCurso,
-  renderBarraDeModulo,
-} from "./kit.ts";
+import { ANIO_DEL_CORTE, fechaCorta, fichaDeCurso, renderBarraDeModulo } from "./kit.ts";
 
 export interface Dc3DatosInput {
   readonly config: AppConfig;
@@ -154,77 +148,6 @@ function renderPeriodo(formato: FormatoVisibleDc3): Html {
   </dl>`;
 }
 
-function renderHuecos(input: Dc3DatosInput): Html {
-  const huecos = input.huecos;
-  if (!huecos) return html``;
-  const conOcupacion = huecos.activeWorkers - huecos.withoutOccupation;
-
-  return html`<div class="huecos">
-    <div class="hueco ${huecos.withoutOccupation > 0 ? "hueco-abierto" : "hueco-cerrado"}">
-      <p class="hueco-cifra">
-        ${conOcupacion} <span class="hueco-de">de ${huecos.activeWorkers}</span>
-      </p>
-      <p class="hueco-titulo">con clave de ocupación específica</p>
-      <p class="hueco-texto">
-        Se carga con el padrón semanal, en la columna «Clave de ocupación». Sin ella, el recuadro
-        sale en blanco.
-      </p>
-    </div>
-    <div class="hueco ${huecos.withoutCurp > 0 ? "hueco-abierto" : "hueco-cerrado"}">
-      <p class="hueco-cifra">
-        ${huecos.activeWorkers - huecos.withoutCurp}
-        <span class="hueco-de">de ${huecos.activeWorkers}</span>
-      </p>
-      <p class="hueco-titulo">con CURP válida</p>
-      <p class="hueco-texto">
-        Se carga con el padrón semanal.
-        ${
-          huecos.withoutCurp > 0
-            ? html`<a href="/dc3?pestana=incompletos">Ver a quién le falta</a>`
-            : "Completa en todo el padrón."
-        }
-      </p>
-    </div>
-    <div class="hueco ${huecos.withoutPosition > 0 ? "hueco-abierto" : "hueco-cerrado"}">
-      <p class="hueco-cifra">
-        ${huecos.activeWorkers - huecos.withoutPosition}
-        <span class="hueco-de">de ${huecos.activeWorkers}</span>
-      </p>
-      <p class="hueco-titulo">con puesto</p>
-      <p class="hueco-texto">Dato opcional del formato.</p>
-    </div>
-  </div>`;
-}
-
-function renderCombinaciones(combinaciones: readonly Dc3OccupationGap[]): Html {
-  if (combinaciones.length === 0) {
-    return html`<p class="texto-vacio">Todos los trabajadores activos tienen su clave.</p>`;
-  }
-  return html`<div class="tabla-contenedor">
-    <table class="tabla-kcm">
-      <thead>
-        <tr>
-          <th scope="col">Área</th>
-          <th scope="col">Puesto</th>
-          <th scope="col" class="celda-numero">Trabajadores sin clave</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${combinaciones.map(
-          (combinacion) =>
-            html`<tr>
-              <td>${combinacion.area || html`<span class="texto-atenuado">Sin área</span>`}</td>
-              <td>
-                ${combinacion.position || html`<span class="texto-atenuado">Sin puesto</span>`}
-              </td>
-              <td class="celda-numero">${combinacion.workers}</td>
-            </tr>`,
-        )}
-      </tbody>
-    </table>
-  </div>`;
-}
-
 export function renderDc3DatosPage(input: Dc3DatosInput): string {
   const contenido: Html = html`
     <section class="tarjeta" aria-labelledby="titulo-cursos-formato">
@@ -256,32 +179,6 @@ export function renderDc3DatosPage(input: Dc3DatosInput): string {
         ${renderPeriodo(input.formato)}
       </section>
     </div>
-
-    ${
-      input.sinBase
-        ? ""
-        : html`<section class="tarjeta" id="ocupacion" aria-labelledby="titulo-huecos">
-            <div class="seccion-cabecera cabecera-fila">
-              <div>
-                <h2 id="titulo-huecos">Datos del trabajador que salen en blanco</h2>
-                <p>
-                  Se completan en el padrón. Una constancia emitida con un recuadro vacío puede
-                  emitirse de nuevo, completa, cuando el dato llegue.
-                </p>
-              </div>
-              <a class="boton-pequeno boton-secundario" href="/dc3/sin-ocupacion.csv"
-                >${ICONO_DESCARGA} Trabajadores sin clave de ocupación (CSV)</a
-              >
-            </div>
-            ${renderHuecos(input)}
-            <h3 class="seccion-subtitulo">Área y puesto sin clave de ocupación</h3>
-            <p class="texto-nota">
-              La clave depende del puesto y del área: se asigna una por combinación. Primero las
-              combinaciones con más trabajadores.
-            </p>
-            ${renderCombinaciones(input.combinaciones)}
-          </section>`
-    }
   `;
 
   return renderLayout({

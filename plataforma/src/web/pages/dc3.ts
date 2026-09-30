@@ -103,7 +103,7 @@ const ORDENES: readonly {
   { clave: "nombre", titulo: "Alfabético", ayuda: "Por nombre del trabajador" },
   {
     clave: "personal",
-    titulo: "Para repartir",
+    titulo: "Confianza y sindicalizados",
     ayuda:
       "Por tipo de personal: confianza primero y sindicalizados después, " +
       "cada grupo por número de nómina de menor a mayor",
