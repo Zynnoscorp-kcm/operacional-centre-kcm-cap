@@ -180,8 +180,12 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
       ${
         preview.overwriteRequiresReason
           ? html`<p class="aviso aviso-error">
-              La liberación sobrescribiría ${sobrescrituras} fecha(s) ya registradas. El motivo es
-              obligatorio y queda en el historial con el valor anterior.
+              ${sobrescrituras === 1 ? "Un trabajador ya tiene" : html`${sobrescrituras} trabajadores ya tienen`}
+              fecha de este curso en la copia de la matriz que guarda la plataforma (columna «Valor
+              anterior»). Para liberar hace falta el motivo de sobrescritura, abajo; queda en el
+              historial con el valor anterior. Si la fecha anterior ya no está en la matriz, Excel
+              escribe la nueva sin más. Para corregir la sesión primero, se puede regresar a
+              preliberación.
             </p>`
           : ""
       }
@@ -208,6 +212,8 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
           type="text"
           maxlength="200"
           autocomplete="off"
+          ${preview.overwriteRequiresReason ? "required" : ""}
+          placeholder="${preview.overwriteRequiresReason ? "Por qué se reemplaza la fecha anterior" : ""}"
         />
         <button
           type="submit"
@@ -216,6 +222,14 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
         >
           Liberar ${preview.counts.included} registro(s)
         </button>
+      </form>
+
+      <form method="post" action="/api/pre-release/return" class="formulario-en-linea">
+        <input type="hidden" name="sessionId" value="${preview.sessionId}" />
+        <button type="submit" class="boton boton-secundario">Regresar a preliberación</button>
+        <span class="texto-nota"
+          >Devuelve la sesión a revisión para corregir asistentes o exámenes antes de liberar.</span
+        >
       </form>
     </section>
   `;

@@ -197,6 +197,66 @@ describe("E10 · rutas de liberación", () => {
     await app.close();
   });
 
+  it("con una fecha previa, la validación deja liberar pidiendo el motivo y ofrece regresar", async () => {
+    // Antes la pantalla quedaba en «Liberar 0 registro(s)» desactivado: sin
+    // motivo, la atomicidad abortaba a todos y no había cómo capturarlo.
+    const { app } = await server([buildHcRecord("10001", "2026-01-20")], "OVERWRITE_WITH_HISTORY");
+    const pantalla = await app.inject({
+      method: "GET",
+      url: `/liberacion?sessionId=${SESSION_ID}`,
+    });
+
+    assert.match(pantalla.body, /Liberar 2 registro\(s\)/u);
+    assert.doesNotMatch(pantalla.body, /Liberar 2 registro\(s\)\s*<\/button>[^]*disabled/u);
+    assert.match(pantalla.body, /name="overwriteReason"[^>]*required/u);
+    assert.match(pantalla.body, /action="\/api\/pre-release\/return"/u);
+    await app.close();
+  });
+
+  it("desde la pantalla, liberar sin motivo vuelve a la validación con el aviso", async () => {
+    const { app, releaseRepository } = await server(
+      [buildHcRecord("10001", "2026-01-20")],
+      "OVERWRITE_WITH_HISTORY",
+    );
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/release/execute",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        accept: "text/html",
+      },
+      payload: new URLSearchParams({
+        sessionId: SESSION_ID,
+        requestId: "req-ruta-html",
+      }).toString(),
+    });
+
+    assert.equal(respuesta.statusCode, 303);
+    assert.match(
+      String(respuesta.headers.location),
+      new RegExp(`^/liberacion\\?sessionId=${SESSION_ID}&aviso=Falta`, "u"),
+    );
+    assert.equal(releaseRepository.getAllEffects().length, 0);
+
+    // Con el motivo, el mismo formulario libera y lleva al tablero de entregas.
+    const conMotivo = await app.inject({
+      method: "POST",
+      url: "/api/release/execute",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        accept: "text/html",
+      },
+      payload: new URLSearchParams({
+        sessionId: SESSION_ID,
+        requestId: "req-ruta-html-2",
+        overwriteReason: "Corrección de la fecha anterior",
+      }).toString(),
+    });
+    assert.equal(conMotivo.statusCode, 303);
+    assert.match(String(conMotivo.headers.location), /^\/liberacion\?entregas=1/u);
+    await app.close();
+  });
+
   it("la consulta del lote no publica el plan ni su firma", async () => {
     const { app } = await server();
     await app.inject({

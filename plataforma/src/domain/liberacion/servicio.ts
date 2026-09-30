@@ -57,6 +57,7 @@ import {
   isEffective,
   isTerminalPhase,
   type ExcludedEntry,
+  type ExistingDate,
   type MatrixWriteResult,
   type MatrixMapping,
   type ReleaseBatch,
@@ -152,7 +153,24 @@ export class ReleaseService {
       })),
     );
 
-    const results = await this.#gateway.inspect(plan, { overwriteReason });
+    // Sin motivo, cada sobrescritura es un conflicto y la atomicidad aborta a
+    // todos los demás: la pantalla quedaba en «0 registros» y el botón de
+    // liberar desactivado, sin forma de capturar el motivo que faltaba. Si lo
+    // único que falta es el motivo, se evalúa como si ya estuviera y se avisa
+    // que es obligatorio; al liberar, el servidor lo vuelve a exigir.
+    let results = await this.#gateway.inspect(plan, { overwriteReason });
+    const faltaSoloMotivo =
+      !overwriteReason.trim() &&
+      results.some((result) => result.status === "OVERWRITE_REASON_REQUIRED") &&
+      results.every(
+        (result) =>
+          !isConflict(result.status) ||
+          result.status === "OVERWRITE_REASON_REQUIRED" ||
+          result.status === "ATOMIC_BATCH_ABORTED",
+      );
+    if (faltaSoloMotivo) {
+      results = await this.#gateway.inspect(plan, { overwriteReason: "(motivo por capturar)" });
+    }
 
     const included = results.filter((result) => !isConflict(result.status));
     const blocked: ExcludedEntry[] = results
@@ -180,10 +198,9 @@ export class ReleaseService {
         excluded: split.excluded.length + blocked.length,
         overwrites,
       },
-      overwriteRequiresReason: results.some(
-        (result) => result.status === "OVERWRITE_REASON_REQUIRED",
-      ),
-      atomicBatchReady: blocked.length === 0 && included.length > 0,
+      overwriteRequiresReason:
+        faltaSoloMotivo || results.some((result) => result.status === "OVERWRITE_REASON_REQUIRED"),
+      atomicBatchReady: !faltaSoloMotivo && blocked.length === 0 && included.length > 0,
     };
   }
 
@@ -755,6 +772,33 @@ export class ReleaseService {
       throw new ReleaseConflictError("Los resultados de liberación están corruptos");
     }
     return validateResults(plan, parsed as MatrixWriteResult[]);
+  }
+
+  /**
+   * Quién de la sesión ya tiene fecha de este curso en la copia de la matriz
+   * que guarda la plataforma. Es lo que decide si liberar pedirá motivo de
+   * sobrescritura, y preliberación lo enseña antes de llegar a liberar.
+   */
+  async existingDates(sessionId: string): Promise<readonly ExistingDate[]> {
+    const sid = assertIdentifier(sessionId, "sessionId");
+    const session = await this.#requireSession(sid);
+    const attendances = await this.#repo.listAttendancesBySession(sid);
+    const vistos = new Set<string>();
+    const fechas: ExistingDate[] = [];
+    for (const attendance of attendances) {
+      const employeeId = String(attendance.workerNumber);
+      if (vistos.has(employeeId)) continue;
+      vistos.add(employeeId);
+      const actual = await this.#gateway.currentRecord(employeeId, session.trainingId);
+      if (!actual?.completionDate || actual.completionDate === session.date) continue;
+      fechas.push({
+        employeeId,
+        previousDate: actual.completionDate,
+        provenance: actual.provenance,
+        newer: actual.completionDate > session.date,
+      });
+    }
+    return fechas;
   }
 
   async #requireSession(sessionId: string): Promise<SessionRecord> {

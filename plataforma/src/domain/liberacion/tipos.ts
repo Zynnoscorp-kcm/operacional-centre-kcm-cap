@@ -270,6 +270,15 @@ export interface ExcludedEntry {
   readonly reasons: readonly string[];
 }
 
+/** Una fecha que la copia de la matriz ya tiene para alguien de la sesión. */
+export interface ExistingDate {
+  readonly employeeId: string;
+  readonly previousDate: string;
+  readonly provenance: string;
+  /** Más reciente que la de la sesión: liberar no la reemplaza. */
+  readonly newer: boolean;
+}
+
 export interface ReleasePreview {
   readonly sessionId: string;
   readonly mapping: MatrixMapping;

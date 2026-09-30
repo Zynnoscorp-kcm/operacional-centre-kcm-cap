@@ -97,11 +97,17 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
         return reply.redirect(`/preliberacion?aviso=${encodeURIComponent(aviso)}`, 303);
       }
       const reportes = await reportService.bySession(req.params.sessionId);
+      // Quién ya tiene fecha del curso: liberar le pedirá motivo de
+      // sobrescritura, y es mejor saberlo aquí que al pulsar «Liberar».
+      const fechasPrevias = releaseService
+        ? await releaseService.existingDates(req.params.sessionId).catch(() => [])
+        : [];
 
       const html = renderPreReleaseWorkbenchPage({
         entorno: config.environment,
         estado,
         reportes,
+        fechasPrevias,
         requestId: randomUUID(),
         ...(query.aviso ? { aviso: String(query.aviso) } : {}),
       });
@@ -313,10 +319,15 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
 
   function redirigirALiberacion(
     reply: FastifyReply,
-    _sessionId: string,
+    sessionId: string,
     aviso: string,
   ): FastifyReply {
-    return reply.redirect(`/liberacion?aviso=${encodeURIComponent(aviso)}`, 303);
+    // A la validación de esa misma sesión, donde se ve qué detuvo el lote y se
+    // captura el motivo, no a la lista general.
+    return reply.redirect(
+      `/liberacion?sessionId=${encodeURIComponent(sessionId)}&aviso=${encodeURIComponent(aviso)}`,
+      303,
+    );
   }
 
   /**

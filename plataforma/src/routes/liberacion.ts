@@ -170,14 +170,46 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
       throw badRequest("Falta el identificador de sesión.");
     }
 
-    const outcome = await releaseService.release(
-      {
-        sessionId: body.sessionId,
-        requestId: body.requestId || randomUUID(),
-        ...(body.overwriteReason === undefined ? {} : { overwriteReason: body.overwriteReason }),
-      },
-      identidadDe(req),
-    );
+    // Desde la pantalla el formulario espera volver a una pantalla, no un JSON:
+    // el conflicto regresa a la validación de la misma sesión con el motivo.
+    const enPantalla = String(req.headers.accept ?? "").includes("text/html");
+    const aLaSesion = (aviso: string): string =>
+      `/liberacion?sessionId=${encodeURIComponent(body.sessionId ?? "")}&aviso=${encodeURIComponent(aviso)}`;
+
+    let outcome;
+    try {
+      outcome = await releaseService.release(
+        {
+          sessionId: body.sessionId,
+          requestId: body.requestId || randomUUID(),
+          ...(body.overwriteReason === undefined ? {} : { overwriteReason: body.overwriteReason }),
+        },
+        identidadDe(req),
+      );
+    } catch (error) {
+      if (!enPantalla || !(error instanceof DomainError)) throw error;
+      return reply.redirect(aLaSesion(error.message), 303);
+    }
+
+    if (enPantalla) {
+      if (outcome.status === "CONFLICTO") {
+        const motivoFaltante = outcome.results.some(
+          (result) => result.status === "OVERWRITE_REASON_REQUIRED",
+        );
+        return reply.redirect(
+          aLaSesion(
+            motivoFaltante
+              ? "Falta el motivo de sobrescritura: no se liberó nada."
+              : "La liberación se detuvo por conflicto: no se liberó nada. Los registros que la detienen están en «Registros que no se liberan».",
+          ),
+          303,
+        );
+      }
+      return reply.redirect(
+        `/liberacion?entregas=1&aviso=${encodeURIComponent("Sesión liberada. Las fechas se escriben en la matriz con «Actualizar el libro» en Excel.")}#entregas`,
+        303,
+      );
+    }
 
     // Un lote en conflicto no es un error del servidor ni de la petición: es un
     // resultado del negocio, y se responde como tal para que la interfaz pueda

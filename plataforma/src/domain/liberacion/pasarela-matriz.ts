@@ -300,6 +300,11 @@ export class MatrixGateway {
    * journal que dijera "matriz aplicada" bastaría para dar por escrita una
    * fecha que nunca se escribió.
    */
+  /** El registro vigente del par, tal como lo ve la liberación. */
+  currentRecord(employeeId: string, trainingId: string): Promise<HcRecord | null> {
+    return this.#matrix.getHcRecord(parseWorkerNumber(employeeId), trainingId);
+  }
+
   async verifyApplied(
     plan: WritePlan,
     context: DurableContext,

@@ -2,6 +2,20 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Liberar con fechas previas sin cuello de botella · 2026-09-30
+
+Con una fecha previa en la copia de la matriz, la validación quedaba en
+«Liberar 0 registro(s)» desactivado: sin motivo, la sobrescritura era conflicto
+y la atomicidad abortaba a todos. Ahora la vista previa evalúa el lote como si
+el motivo ya estuviera, el campo es obligatorio y el botón se habilita. El
+formulario vuelve a la validación de la sesión (no a un JSON) si falta el
+motivo o hay conflicto. Hay botón «Regresar a preliberación», y el banco de
+preliberación enseña de antemano quién ya tiene fecha del curso y si pedirá
+motivo o no se podrá reemplazar. En KC-0004 las dos fechas previas (54859 y
+54968, Política de calidad) vienen de la importación del 3 de agosto: la copia
+de la matriz está desactualizada respecto al libro. Verificado con 782 pruebas.
+Acta: `docs/actas/2026-09-30-liberar-con-fechas-previas.md`.
+
 ## La fecha entra al historial sólo con el acuse de Excel · 2026-09-30
 
 Liberar ya no escribe en `operacion.historial_capacitacion`: deja la fecha en

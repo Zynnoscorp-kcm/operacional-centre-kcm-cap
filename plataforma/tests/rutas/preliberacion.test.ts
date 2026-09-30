@@ -738,7 +738,8 @@ describe("Rutas HTTP de Preliberación", () => {
     });
 
     assert.equal(res.statusCode, 303);
-    assert.match(String(res.headers.location), /^\/liberacion\?aviso=/u);
+    // A la validación de esa misma sesión, no a la lista general.
+    assert.match(String(res.headers.location), /^\/liberacion\?sessionId=ses-001&aviso=/u);
     await app.close();
   });
 

@@ -165,6 +165,23 @@ describe("E10 · sin motivo no hay sobrescritura", () => {
     );
   });
 
+  it("preliberación puede saber de antemano quién pedirá motivo", async () => {
+    const { service } = build("OVERWRITE_WITH_HISTORY", [
+      buildHcRecord("10001", FECHA_PREVIA),
+      buildHcRecord("10002", "2099-01-01"),
+    ]);
+
+    const fechas = await service.existingDates(SESSION_ID);
+
+    assert.deepEqual(
+      fechas.map((fecha) => [fecha.employeeId, fecha.previousDate, fecha.newer]),
+      [
+        ["10001", FECHA_PREVIA, false],
+        ["10002", "2099-01-01", true],
+      ],
+    );
+  });
+
   it("la vista previa avisa que hace falta motivo antes de intentar nada", async () => {
     const { service } = build("OVERWRITE_WITH_HISTORY", [buildHcRecord("10001", FECHA_PREVIA)]);
 
@@ -173,6 +190,9 @@ describe("E10 · sin motivo no hay sobrescritura", () => {
     assert.equal(preview.overwriteRequiresReason, true);
     assert.equal(preview.counts.overwrites, 1);
     assert.equal(preview.atomicBatchReady, false);
+    // Pero no deja la pantalla en cero: el lote se ve completo para poder
+    // capturar el motivo y liberar.
+    assert.equal(preview.counts.included, 2);
   });
 });
 
