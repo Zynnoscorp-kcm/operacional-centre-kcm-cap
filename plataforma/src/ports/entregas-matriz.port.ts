@@ -33,6 +33,8 @@ export interface MatrixDelivery {
   readonly sessionDate: string;
   /** Cuándo se liberó en la plataforma. */
   readonly releasedAt: string;
+  /** La cuenta que liberó el lote. */
+  readonly releasedBy: string;
   /** Renglones del lote. */
   readonly total: number;
   /** Renglones con acuse efectivo de Excel: `APPLIED` o `RECOVERED`. */

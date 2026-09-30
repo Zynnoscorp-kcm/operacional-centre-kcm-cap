@@ -17,6 +17,7 @@ import type { ReleaseService } from "../domain/liberacion/servicio.ts";
 import type { ActorIdentity } from "../domain/quiosco/tipos.ts";
 import { DomainError } from "../domain/comun/errores.ts";
 import { badRequest } from "../server/errors.ts";
+import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import { renderReleasePage } from "../web/pages/liberacion.ts";
 
 export interface ReleaseRouteDeps {
@@ -28,6 +29,8 @@ export interface ReleaseRouteDeps {
    * dice, en vez de enseñar una bandeja vacía que se leería como «nada espera».
    */
   readonly deliveries?: MatrixDeliveryService;
+  /** La cookie de la consola: de ahí sale quién libera. */
+  readonly sessions?: ConsoleSessionCodec;
 }
 
 export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDeps): void {
@@ -48,6 +51,11 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
     actor: "USUARIO_CAPACITACION",
     role: "CAPACITACION",
   };
+  /** La cuenta de consola de la cookie; sin ella, la identidad por omisión. */
+  const identidadDe = (req: FastifyRequest): ActorIdentity => {
+    const cuenta = deps.sessions?.leer(req.headers.cookie, new Date())?.usuario;
+    return cuenta ? { ...identidadPorOmision, actor: cuenta } : identidadPorOmision;
+  };
 
   // GET /liberacion — pantalla de preflight
   app.get("/liberacion", async (req: FastifyRequest, reply: FastifyReply) => {
@@ -57,7 +65,7 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
       // Las dos listas se piden a la vez: son independientes y esperarlas en
       // fila duplicaría la espera de una pantalla que se abre muchas veces al día.
       const [sessions, deliveries] = await Promise.all([
-        workbenchService.listReleaseQueue(identidadPorOmision),
+        workbenchService.listReleaseQueue(identidadDe(req)),
         deps.deliveries?.list(),
       ]);
       const { entregas } = (req.query ?? {}) as { entregas?: string };
@@ -121,7 +129,7 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
       try {
         const entrega = await deps.deliveries.hide({
           batchId: req.params.batchId,
-          actor: identidadPorOmision.actor,
+          actor: identidadDe(req).actor,
           requestId: String(req.id),
         });
         req.log.info({ lote: entrega.batchId }, "entrega retirada del tablero");
@@ -168,7 +176,7 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
         requestId: body.requestId || randomUUID(),
         ...(body.overwriteReason === undefined ? {} : { overwriteReason: body.overwriteReason }),
       },
-      identidadPorOmision,
+      identidadDe(req),
     );
 
     // Un lote en conflicto no es un error del servidor ni de la petición: es un

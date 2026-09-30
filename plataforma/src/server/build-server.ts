@@ -500,11 +500,13 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     // El atajo de la sesión limpia necesita liberar desde preliberación. Es el
     // mismo servicio que usa `/liberacion`, no una segunda ruta de escritura.
     releaseService,
+    sessions: consoleSessions,
   });
   registerReleaseRoutes(app, {
     config,
     releaseService,
     workbenchService,
+    sessions: consoleSessions,
     ...(deps.matrixDeliveryRepository
       ? {
           deliveries: new MatrixDeliveryService({ repository: deps.matrixDeliveryRepository }),

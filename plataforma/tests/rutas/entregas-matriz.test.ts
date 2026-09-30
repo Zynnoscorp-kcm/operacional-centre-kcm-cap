@@ -32,6 +32,7 @@ const ESPERANDO: MatrixDelivery = {
   courseName: "CURSO SINTETICO",
   sessionDate: "2026-08-30",
   releasedAt: "2026-08-30T18:00:00.000Z",
+  releasedBy: "CUENTA_SINTETICA",
   total: 12,
   delivered: 0,
   rejected: 0,
@@ -113,6 +114,9 @@ describe("Entregas a la matriz · el tablero de la pantalla de liberación", () 
     assert.match(pantalla.body, /foco foco-verde/u);
     assert.match(pantalla.body, /foco foco-ambar/u);
     assert.match(pantalla.body, /Pendiente de escritura en Excel/u);
+    // Quién liberó cada lote.
+    assert.match(pantalla.body, /<th scope="col">Liberó<\/th>/u);
+    assert.match(pantalla.body, /CUENTA_SINTETICA/u);
   });
 
   it("va plegado, y la dirección lo mantiene abierto al actualizar", async () => {

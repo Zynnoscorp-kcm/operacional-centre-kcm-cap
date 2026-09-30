@@ -34,6 +34,7 @@ interface FilaEntrega {
   curso: string | null;
   fecha_sesion: string | null;
   liberado_en: string | Date;
+  liberado_por: string | null;
   total: number;
   entregadas: number;
   rechazadas: number;
@@ -75,6 +76,7 @@ const ENTREGAS = `
          c.nombre AS curso,
          to_char(s.fecha_sesion, 'YYYY-MM-DD') AS fecha_sesion,
          lo.creado_en AS liberado_en,
+         act.nombre_visible AS liberado_por,
          cuentas.total,
          cuentas.entregadas,
          cuentas.rechazadas,
@@ -82,6 +84,7 @@ const ENTREGAS = `
     FROM matriz.liberacion_lote lo
     JOIN operacion.sesion s ON s.sesion_id = lo.sesion_id
     LEFT JOIN catalogo.capacitacion c ON c.capacitacion_id = s.capacitacion_id
+    LEFT JOIN seguridad.actor act ON act.actor_id = lo.creado_por
     CROSS JOIN LATERAL (${CUENTAS_DEL_LOTE}) cuentas
    WHERE cuentas.total > 0`;
 
@@ -178,6 +181,7 @@ function aEntrega(fila: FilaEntrega): MatrixDelivery {
     courseName: fila.curso ?? "",
     sessionDate: fila.fecha_sesion ?? "",
     releasedAt: iso(fila.liberado_en),
+    releasedBy: fila.liberado_por ?? "",
     total: Number(fila.total),
     delivered: Number(fila.entregadas),
     rejected: Number(fila.rechazadas),

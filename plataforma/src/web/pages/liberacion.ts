@@ -365,6 +365,7 @@ function renderTablaDeEntregas(entregas: readonly MatrixDelivery[]): Html {
             <th scope="col">Fecha</th>
             <th scope="col">Escritas</th>
             <th scope="col">Liberada</th>
+            <th scope="col">Liberó</th>
             <th scope="col">Quitar</th>
           </tr>
         </thead>
@@ -414,6 +415,7 @@ function renderEntrega(entrega: MatrixDelivery): Html {
       }
     </td>
     <td class="celda-mono">${entrega.releasedAt.slice(0, 16).replace("T", " ")}</td>
+    <td>${entrega.releasedBy || "—"}</td>
     <td>
       ${
         entregada

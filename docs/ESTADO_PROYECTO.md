@@ -2,6 +2,15 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Quién liberó, en Entregas a la matriz · 2026-09-30
+
+El tablero «Entregas a la matriz» de `/liberacion` tiene la columna «Liberó»
+(`seguridad.actor` del creador del lote). Preliberación y liberación firman ahora
+con la cuenta de consola de la cookie; antes todo se asentaba como
+`USUARIO_CAPACITACION`, que es lo que mostrarán los lotes ya liberados.
+Verificado con 777 pruebas de plataforma. Acta:
+`docs/actas/2026-09-30-quien-libero.md`.
+
 ## Nota chica en la fecha y casillas en Liberaciones (VBA) · 2026-09-30
 
 La nota con el código de sesión que la macro deja en cada fecha ahora se

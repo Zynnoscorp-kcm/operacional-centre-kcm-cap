@@ -17,6 +17,7 @@ import type { ActorIdentity } from "../domain/quiosco/tipos.ts";
 import type { ExamOutcome, SaveReviewInput } from "../domain/preliberacion/tipos.ts";
 import type { ReleaseService } from "../domain/liberacion/servicio.ts";
 import { badRequest } from "../server/errors.ts";
+import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
 import {
   renderPreReleaseInboxPage,
   renderPreReleaseWorkbenchPage,
@@ -31,6 +32,8 @@ export interface PreReleaseRouteDeps {
    * pantalla no ofrece el botón y el camino de dos pasos sigue intacto.
    */
   readonly releaseService?: ReleaseService;
+  /** La cookie de la consola: de ahí sale quién revisa y libera. */
+  readonly sessions?: ConsoleSessionCodec;
 }
 
 /**
@@ -47,6 +50,15 @@ interface CuerpoFormulario {
 export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseRouteDeps): void {
   const { config, workbenchService, reportService, releaseService } = deps;
 
+  /**
+   * Quien revisa y libera es la cuenta de consola de la cookie. Sin cookie
+   * legible (pruebas, acceso abierto) queda el usuario genérico de siempre.
+   */
+  const identidadDe = (req: FastifyRequest): ActorIdentity => {
+    const cuenta = deps.sessions?.leer(req.headers.cookie, new Date())?.usuario;
+    return cuenta ? { ...IDENTIDAD_REVISION, actor: cuenta } : IDENTIDAD_REVISION;
+  };
+
   const prefiereHtml = (req: FastifyRequest): boolean => {
     const accept = req.headers.accept;
     return typeof accept === "string" && accept.includes("text/html");
@@ -58,7 +70,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
 
   app.get("/preliberacion", async (req: FastifyRequest, reply: FastifyReply) => {
     const query = req.query as { aviso?: string };
-    const revisables = await workbenchService.listEditableSessions(IDENTIDAD_REVISION);
+    const revisables = await workbenchService.listEditableSessions(identidadDe(req));
 
     const html = renderPreReleaseInboxPage({
       entorno: config.environment,
@@ -104,7 +116,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
     async (req: FastifyRequest<{ Params: { sessionId: string } }>, reply: FastifyReply) => {
       const reporte = await reportService.generate(
         { sessionId: req.params.sessionId, mode: "VISTA_PREVIA" },
-        IDENTIDAD_REVISION,
+        identidadDe(req),
       );
       return reply
         .type("application/pdf")
@@ -132,9 +144,9 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
   // API
   // -----------------------------------------------------------------------
 
-  app.get("/api/pre-release/sessions", async (_req: FastifyRequest, reply: FastifyReply) => {
-    const revisables = await workbenchService.listEditableSessions(IDENTIDAD_REVISION);
-    const releaseQueue = await workbenchService.listReleaseQueue(IDENTIDAD_REVISION);
+  app.get("/api/pre-release/sessions", async (req: FastifyRequest, reply: FastifyReply) => {
+    const revisables = await workbenchService.listEditableSessions(identidadDe(req));
+    const releaseQueue = await workbenchService.listReleaseQueue(identidadDe(req));
     return reply.send({ revisables, releaseQueue });
   });
 
@@ -153,7 +165,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
       ? revisionDesdeFormulario(body, sessionId)
       : revisionDesdeJson(req.body, sessionId);
 
-    const state = await workbenchService.save(entrada, IDENTIDAD_REVISION);
+    const state = await workbenchService.save(entrada, identidadDe(req));
 
     if (prefiereHtml(req)) {
       return redirigirAlBanco(
@@ -175,7 +187,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
         employeeId: texto(body["employeeId"]),
         requestId: texto(body["requestId"]) || randomUUID(),
       },
-      IDENTIDAD_REVISION,
+      identidadDe(req),
     );
 
     if (prefiereHtml(req)) {
@@ -186,7 +198,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
 
   app.post("/api/pre-release/enter", async (req: FastifyRequest, reply: FastifyReply) =>
     ejecutarTransicion(req, reply, "La sesión entró a preliberación.", (sessionId) =>
-      workbenchService.enterPreRelease(sessionId, IDENTIDAD_REVISION),
+      workbenchService.enterPreRelease(sessionId, identidadDe(req)),
     ),
   );
 
@@ -195,7 +207,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
       req,
       reply,
       "La sesión está lista para liberarse.",
-      (sessionId) => workbenchService.submit(sessionId, IDENTIDAD_REVISION),
+      (sessionId) => workbenchService.submit(sessionId, identidadDe(req)),
       redirigirALiberacion,
     ),
   );
@@ -231,10 +243,10 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
         );
       }
 
-      await workbenchService.submit(sessionId, IDENTIDAD_REVISION);
+      await workbenchService.submit(sessionId, identidadDe(req));
       const resultado = await releaseService.release(
         { sessionId, requestId: randomUUID() },
-        IDENTIDAD_REVISION,
+        identidadDe(req),
       );
 
       if (!esHtml) return reply.code(resultado.status === "CONFLICTO" ? 409 : 200).send(resultado);
@@ -262,7 +274,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
 
   app.post("/api/pre-release/return", async (req: FastifyRequest, reply: FastifyReply) =>
     ejecutarTransicion(req, reply, "La sesión regresó a preliberación.", (sessionId) =>
-      workbenchService.returnToPreRelease(sessionId, IDENTIDAD_REVISION),
+      workbenchService.returnToPreRelease(sessionId, identidadDe(req)),
     ),
   );
 
@@ -270,10 +282,7 @@ export function registerPreReleaseRoutes(app: FastifyInstance, deps: PreReleaseR
   app.post("/api/pre-release/report", async (req: FastifyRequest, reply: FastifyReply) => {
     const body = (req.body ?? {}) as CuerpoFormulario;
     const sessionId = texto(body["sessionId"]);
-    const reporte = await reportService.generate(
-      { sessionId, mode: "ARCHIVO" },
-      IDENTIDAD_REVISION,
-    );
+    const reporte = await reportService.generate({ sessionId, mode: "ARCHIVO" }, identidadDe(req));
 
     if (prefiereHtml(req)) {
       return redirigirAlBanco(reply, sessionId, `Reporte archivado como ${reporte.fileName}.`);
