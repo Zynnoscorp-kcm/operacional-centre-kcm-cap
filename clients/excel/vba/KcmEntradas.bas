@@ -15,8 +15,8 @@ Option Explicit
 ' mirar el resultado.
 '
 ' Aqui cada sesion es un renglon con su codigo, su curso, su fecha y cuantas
-' fechas le faltan por escribir. Se marca con una equis la que se quiera recibir
-' y el boton escribe solo esas. Sin marcar nada no se escribe nada.
+' fechas le faltan por escribir. Se palomea la casilla de la que se quiera
+' recibir y el boton escribe solo esas. Sin marcar nada no se escribe nada.
 '
 ' El boton que aplicaba todo lo pendiente de golpe se retiro del panel: lo mismo
 ' se consigue con "Marcar todas" y "Recibir marcadas", que ensena que se va a
@@ -38,6 +38,9 @@ Option Explicit
 Public Const KCM_ENTRADAS_SHEET As String = "KCM_ENTRADAS"
 
 Private Const KCM_ENTRADAS_PREFIJO As String = "KCME_"
+' Las casillas llevan el mismo prefijo: el encabezado las borra con el resto y
+' KcmEntradasCasillas las vuelve a poner al final de cada actualizacion.
+Private Const KCM_ENTRADAS_CASILLA As String = "KCME_C"
 Private Const KCM_ENTRADAS_FILA_PRIMERA As Long = 8
 
 ' Las columnas del renglon. El identificador de sesion va a la derecha y apagado:
@@ -135,7 +138,7 @@ Public Sub KcmEntradasActualizar()
                 KcmEntradasPintarRenglon hoja, renglon, fila, ESTADO_PENDIENTE
             Else
                 hoja.Cells(renglon, COL_PENDIENTES).Value2 = 0
-                hoja.Cells(renglon, COL_MARCA).Value2 = ""
+                hoja.Cells(renglon, COL_MARCA).Value2 = False
                 KcmEntradasPintarEstado hoja, renglon, ESTADO_ESCRITA
             End If
         End If
@@ -154,6 +157,7 @@ Public Sub KcmEntradasActualizar()
     Next fila
 
     KcmEntradasResumen hoja, filas.Count, nuevas, Format$(Now, "dd/mm/yyyy hh:nn")
+    KcmEntradasCasillas hoja
     Application.ScreenUpdating = True
     Exit Sub
 
@@ -163,11 +167,12 @@ ActualizarError:
     Application.ScreenUpdating = True
     On Error Resume Next
     KcmEntradasResumen hoja, KcmEntradasContarPendientes(hoja), 0, "Sin respuesta"
+    KcmEntradasCasillas hoja
     On Error GoTo 0
     KcmAvisoFallo "Ver liberaciones", "No se pudo actualizar la lista.", causa
 End Sub
 
-''' Escribe en la matriz solo las sesiones marcadas con una equis.
+''' Escribe en la matriz solo las sesiones con la casilla palomeada.
 '''
 ''' El filtro se aplica sobre lo que ya se descargo y no sobre lo que se pide: la
 ''' carga de RELEASE_PULL_V1 llega entera y KcmApplyPendingReleases descarta las
@@ -197,7 +202,7 @@ Public Sub KcmEntradasRecibir()
 
     If cuantas = 0 Then
         KcmAvisoAtencion "Escribir en la matriz", "Ninguna sesion seleccionada.", _
-            "Las sesiones se marcan en la primera columna."
+            "Las sesiones se marcan con la casilla de la primera columna."
         Exit Sub
     End If
 
@@ -228,7 +233,7 @@ Public Sub KcmEntradasMarcarTodas()
     ultima = KcmEntradasUltimaFila(hoja)
     For renglon = KCM_ENTRADAS_FILA_PRIMERA To ultima
         If KcmEntradasTexto(hoja.Cells(renglon, COL_ESTADO).Value2) = ESTADO_PENDIENTE Then
-            hoja.Cells(renglon, COL_MARCA).Value2 = "X"
+            hoja.Cells(renglon, COL_MARCA).Value2 = True
         End If
     Next renglon
     Exit Sub
@@ -258,6 +263,8 @@ Public Sub KcmEntradasLimpiar()
             hoja.Rows(renglon).Delete
         End If
     Next renglon
+    ' Borrar renglones no borra las casillas que estaban encima: se vuelven a poner.
+    KcmEntradasCasillas hoja
     Exit Sub
 
 LimpiarError:
@@ -412,11 +419,13 @@ Private Sub KcmEntradasPintarEstado(ByVal hoja As Worksheet, ByVal renglon As Lo
     hoja.Cells(renglon, COL_SESION).Font.Color = COLOR_APAGADO
     hoja.Cells(renglon, COL_SESION).Font.Size = 8
 
-    ' La marca es la unica celda donde se escribe: se ve como un campo de captura.
+    ' La marca es una casilla de verificacion encima de la celda, ligada a ella: la
+    ' celda guarda VERDADERO o FALSO y el formato ;;; lo oculta detras de la casilla.
     With hoja.Cells(renglon, COL_MARCA)
         .HorizontalAlignment = xlCenter
         .Font.Bold = True
         .Font.Color = COLOR_MARCA
+        .NumberFormat = ";;;"
     End With
     For Each lado In Array(xlEdgeLeft, xlEdgeTop, xlEdgeRight, xlEdgeBottom)
         With hoja.Cells(renglon, COL_MARCA).Borders(CLng(lado))
@@ -458,12 +467,50 @@ Private Function KcmEntradasContarPendientes(ByVal hoja As Worksheet) As Long
     Next renglon
 End Function
 
-''' Marcada es cualquier cosa escrita en la celda de la marca. Se admite lo que
-''' sea -equis, palomita, un uno- porque quien la escribe no tiene por que
-''' adivinar el caracter exacto que espera la macro.
+''' Marcada es la casilla palomeada: la celda ligada vale VERDADERO. Un libro que
+''' todavia traiga una equis escrita a mano de antes tambien cuenta como marcado.
 Private Function KcmEntradasMarcada(ByVal hoja As Worksheet, ByVal renglon As Long) As Boolean
-    KcmEntradasMarcada = Len(KcmEntradasTexto(hoja.Cells(renglon, COL_MARCA).Value2)) > 0
+    Dim valor As Variant
+
+    valor = hoja.Cells(renglon, COL_MARCA).Value2
+    If VarType(valor) = vbBoolean Then
+        KcmEntradasMarcada = CBool(valor)
+    Else
+        KcmEntradasMarcada = Len(KcmEntradasTexto(valor)) > 0
+    End If
 End Function
+
+''' Una casilla de verificacion por renglon pendiente, ligada a su celda de marca.
+'''
+''' Se quitan todas y se vuelven a poner en cada actualizacion: los renglones se
+''' agregan, se borran y cambian de estado, y una casilla que se quedara flotando
+''' sobre el renglon equivocado marcaria la sesion que nadie escogio. Las escritas
+''' no llevan casilla: ya no hay nada que escribir de ellas.
+Private Sub KcmEntradasCasillas(ByVal hoja As Worksheet)
+    Dim renglon As Long
+    Dim celda As Range
+    Dim casilla As Shape
+    Dim lado As Double
+
+    KcmPaginaBorrar hoja, KCM_ENTRADAS_CASILLA
+    lado = 16
+    For renglon = KCM_ENTRADAS_FILA_PRIMERA To KcmEntradasUltimaFila(hoja)
+        Set celda = hoja.Cells(renglon, COL_MARCA)
+        If KcmEntradasTexto(hoja.Cells(renglon, COL_ESTADO).Value2) = ESTADO_PENDIENTE Then
+            If VarType(celda.Value2) <> vbBoolean Then celda.Value2 = KcmEntradasMarcada(hoja, renglon)
+            Set casilla = hoja.Shapes.AddFormControl(xlCheckBox, _
+                celda.Left + (celda.Width - lado) / 2, celda.Top + (celda.Height - lado) / 2, lado, lado)
+            casilla.Name = KCM_ENTRADAS_CASILLA & CStr(renglon)
+            casilla.ControlFormat.LinkedCell = celda.Address(False, False)
+            casilla.Placement = xlMove
+            On Error Resume Next
+            casilla.OLEFormat.Object.Caption = ""
+            On Error GoTo 0
+        Else
+            celda.Value2 = False
+        End If
+    Next renglon
+End Sub
 
 Private Function KcmEntradasTexto(ByVal valor As Variant) As String
     If IsError(valor) Then Exit Function

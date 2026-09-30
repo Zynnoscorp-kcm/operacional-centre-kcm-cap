@@ -2,6 +2,18 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Nota chica en la fecha y casillas en Liberaciones (VBA) · 2026-09-30
+
+La nota con el código de sesión que la macro deja en cada fecha ahora se
+achica a su texto (`KcmAjustarNota` en `KcmReleaseSync`): una línea corta queda
+en un recuadro de unos 65 × 16 puntos en vez del de 100 × 60 que pone Excel.
+En la hoja KCM_ENTRADAS la columna MARCA es una casilla de verificación ligada
+a su celda (`KcmEntradasCasillas`); una equis escrita a mano sigue contando.
+Verificado con el analizador de VBA y `npm test`; falta importar los módulos
+`KcmEntradas` y `KcmReleaseSync` en el libro (ya copiados a
+`~/Desktop/KCM-VBA-CRLF`) y probarlo en Excel.
+Acta: `docs/actas/2026-09-30-nota-y-casillas-vba.md`.
+
 ## Liberar desde preliberación sin «Error 409» · 2026-09-30
 
 El atajo «revisar y liberar» sí liberaba (KC-0002 quedó `LIBERADA_TOTAL` con

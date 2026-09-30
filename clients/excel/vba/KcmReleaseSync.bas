@@ -180,6 +180,7 @@ Private Sub KcmApplyReleaseBatch(ByVal master As Workbook, ByVal rows As Collect
             previousNote = KcmNotaSinMarcador(previousComments(previousComments.Count))
             If Not target.Comment Is Nothing Then target.Comment.Delete
             target.AddComment KcmNotaConMarcador(previousNote, KcmNotaDeLaSesion(row))
+            KcmAjustarNota target.Comment
             row.Fijar "applyStatus", "APPLIED"
         End If
     Next row
@@ -447,6 +448,27 @@ End Function
 
 ''' La nota que se escribe en la celda: primero lo que la persona haya anotado, y debajo la linea
 ''' de la plataforma. Va al final a proposito: quien abre la nota lee primero su apunte.
+''' La nota se ajusta a su texto. Excel la crea con un recuadro fijo de unos 100 x 60 puntos, y para
+''' un codigo corto como KC-0001 eso es un cuadro casi vacio que tapa media hoja al pasar el puntero.
+''' Una sola linea corta queda en un recuadro chico; una nota con apuntes previos se ajusta sola. Si
+''' la version de Excel no deja cambiar el tamano, la nota se queda como estaba: el dato ya se
+''' escribio y el tamano del recuadro no justifica deshacer el lote.
+Private Sub KcmAjustarNota(ByVal nota As Comment)
+    Dim texto As String
+
+    If nota Is Nothing Then Exit Sub
+    On Error Resume Next
+    texto = CStr(nota.text)
+    If InStr(texto, vbLf) = 0 And Len(texto) <= 20 Then
+        nota.Shape.TextFrame.AutoSize = False
+        nota.Shape.Width = 30 + 5 * Len(texto)
+        nota.Shape.Height = 16
+    Else
+        nota.Shape.TextFrame.AutoSize = True
+    End If
+    On Error GoTo 0
+End Sub
+
 Private Function KcmNotaConMarcador(ByVal nota As String, ByVal marcador As String) As String
     If Len(nota) = 0 Then
         KcmNotaConMarcador = marcador
