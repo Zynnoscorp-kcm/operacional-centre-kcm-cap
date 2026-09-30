@@ -2,6 +2,21 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Advertencias en lugar de bloqueos al liberar · 2026-09-30
+
+A petición del usuario, lo que antes detenía una liberación ahora se avisa y se
+decide. Plataforma: fecha anterior, misma fecha o más reciente aparecen en un
+cuadro emergente con nombre y nómina, con «Liberar de todos modos» y «No
+liberar»; confirmar asienta un motivo por omisión si no se escribió nota. La
+fecha más reciente ya no es conflicto (`NEWER_DATE_PRESENT` sin uso). Excel
+(`KcmReleaseSync`): nombre distinto, fecha más reciente o fecha no conocida
+por la plataforma se enseñan en un aviso Sí/No; «Sí» escribe todo lo que tiene
+celda y deja pendiente lo que no (trabajador ausente, encabezado, fórmula);
+«No» no escribe nada del lote; sin nadie delante, «No». Verificado con 783
+pruebas de plataforma, `npm test` y el analizador de VBA; falta importar
+`KcmReleaseSync` y probarlo en Excel.
+Acta: `docs/actas/2026-09-30-advertencias-en-lugar-de-bloqueos.md`.
+
 ## Liberar con fechas previas sin cuello de botella · 2026-09-30
 
 Con una fecha previa en la copia de la matriz, la validación quedaba en

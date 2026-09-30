@@ -105,30 +105,21 @@ describe("E10 · la política del destino es la que habilita", () => {
 // ---------------------------------------------------------------------------
 
 describe("E10 · sin motivo no hay sobrescritura", () => {
-  it("una fecha más reciente en la matriz no se reemplaza ni con motivo", async () => {
+  it("una fecha más reciente no detiene la liberación: se reemplaza con motivo e historial", async () => {
     const reciente = "2099-12-31";
     const { repository, service } = build("OVERWRITE_WITH_HISTORY", [
       buildHcRecord("10001", reciente),
     ]);
 
     const outcome = await service.release(
-      {
-        sessionId: SESSION_ID,
-        requestId: "req-sob-reciente",
-        overwriteReason: "Motivo cualquiera",
-      },
+      { sessionId: SESSION_ID, requestId: "req-sob-reciente", overwriteReason: "Confirmado" },
       CAPACITACION,
     );
 
-    assert.equal(outcome.phase, "CONFLICTO");
-    const bloqueado = outcome.results.find((result) => result.employeeId === "10001");
-    assert.equal(bloqueado?.status, "NEWER_DATE_PRESENT");
-    // Y el lote entero se detiene: nadie de la sesión recibe fecha a medias.
-    const otro = outcome.results.find((result) => result.employeeId === "10002");
-    assert.equal(otro?.status, "ATOMIC_BATCH_ABORTED");
-    const registro = await repository.getHcRecord(parseWorkerNumber("10001"), TRAINING_ID);
-    assert.equal(registro?.completionDate, reciente);
-    assert.equal(repository.getAllHistory().length, 0);
+    assert.notEqual(outcome.phase, "CONFLICTO");
+    const reemplazada = outcome.results.find((result) => result.employeeId === "10001");
+    assert.equal(reemplazada?.status, "OVERWRITTEN");
+    assert.equal(repository.getAllHistory()[0]?.previousCompletionDate, reciente);
   });
 
   it("bloquea el lote cuando la política lo permite pero nadie declaró el motivo", async () => {

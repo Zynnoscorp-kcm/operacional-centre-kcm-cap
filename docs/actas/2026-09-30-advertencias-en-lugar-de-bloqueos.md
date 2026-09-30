@@ -1,0 +1,7 @@
+# Acta · Advertencias en lugar de bloqueos al liberar · 2026-09-30
+
+- Pedido: no bloquear activamente; mostrar un emergente con los datos del trabajador y botones para liberar o no.
+- Plataforma: `pasarela-matriz.ts` deja de devolver `NEWER_DATE_PRESENT`; la fecha más reciente es una sobrescritura más (motivo e historial). `routes/liberacion.ts` arma `advertencias` (fecha anterior, misma, más reciente) con el nombre del padrón (`WorkbenchService.employeeNames`); `web/pages/liberacion.ts` muestra el cuadro `popover` «Liberar de todos modos / No liberar» con nota opcional; `confirmar=1` pone el motivo por omisión «Liberado tras confirmar las advertencias en la plataforma». La API JSON conserva sus reglas.
+- Preliberación: el recuadro «Ya tienen fecha de este curso» ya no habla de bloqueos.
+- Excel: `KcmApplyReleaseBatch` recibe `preguntar` (= no silencioso). Con advertencias: `KcmAvisoConfirmar` con hasta 12 renglones (nómina, nombre, detalle). Sí → `NAME_MISMATCH`, `NEWER_DATE_CONFLICT` y `UNEXPECTED_DATE_CONFLICT` pasan a `READY` («Escrita tras confirmar»); ausentes, encabezado, fórmula o error quedan con su estado y pendientes. No, o sin nadie delante → el lote no escribe nada.
+- Evidencia: typecheck limpio; 783 pruebas de plataforma sin fallas (nuevas y ajustadas en `liberacion-sobrescritura` y `rutas/liberacion`); `npm test` 118/118; `check:vba` sin hallazgos. Pendiente: importar `KcmReleaseSync` y probar en Excel.

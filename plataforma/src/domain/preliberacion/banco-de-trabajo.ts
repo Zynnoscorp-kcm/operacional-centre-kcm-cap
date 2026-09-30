@@ -602,6 +602,16 @@ export class WorkbenchService {
     });
   }
 
+  /** Nombre del padrón por nómina, para las advertencias de liberación. */
+  async employeeNames(workerNumbers: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    const nombres = new Map<string, string>();
+    for (const numero of new Set(workerNumbers)) {
+      const info = await this.repo.getEmployeeInfo(numero as WorkerNumber);
+      if (info) nombres.set(numero, info.displayName);
+    }
+    return nombres;
+  }
+
   // -----------------------------------------------------------------------
   // Internos
   // -----------------------------------------------------------------------

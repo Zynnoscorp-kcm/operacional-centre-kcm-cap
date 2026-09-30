@@ -197,7 +197,7 @@ describe("E10 · rutas de liberación", () => {
     await app.close();
   });
 
-  it("con una fecha previa, la validación deja liberar pidiendo el motivo y ofrece regresar", async () => {
+  it("con una fecha previa, la validación avisa en un cuadro y deja liberar o no", async () => {
     // Antes la pantalla quedaba en «Liberar 0 registro(s)» desactivado: sin
     // motivo, la atomicidad abortaba a todos y no había cómo capturarlo.
     const { app } = await server([buildHcRecord("10001", "2026-01-20")], "OVERWRITE_WITH_HISTORY");
@@ -206,10 +206,36 @@ describe("E10 · rutas de liberación", () => {
       url: `/liberacion?sessionId=${SESSION_ID}`,
     });
 
-    assert.match(pantalla.body, /Liberar 2 registro\(s\)/u);
-    assert.doesNotMatch(pantalla.body, /Liberar 2 registro\(s\)\s*<\/button>[^]*disabled/u);
-    assert.match(pantalla.body, /name="overwriteReason"[^>]*required/u);
+    assert.match(
+      pantalla.body,
+      /popovertarget="confirmar-liberacion"[^>]*>\s*Liberar 2 registro\(s\)/u,
+    );
+    assert.match(pantalla.body, /Ya tiene una fecha anterior \(2026-01-20\)/u);
+    assert.match(pantalla.body, /Liberar de todos modos/u);
+    assert.match(pantalla.body, /No liberar/u);
     assert.match(pantalla.body, /action="\/api\/pre-release\/return"/u);
+    await app.close();
+  });
+
+  it("confirmar el cuadro libera sin escribir motivo", async () => {
+    const { app, releaseRepository } = await server(
+      [buildHcRecord("10001", "2026-01-20")],
+      "OVERWRITE_WITH_HISTORY",
+    );
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/release/execute",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "text/html" },
+      payload: new URLSearchParams({
+        sessionId: SESSION_ID,
+        requestId: "req-ruta-confirmada",
+        confirmar: "1",
+      }).toString(),
+    });
+
+    assert.equal(respuesta.statusCode, 303);
+    assert.match(String(respuesta.headers.location), /^\/liberacion\?entregas=1/u);
+    assert.equal(releaseRepository.getAllEffects().length, 2);
     await app.close();
   });
 
@@ -234,7 +260,7 @@ describe("E10 · rutas de liberación", () => {
     assert.equal(respuesta.statusCode, 303);
     assert.match(
       String(respuesta.headers.location),
-      new RegExp(`^/liberacion\\?sessionId=${SESSION_ID}&aviso=Falta`, "u"),
+      new RegExp(`^/liberacion\\?sessionId=${SESSION_ID}&aviso=Hay`, "u"),
     );
     assert.equal(releaseRepository.getAllEffects().length, 0);
 

@@ -18,7 +18,8 @@ import type { ActorIdentity } from "../domain/quiosco/tipos.ts";
 import { DomainError } from "../domain/comun/errores.ts";
 import { badRequest } from "../server/errors.ts";
 import type { ConsoleSessionCodec } from "../server/sesion-consola.ts";
-import { renderReleasePage } from "../web/pages/liberacion.ts";
+import { renderReleasePage, type AdvertenciaDeLiberacion } from "../web/pages/liberacion.ts";
+import type { ReleasePreview } from "../domain/liberacion/tipos.ts";
 
 export interface ReleaseRouteDeps {
   readonly config: AppConfig;
@@ -57,6 +58,29 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
     return cuenta ? { ...identidadPorOmision, actor: cuenta } : identidadPorOmision;
   };
 
+  /**
+   * Lo que la liberación encontró en la copia de la matriz y ya no detiene:
+   * fecha anterior, la misma fecha o una más reciente. Se enseña con el nombre
+   * del padrón en el cuadro de confirmación.
+   */
+  const advertenciasDe = async (preview: ReleasePreview): Promise<AdvertenciaDeLiberacion[]> => {
+    const conFecha = preview.included.filter(
+      (fila) => fila.status === "ALREADY_APPLIED" || Boolean(fila.previousDate),
+    );
+    if (conFecha.length === 0) return [];
+    const nombres = await workbenchService.employeeNames(conFecha.map((fila) => fila.employeeId));
+    return conFecha.map((fila) => {
+      const previa = fila.previousDate ?? "";
+      const texto =
+        fila.status === "ALREADY_APPLIED"
+          ? `Ya tiene esta misma fecha (${preview.completionDate}): no cambia nada.`
+          : previa > preview.completionDate
+            ? `Ya tiene una fecha más reciente (${previa}): se reemplazaría por ${preview.completionDate}.`
+            : `Ya tiene una fecha anterior (${previa}): se reemplaza por ${preview.completionDate}.`;
+      return { employeeId: fila.employeeId, nombre: nombres.get(fila.employeeId) ?? "", texto };
+    });
+  };
+
   // GET /liberacion — pantalla de preflight
   app.get("/liberacion", async (req: FastifyRequest, reply: FastifyReply) => {
     const { sessionId, aviso } = (req.query ?? {}) as { sessionId?: string; aviso?: string };
@@ -83,10 +107,12 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
     try {
       const resolvedSessionId = await releaseService.resolveSessionReference(sessionId);
       const preview = await releaseService.preview(resolvedSessionId);
+      const advertencias = await advertenciasDe(preview);
       return reply.type("text/html; charset=utf-8").send(
         renderReleasePage({
           entorno: config.environment,
           preview,
+          advertencias,
           requestId: randomUUID(),
           ...(aviso ? { aviso } : {}),
         }),
@@ -164,7 +190,15 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
       sessionId?: string;
       requestId?: string;
       overwriteReason?: string;
+      confirmar?: string;
     };
+
+    // Confirmar las advertencias ya es la decisión de reemplazar: si no se
+    // escribió nota, el historial lleva una por omisión y no se pide otra vez.
+    const confirmado = body.confirmar === "1";
+    const motivo =
+      (body.overwriteReason ?? "").trim() ||
+      (confirmado ? "Liberado tras confirmar las advertencias en la plataforma" : "");
 
     if (!body.sessionId) {
       throw badRequest("Falta el identificador de sesión.");
@@ -182,7 +216,7 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
         {
           sessionId: body.sessionId,
           requestId: body.requestId || randomUUID(),
-          ...(body.overwriteReason === undefined ? {} : { overwriteReason: body.overwriteReason }),
+          ...(motivo ? { overwriteReason: motivo } : {}),
         },
         identidadDe(req),
       );
@@ -199,7 +233,7 @@ export function registerReleaseRoutes(app: FastifyInstance, deps: ReleaseRouteDe
         return reply.redirect(
           aLaSesion(
             motivoFaltante
-              ? "Falta el motivo de sobrescritura: no se liberó nada."
+              ? "Hay advertencias por confirmar: no se liberó nada todavía."
               : "La liberación se detuvo por conflicto: no se liberó nada. Los registros que la detienen están en «Registros que no se liberan».",
           ),
           303,

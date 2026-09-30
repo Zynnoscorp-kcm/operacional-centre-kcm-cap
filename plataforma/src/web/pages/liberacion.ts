@@ -37,6 +37,17 @@ export interface ReleasePageProps {
   readonly entregasAbiertas?: boolean;
   readonly aviso?: string;
   readonly mensaje?: string;
+  /**
+   * Lo que la liberación encontró y no detiene: fechas previas, iguales o más
+   * recientes. Se enseña en un cuadro de confirmación antes de liberar.
+   */
+  readonly advertencias?: readonly AdvertenciaDeLiberacion[];
+}
+
+export interface AdvertenciaDeLiberacion {
+  readonly employeeId: string;
+  readonly nombre: string;
+  readonly texto: string;
 }
 
 const ETIQUETAS_DE_ESTADO: Readonly<Record<string, string>> = {
@@ -62,7 +73,7 @@ function etiqueta(estado: string): string {
 
 export function renderReleasePage(props: ReleasePageProps): string {
   const contenido = props.preview
-    ? renderPreview(props.preview, props.requestId)
+    ? renderPreview(props.preview, props.requestId, props.advertencias ?? [], props.aviso)
     : html`${renderBandeja(props.sessions ?? [], props.mensaje, props.aviso)}
       ${renderTableroDeEntregas(props)}`;
 
@@ -134,11 +145,17 @@ function renderSessionTable(sessions: readonly SessionHeader[]): Html {
   `;
 }
 
-function renderPreview(preview: ReleasePreview, requestId?: string): Html {
-  const sobrescrituras = preview.counts.overwrites;
+function renderPreview(
+  preview: ReleasePreview,
+  requestId: string | undefined,
+  advertencias: readonly AdvertenciaDeLiberacion[],
+  aviso: string | undefined,
+): Html {
+  const hayAdvertencias = advertencias.length > 0;
 
   return html`
     <p><a class="boton-secundario" href="/liberacion">Volver a la lista</a></p>
+    ${aviso ? html`<p class="aviso-publicacion">${aviso}</p>` : ""}
     <section class="tarjeta" aria-labelledby="preflight-titulo">
       <div class="seccion-cabecera">
         <div>
@@ -173,24 +190,21 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
         </div>
         <div>
           <dt>Sobrescrituras</dt>
-          <dd>${sobrescrituras}</dd>
+          <dd>${preview.counts.overwrites}</dd>
         </div>
       </dl>
 
       ${
-        preview.overwriteRequiresReason
-          ? html`<p class="aviso aviso-error">
-              ${sobrescrituras === 1 ? "Un trabajador ya tiene" : html`${sobrescrituras} trabajadores ya tienen`}
-              fecha de este curso en la copia de la matriz que guarda la plataforma (columna «Valor
-              anterior»). Para liberar hace falta el motivo de sobrescritura, abajo; queda en el
-              historial con el valor anterior. Si la fecha anterior ya no está en la matriz, Excel
-              escribe la nueva sin más. Para corregir la sesión primero, se puede regresar a
-              preliberación.
+        hayAdvertencias
+          ? html`<p class="aviso">
+              ${advertencias.length === 1 ? "Hay 1 advertencia" : html`Hay ${advertencias.length} advertencias`}
+              sobre fechas que ya existen. No detienen la liberación: se revisan al pulsar
+              «Liberar».
             </p>`
           : ""
       }
       ${
-        !preview.atomicBatchReady && !preview.overwriteRequiresReason
+        !preview.atomicBatchReady && !preview.overwriteRequiresReason && !hayAdvertencias
           ? html`<p class="aviso aviso-error">
               La liberación no puede aplicarse: hay conflictos pendientes. Se aplica completa o no
               se aplica, así que no se escribió ninguna fecha.
@@ -198,31 +212,31 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
           : ""
       }
       ${renderTablaIncluidos(preview.included)} ${renderTablaExcluidos(preview.excluded)}
-
-      <form method="post" action="/api/release/execute" class="formulario">
-        <input type="hidden" name="sessionId" value="${preview.sessionId}" />
-        <input type="hidden" name="requestId" value="${requestId ?? ""}" />
-        <label for="overwriteReason">
-          Motivo de sobrescritura
-          ${preview.overwriteRequiresReason ? "(obligatorio)" : "(si aplica)"}
-        </label>
-        <input
-          id="overwriteReason"
-          name="overwriteReason"
-          type="text"
-          maxlength="200"
-          autocomplete="off"
-          ${preview.overwriteRequiresReason ? "required" : ""}
-          placeholder="${preview.overwriteRequiresReason ? "Por qué se reemplaza la fecha anterior" : ""}"
-        />
-        <button
-          type="submit"
-          class="boton boton-primario"
-          ${preview.counts.included === 0 ? "disabled" : ""}
-        >
-          Liberar ${preview.counts.included} registro(s)
-        </button>
-      </form>
+      ${
+        hayAdvertencias
+          ? html`<p class="acciones-formulario">
+                <button
+                  type="button"
+                  class="boton boton-primario"
+                  popovertarget="confirmar-liberacion"
+                  ${preview.counts.included === 0 ? "disabled" : ""}
+                >
+                  Liberar ${preview.counts.included} registro(s)
+                </button>
+              </p>
+              ${renderConfirmacionDeAdvertencias(preview, requestId, advertencias)}`
+          : html`<form method="post" action="/api/release/execute" class="formulario">
+              <input type="hidden" name="sessionId" value="${preview.sessionId}" />
+              <input type="hidden" name="requestId" value="${requestId ?? ""}" />
+              <button
+                type="submit"
+                class="boton boton-primario"
+                ${preview.counts.included === 0 ? "disabled" : ""}
+              >
+                Liberar ${preview.counts.included} registro(s)
+              </button>
+            </form>`
+      }
 
       <form method="post" action="/api/pre-release/return" class="formulario-en-linea">
         <input type="hidden" name="sessionId" value="${preview.sessionId}" />
@@ -233,6 +247,66 @@ function renderPreview(preview: ReleasePreview, requestId?: string): Html {
       </form>
     </section>
   `;
+}
+
+/**
+ * El cuadro emergente de las advertencias: quién, qué encontró la plataforma y
+ * dos botones. Liberar de todos modos asienta el motivo —el escrito o uno por
+ * omisión— en el historial de cada fecha reemplazada.
+ */
+function renderConfirmacionDeAdvertencias(
+  preview: ReleasePreview,
+  requestId: string | undefined,
+  advertencias: readonly AdvertenciaDeLiberacion[],
+): Html {
+  return html`<div
+    popover
+    id="confirmar-liberacion"
+    class="confirmacion"
+    aria-labelledby="confirmar-liberacion-titulo"
+  >
+    <p class="confirmacion-titulo" id="confirmar-liberacion-titulo">
+      ${advertencias.length === 1 ? "1 advertencia" : html`${advertencias.length} advertencias`}
+      antes de liberar
+    </p>
+    <ul class="confirmacion-lista">
+      ${advertencias.map(
+        (advertencia) =>
+          html`<li>
+            <strong>${advertencia.nombre || "Sin nombre en el padrón"}</strong> ·
+            <span class="celda-mono">${advertencia.employeeId}</span><br />${advertencia.texto}
+          </li>`,
+      )}
+    </ul>
+    <p class="confirmacion-que">
+      Según la copia de la matriz que guarda la plataforma. Excel vuelve a revisar la matriz real al
+      escribir y avisa si encuentra algo más.
+    </p>
+    <form method="post" action="/api/release/execute" class="confirmacion-formulario">
+      <input type="hidden" name="sessionId" value="${preview.sessionId}" />
+      <input type="hidden" name="requestId" value="${requestId ?? ""}" />
+      <input type="hidden" name="confirmar" value="1" />
+      <label for="overwriteReason">Nota para el historial (opcional)</label>
+      <input
+        id="overwriteReason"
+        name="overwriteReason"
+        type="text"
+        maxlength="200"
+        autocomplete="off"
+      />
+      <div class="confirmacion-acciones">
+        <button type="submit" class="boton-exito">Liberar de todos modos</button>
+        <button
+          type="button"
+          class="boton-pequeno"
+          popovertarget="confirmar-liberacion"
+          popovertargetaction="hide"
+        >
+          No liberar
+        </button>
+      </div>
+    </form>
+  </div>`;
 }
 
 function renderTablaIncluidos(filas: readonly MatrixWriteResult[]): Html {

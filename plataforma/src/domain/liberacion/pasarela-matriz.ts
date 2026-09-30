@@ -128,17 +128,9 @@ export class MatrixGateway {
         : { ...base, status: "EXISTING_VALUE_CONFLICT" };
     }
 
-    // La matriz ya trae una fecha más reciente que la que se libera: nunca se
-    // reemplaza lo nuevo por lo viejo, ni con motivo. Las fechas son ISO
-    // `YYYY-MM-DD`, así que el orden de texto es el orden cronológico.
-    if (existing.completionDate > entry.completionDate) {
-      return {
-        ...base,
-        status: "NEWER_DATE_PRESENT",
-        previousDate: existing.completionDate,
-        previousProvenance: existing.provenance,
-      };
-    }
+    // Una fecha más reciente ya no detiene la liberación: la pantalla la
+    // enseña como advertencia antes de confirmar, y se trata como cualquier
+    // otra sobrescritura, con motivo e historial.
 
     // Hay un valor distinto. Aquí decide la política declarada del destino.
     if (plan.mapping.overwritePolicy !== "OVERWRITE_WITH_HISTORY") {

@@ -134,24 +134,11 @@ function renderTablaSesiones(sesiones: readonly SessionHeader[], vacio: string):
  */
 function renderFechasPrevias(fechas: readonly ExistingDate[]): Html {
   if (fechas.length === 0) return html``;
-  const reemplazables = fechas.filter((fecha) => !fecha.newer);
-  const recientes = fechas.filter((fecha) => fecha.newer);
   return html`<section class="tarjeta" aria-labelledby="fechas-previas-titulo">
     <h3 id="fechas-previas-titulo">Ya tienen fecha de este curso</h3>
     <p class="texto-secundario">
-      Según la copia de la matriz que guarda la plataforma (último barrido aplicado).
-      ${
-        reemplazables.length > 0
-          ? "Al liberar se pedirá el motivo de sobrescritura para reemplazar la fecha anterior."
-          : ""
-      }
-      ${
-        recientes.length > 0
-          ? "Una fecha más reciente que la de la sesión no se reemplaza: ese lote se detendrá hasta quitar al trabajador de la sesión o corregir la matriz."
-          : ""
-      }
-      Si la matriz ya no tiene esa fecha, basta con una «Actualización completa» en Excel y
-      aplicarla en Control de cambios.
+      Según la copia de la matriz que guarda la plataforma. No detiene nada: al liberar aparece un
+      aviso con estos trabajadores y se decide ahí si se libera.
     </p>
     <div class="tabla-contenedor">
       <table class="tabla-kcm">
@@ -159,7 +146,7 @@ function renderFechasPrevias(fechas: readonly ExistingDate[]): Html {
           <tr>
             <th scope="col">Nómina</th>
             <th scope="col">Fecha registrada</th>
-            <th scope="col">Al liberar</th>
+            <th scope="col">Comparada con la sesión</th>
           </tr>
         </thead>
         <tbody>

@@ -100,7 +100,7 @@ Public Sub KcmApplyPendingReleases(Optional ByVal silent As Boolean = False, _
     Set master = KcmOpenMaster(False)
     For Each batchKey In batches.Keys
         Set batchRows = batches.Objeto(CStr(batchKey))
-        KcmApplyReleaseBatch master, batchRows
+        KcmApplyReleaseBatch master, batchRows, Not silent
     Next batchKey
     If Not silent Then KcmAvisoHecho "Actualizar", _
         KcmPlural(escogidas, "liberacion escrita", "liberaciones escritas") & " en la matriz."
@@ -119,10 +119,16 @@ Private Function KcmSesionEscogida(ByVal sesion As String, ByVal sesiones As Str
     KcmSesionEscogida = InStr(1, "|" & sesiones, "|" & sesion & "|", vbBinaryCompare) > 0
 End Function
 
-''' Un lote es todo o nada. El preflight completo ocurre antes de la primera escritura y cada fila
-''' recibe un estado propio, de modo que la plataforma siempre reciba un acuse: un conflicto de
-''' hoja, columna o encabezado ya no aborta el ciclo entero con un error de Excel sin explicar.
-Private Sub KcmApplyReleaseBatch(ByVal master As Workbook, ByVal rows As Collection)
+''' El preflight completo ocurre antes de la primera escritura y cada fila recibe un estado propio,
+''' de modo que la plataforma siempre reciba un acuse.
+'''
+''' Lo que la revision encuentra ya no detiene el lote por su cuenta: se ensena en un aviso con el
+''' nombre y la nomina de cada trabajador, y quien opera decide. "Si" escribe todo lo que se puede
+''' escribir -tambien un nombre distinto o una fecha mas reciente- y deja pendiente lo que no tiene
+''' donde escribirse (trabajador ausente, encabezado cambiado, formula). "No" no escribe nada del
+''' lote, como antes. Sin nadie delante (corrida programada) la respuesta es "No".
+Private Sub KcmApplyReleaseBatch(ByVal master As Workbook, ByVal rows As Collection, _
+    Optional ByVal preguntar As Boolean = True)
     Dim employeeIndexes As KcmDiccionario
     Dim row As KcmDiccionario
     Dim sheet As Worksheet
@@ -137,16 +143,54 @@ Private Sub KcmApplyReleaseBatch(ByVal master As Workbook, ByVal rows As Collect
     Dim previousCalculation As XlCalculation
     Dim previousEvents As Boolean
     Dim previousScreenUpdating As Boolean
+    Dim avisos As String
+    Dim cuantosAvisos As Long
+    Dim escribibles As Long
+    Dim sinDestino As Long
+    Dim estado As String
 
     Set employeeIndexes = KcmNuevoDiccionario()
 
     For Each row In rows
         KcmInspectReleaseRow master, row, employeeIndexes
-        If CStr(row.Item("applyStatus")) <> "READY" And _
-            CStr(row.Item("applyStatus")) <> "RECOVERED" Then
+        estado = CStr(row.Item("applyStatus"))
+        If estado <> "READY" And estado <> "RECOVERED" Then
             hasConflict = True
+            cuantosAvisos = cuantosAvisos + 1
+            If KcmAdvertenciaEscribible(estado) Then
+                escribibles = escribibles + 1
+            Else
+                sinDestino = sinDestino + 1
+            End If
+            If cuantosAvisos <= 12 Then
+                avisos = avisos & vbLf & "- " & CStr(row.Item("employeeId")) & " " & _
+                    Left$(KcmTextoDeFila(row, "workerName"), 40) & ": " & _
+                    Left$(CStr(row.Item("detail")), 110)
+            End If
         End If
     Next row
+    If cuantosAvisos > 12 Then avisos = avisos & vbLf & "- y " & CStr(cuantosAvisos - 12) & " mas."
+
+    If hasConflict And preguntar Then
+        If KcmAvisoConfirmar("Escribir en la matriz", _
+            "La sesion " & KcmTextoDeFila(rows(1), "sessionCode") & " tiene " & _
+            KcmPlural(cuantosAvisos, "advertencia", "advertencias") & ". Escribir de todos modos?", _
+            Mid$(avisos, 2) & vbLf & vbLf & _
+            "Si: se escriben las demas fechas y las que tienen advertencia. " & _
+            IIf(sinDestino > 0, KcmPlural(sinDestino, "fecha no tiene", "fechas no tienen") & _
+                " donde escribirse y queda" & IIf(sinDestino > 1, "n", "") & " pendiente" & _
+                IIf(sinDestino > 1, "s", "") & ". ", "") & _
+            "No: no se escribe nada de esta sesion.") Then
+            hasConflict = False
+            For Each row In rows
+                estado = CStr(row.Item("applyStatus"))
+                If KcmAdvertenciaEscribible(estado) Then
+                    row.Fijar "applyStatus", "READY"
+                    row.Fijar "detail", Left$("Escrita tras confirmar: " & CStr(row.Item("detail")), 300)
+                End If
+            Next row
+        End If
+    End If
 
     If hasConflict Then
         For Each row In rows
@@ -248,6 +292,13 @@ RollbackBatch:
     On Error GoTo 0
     Err.Raise originalNumber, "KcmApplyReleaseBatch", originalDescription
 End Sub
+
+''' Las advertencias que tienen donde escribirse: la celda existe y no es formula ni error. Un
+''' trabajador ausente, un encabezado cambiado o una formula no se pueden escribir aunque se quiera.
+Private Function KcmAdvertenciaEscribible(ByVal estado As String) As Boolean
+    KcmAdvertenciaEscribible = (estado = "NAME_MISMATCH" Or estado = "NEWER_DATE_CONFLICT" Or _
+        estado = "UNEXPECTED_DATE_CONFLICT")
+End Function
 
 ''' Clasifica una fila sin escribir. Cualquier fallo inesperado se convierte en `ERROR`, un estado
 ''' que el puente acepta, en lugar de propagarse y dejar al lote sin acuse.
