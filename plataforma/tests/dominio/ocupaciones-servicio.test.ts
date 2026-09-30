@@ -43,7 +43,7 @@ describe("Ocupaciones · la puerta del agente", () => {
 
   it("detiene lo que parece un dato personal: números largos, correos y nombres del padrón", () => {
     rechaza({ puesto: "28392", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
-    rechaza({ puesto: "TODC680621HMCRLR04", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
+    rechaza({ puesto: "XAXX010101HNEXXXA4", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
     rechaza({ puesto: "*OPERADOR", centroDeCostos: "a@b.mx" }, "CASO_CON_DATO_PERSONAL");
     rechaza({ puesto: "TORRES,DELGADO,CARLOS", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
     rechaza({ puesto: "２８３９２", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
