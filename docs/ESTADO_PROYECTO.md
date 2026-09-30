@@ -2,6 +2,15 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## «Liberar de todos modos» no hacía nada · 2026-09-30
+
+El primer intento de KC-0004 dejó un lote en conflicto. `comun.fase_liberacion`
+no tiene CONFLICTO, así que se guarda PENDIENTE con estado CONFLICTO, y el
+adaptador lo leía como abierto: toda liberación nueva de la sesión se rechazaba
+(«reintente con su requestId original») y volvía a la misma pantalla. Ahora la
+fase se reconstruye del estado al leer. Prueba de regresión nueva; 785 pruebas.
+Acta: `docs/actas/2026-09-30-lote-en-conflicto.md`.
+
 ## Advertencias en lugar de bloqueos al liberar · 2026-09-30
 
 A petición del usuario, lo que antes detenía una liberación ahora se avisa y se

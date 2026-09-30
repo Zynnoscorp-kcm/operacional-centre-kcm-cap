@@ -179,7 +179,11 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
       plan: resultados?.plan ?? "",
       journalMac: texto(r["firma_hmac"]),
       results: resultados?.results ?? "",
-      phase: r["fase"] as ReleaseBatch["phase"],
+      // `comun.fase_liberacion` no tiene CONFLICTO: al guardar se escribe
+      // PENDIENTE con estado CONFLICTO. Sin reconstruirla aquí, un lote en
+      // conflicto se leía como abierto y bloqueaba cualquier liberación nueva de
+      // la sesión con «reintente con su requestId original».
+      phase: (r["estado"] === "CONFLICTO" ? "CONFLICTO" : r["fase"]) as ReleaseBatch["phase"],
       status: r["estado"] as ReleaseBatch["status"],
       sessionOutcome: (r["resultado_sesion"] ?? null) as ReleaseBatch["sessionOutcome"],
       overwriteReason: texto(r["motivo_sobrescritura"], ""), // columna propia desde 0028
