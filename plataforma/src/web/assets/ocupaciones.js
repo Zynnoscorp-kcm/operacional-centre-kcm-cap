@@ -1,25 +1,3 @@
-/**
- * La clasificación de ocupaciones, conducida desde el navegador.
- *
- * La función publicada corta cada petición a los 120 s y un caso tarda cerca de
- * medio minuto. Por eso el guion pide un caso por petición en lugar de esperar
- * la corrida entera en una sola:
- *
- * 1. Manda el padrón a `/api/ocupaciones/plan` y recibe los casos.
- * 2. Consulta los casos en `/api/ocupaciones/sugerir`, de uno en uno.
- * 3. Vuelve a mandar el padrón, con las claves sugeridas, a
- *    `/api/ocupaciones/escribir` y baja el Excel que regresa.
- *
- * Mientras un caso está en vuelo, un reloj cuenta sus segundos: la pantalla no
- * se queda quieta aunque el modelo tarde. Cancelar aborta la petición en vuelo
- * y no pide más casos, así que en el servidor no queda nada gastando cupo. Tres
- * casos seguidos sin respuesta detienen la corrida —casi siempre es el cupo
- * gratuito del día— y se escribe lo que ya se obtuvo.
- *
- * Los textos se ponen con `textContent`: el puesto y el centro de costos vienen
- * del padrón y nunca se interpretan como marcado.
- */
-
 (function () {
   "use strict";
 
@@ -35,14 +13,11 @@
   if (!formulario || !entrada || !boton || !tarjeta || !barra || !texto || !detalle) return;
   if (!cancelar || !lista) return;
 
-  /** Casos seguidos sin respuesta que detienen la corrida. */
   var FALLAS_SEGUIDAS = 3;
   var ROTULO = boton.textContent;
 
-  /** La corrida en curso: si se canceló, la petición en vuelo y el reloj del caso. */
   var corrida = null;
 
-  /** Un error ya redactado para la pantalla. `detiene` corta la corrida entera. */
   function Aviso(mensaje, detiene) {
     this.message = mensaje;
     this.detiene = detiene;
@@ -95,7 +70,6 @@
     esta.reloj = null;
   }
 
-  /** Cerrar o recargar a media corrida la detiene: el navegador pregunta antes. */
   function retener(evento) {
     evento.preventDefault();
     evento.returnValue = "";
@@ -115,7 +89,6 @@
     return new Aviso((error && error.message) || "La plataforma respondió " + estado + ".", false);
   }
 
-  /** Una petición de la corrida. Cancelar la aborta aunque esté a medio camino. */
   function pedir(esta, url, cuerpo, tipo) {
     var controlador = new AbortController();
     esta.controlador = controlador;
@@ -140,7 +113,6 @@
     });
   }
 
-  /** Los casos, de uno en uno. Resuelve con lo obtenido, aunque la corrida se detenga. */
   function consultar(esta, casos) {
     var resultado = {
       claves: [],
@@ -265,7 +237,6 @@
     }, 60000);
   }
 
-  /** Manda el padrón con las claves y baja la copia; resuelve con las celdas escritas. */
   function escribir(esta, archivo, claves) {
     var datos = new FormData();
     datos.append("archivo", archivo);
@@ -354,7 +325,6 @@
 
   cancelar.addEventListener("click", reiniciar);
 
-  // Una pestaña que vuelve de la caché del navegador no trae su corrida consigo.
   window.addEventListener("pageshow", function (evento) {
     if (evento.persisted) reiniciar();
   });

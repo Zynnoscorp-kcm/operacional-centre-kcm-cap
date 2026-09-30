@@ -1,12 +1,3 @@
-/**
- * La búsqueda de trabajadores del módulo DC-3.
- *
- * El buscador de la barra lleva directo al expediente cuando la nómina existe o
- * cuando el nombre sólo coincide con una persona. Esta pantalla es para lo
- * demás: «JUAN» coincide con cuarenta, y de cada uno hay que ver de un vistazo
- * qué constancias tiene, para no abrir cuarenta expedientes.
- */
-
 import type { AppConfig } from "../../../config/environment.ts";
 import type { Dc3Candidate, Dc3EmissionSummary } from "../../../ports/dc3-constancia.port.ts";
 import { html, type Html } from "../../kit/html.ts";
@@ -31,14 +22,12 @@ export interface Dc3BusquedaInput {
   readonly config: AppConfig;
   readonly consulta: string;
   readonly personas: readonly PersonaEncontrada[];
-  /** Si la búsqueda trajo más de lo que cabe: se dice, no se esconde. */
   readonly recortada: boolean;
   readonly emisiones: ReadonlyMap<string, Dc3EmissionSummary>;
   readonly porEmitir?: number | undefined;
   readonly sinBase: boolean;
 }
 
-/** Agrupa por persona los renglones que devuelve la lista, en su orden. */
 export function agruparPorPersona(filas: readonly Dc3Candidate[]): PersonaEncontrada[] {
   const personas = new Map<string, PersonaEncontrada & { cursos: Dc3Candidate[] }>();
   for (const fila of filas) {

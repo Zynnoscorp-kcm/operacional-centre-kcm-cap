@@ -1,24 +1,4 @@
 #!/usr/bin/env node
-/**
- * Comprueba que la imagen de producción contendría todo lo que el proceso
- * importa en ejecución.
- *
- * `infra/docker/Dockerfile` enumera archivo por archivo lo que entra a la
- * imagen. Eso es deliberado —un `COPY packages ./packages` a secas escondería
- * la dependencia— pero tiene un costo: agregar un import hacia un módulo nuevo
- * fuera de `plataforma/` rompe el contenedor en el primer arranque, con
- * `ERR_MODULE_NOT_FOUND`, y no antes.
- *
- * Este guion adelanta ese fallo al momento de la verificación. Recorre el
- * cierre de imports desde `plataforma/src/main.ts` y comprueba tres cosas:
- *
- *   1. Que cada ruta del `COPY` exista en el árbol.
- *   2. Que todo módulo alcanzable desde el punto de entrada quede cubierto por
- *      alguno de esos `COPY`.
- *   3. Que los paquetes externos importados en ejecución coincidan con las
- *      `dependencies` del `package.json`, en ambos sentidos. Un par obligatorio
- *      de un paquete importado cuenta como usado.
- */
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -52,7 +32,6 @@ while (pendientes.length > 0) {
   for (const match of fuente.matchAll(IMPORT)) {
     const especificador = match[1] ?? match[2];
     if (!especificador.startsWith(".")) {
-      // El nombre del paquete: `zod`, o `@alcance/nombre` si es uno con alcance.
       const partes = especificador.split("/");
       const nombre = especificador.startsWith("@") ? partes.slice(0, 2).join("/") : partes[0];
       if (!especificador.startsWith("node:")) externos.add(nombre);
@@ -76,8 +55,6 @@ for (const modulo of [...visitados].sort()) {
 const paquete = JSON.parse(await readFile("package.json", "utf8"));
 const declaradas = new Set(Object.keys(paquete.dependencies ?? {}));
 
-// Un par obligatorio de un paquete importado se declara aunque ningún módulo lo
-// importe: `@langchain/langgraph` no carga sin `@langchain/core`.
 const pares = new Set();
 for (const usado of externos) {
   const manifiesto = path.join("node_modules", usado, "package.json");

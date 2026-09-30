@@ -1,4 +1,3 @@
-/** Autenticacion inyectable para el transporte del worker OCR. */
 var KcmOcrWorkerAuth = (function () {
   "use strict";
 

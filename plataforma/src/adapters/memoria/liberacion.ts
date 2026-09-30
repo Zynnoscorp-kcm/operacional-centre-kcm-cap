@@ -1,12 +1,3 @@
-/**
- * Repositorio en memoria para Liberación.
- *
- * Implementa los dos puertos —journal y destino— para que la saga completa
- * pueda ejercitarse sin Supabase ni credenciales. Los invariantes que el
- * esquema impone con restricciones se imponen aquí con excepciones, para que
- * una prueba que los rompa falle igual que en la base.
- */
-
 import { randomUUID } from "node:crypto";
 
 import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
@@ -58,7 +49,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
   #locks = new Map<string, Promise<void>>();
   #auditSequence = 0;
 
-  /** Orden real de escritura, para comprobar que el historial va primero. */
   #writeLog: string[] = [];
 
   constructor(initial?: MemoryReleaseState) {
@@ -74,9 +64,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
       this.#trainings.add(record.trainingId);
     }
 
-    // El padrón de la réplica es una cosa y la lista de asistencia es otra:
-    // asistir no prueba estar en la matriz. Cuando la prueba lo declara, ese
-    // es el padrón; cuando no, se deriva por comodidad de lo ya sembrado.
     if (initial?.workers) {
       for (const worker of initial.workers) this.#workers.add(worker);
     } else {
@@ -96,10 +83,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     this.#audits = (initial?.audits ?? []).map((audit) => ({ ...audit }));
     this.#auditSequence = this.#audits.length;
   }
-
-  // -------------------------------------------------------------------------
-  // Sesiones y asistencias
-  // -------------------------------------------------------------------------
 
   getSessionById(sessionId: string): Promise<SessionRecord | null> {
     const session = this.#sessions.get(sessionId);
@@ -148,10 +131,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     return Promise.resolve();
   }
 
-  // -------------------------------------------------------------------------
-  // Destinos declarados
-  // -------------------------------------------------------------------------
-
   findActiveMapping(trainingId: string): Promise<readonly MatrixMapping[]> {
     return Promise.resolve(
       this.#mappings
@@ -159,10 +138,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
         .map((mapping) => ({ ...mapping })),
     );
   }
-
-  // -------------------------------------------------------------------------
-  // Journal
-  // -------------------------------------------------------------------------
 
   findBatchByRequestId(requestId: string): Promise<ReleaseBatch | null> {
     const found = [...this.#batches.values()].filter((batch) => batch.requestId === requestId);
@@ -187,7 +162,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     if (this.#batches.has(batch.batchId)) {
       throw new Error(`El lote ya existe: ${batch.batchId}`);
     }
-    // Refleja el UNIQUE de `lote_liberacion.solicitud_id`.
     for (const existing of this.#batches.values()) {
       if (existing.requestId === batch.requestId) {
         throw new Error(`El requestId ya tiene un lote durable: ${batch.requestId}`);
@@ -205,10 +179,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     return Promise.resolve({ ...batch });
   }
 
-  // -------------------------------------------------------------------------
-  // Efectos
-  // -------------------------------------------------------------------------
-
   findEffectByIdempotencyKey(idempotencyKey: string): Promise<ReleaseEffect | null> {
     const effect = this.#effects.get(idempotencyKey);
     return Promise.resolve(effect ? { ...effect } : null);
@@ -216,7 +186,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
 
   insertEffects(effects: readonly ReleaseEffect[]): Promise<void> {
     for (const effect of effects) {
-      // Refleja el UNIQUE de `liberacion.clave_idempotencia`.
       if (this.#effects.has(effect.idempotencyKey)) {
         throw new Error(`Clave idempotente duplicada: ${effect.idempotencyKey}`);
       }
@@ -232,10 +201,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
         .map((effect) => ({ ...effect })),
     );
   }
-
-  // -------------------------------------------------------------------------
-  // Auditoría — sólo se agrega
-  // -------------------------------------------------------------------------
 
   recordAudit(event: Omit<AuditEventRecord, "eventId" | "occurredAt">): Promise<AuditEventRecord> {
     this.#auditSequence += 1;
@@ -263,10 +228,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     return Promise.resolve(found ? { ...found } : null);
   }
 
-  // -------------------------------------------------------------------------
-  // Destino: réplica consultable de la matriz
-  // -------------------------------------------------------------------------
-
   getHcRecord(workerNumber: WorkerNumber, trainingId: string): Promise<HcRecord | null> {
     const record = this.#hcRecords.get(pairKey(String(workerNumber), trainingId));
     return Promise.resolve(record ? { ...record } : null);
@@ -280,16 +241,10 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     return Promise.resolve(this.#trainings.has(trainingId));
   }
 
-  /**
-   * Aplica el lote conservando el orden que el puerto exige: primero el
-   * historial, después el valor. La lista `#writeLog` deja el orden a la
-   * vista para que una prueba pueda comprobarlo en vez de confiar en él.
-   */
   applyWrites(operations: readonly MatrixWriteOperation[]): Promise<void> {
     for (const operation of operations) {
       if (operation.history) {
         if (operation.history.previousCompletionDate === operation.history.completionDate) {
-          // Refleja `historial_sobrescritura_fechas_distintas`.
           throw new Error("Un historial de sobrescritura no puede repetir la misma fecha");
         }
         if (!operation.history.reason.trim()) {
@@ -325,10 +280,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Bloqueo
-  // -------------------------------------------------------------------------
-
   async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     while (this.#locks.has(key)) {
       await this.#locks.get(key);
@@ -345,10 +296,6 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
       release();
     }
   }
-
-  // -------------------------------------------------------------------------
-  // Auxiliares de prueba
-  // -------------------------------------------------------------------------
 
   getAllAudits(): readonly AuditEventRecord[] {
     return this.#audits.map((audit) => ({ ...audit }));
@@ -375,14 +322,12 @@ export class MemoryReleaseRepository implements ReleaseRepositoryPort, MatrixWri
     this.#workers.add(String(attendance.workerNumber));
   }
 
-  /** Simula una escritura ajena entre fases: una importación que ocupa la celda. */
   seedHcRecord(record: HcRecord): void {
     this.#hcRecords.set(pairKey(String(record.workerNumber), record.trainingId), { ...record });
     this.#workers.add(String(record.workerNumber));
     this.#trainings.add(record.trainingId);
   }
 
-  /** Adultera la fila del journal sin volver a firmarla. */
   tamperBatch(batchId: string, patch: Partial<ReleaseBatch>): void {
     const batch = this.#batches.get(batchId);
     if (!batch) throw new Error(`El lote no existe: ${batchId}`);

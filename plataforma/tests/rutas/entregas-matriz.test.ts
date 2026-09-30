@@ -1,17 +1,3 @@
-/**
- * El tablero de entregas a la matriz.
- *
- * Lo que se fija aquí es el hueco que el tablero llena: entre liberar en la
- * consola y que el cliente de Excel escriba la fecha en el XLSB pasa un rato en
- * el que nadie sabía nada. El foco rojo dice «todavía no» y el verde «ya», y la
- * equis sólo aparece cuando el verde es de verdad —quitar de la vista algo que
- * sigue esperando sería perderlo justo mientras es lo que hay que vigilar.
- *
- * El adaptador de PostgreSQL no entra aquí: sin base no hay nada que consultar.
- * Lo que se ejercita es la pantalla, la ruta y la regla del servicio, contra un
- * puerto falso que devuelve las tres situaciones.
- */
-
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
@@ -109,12 +95,10 @@ describe("Entregas a la matriz · el tablero de la pantalla de liberación", () 
     for (const codigo of [/KCM-260830-AAAAAA/u, /KCM-260829-BBBBBB/u, /KCM-260828-CCCCCC/u]) {
       assert.match(pantalla.body, codigo);
     }
-    // Los tres focos, y el color nunca solo: cada uno lleva su texto.
     assert.match(pantalla.body, /foco foco-rojo/u);
     assert.match(pantalla.body, /foco foco-verde/u);
     assert.match(pantalla.body, /foco foco-ambar/u);
     assert.match(pantalla.body, /Pendiente de escritura en Excel/u);
-    // Quién liberó cada lote.
     assert.match(pantalla.body, /<th scope="col">Liberó<\/th>/u);
     assert.match(pantalla.body, /CUENTA_SINTETICA/u);
   });
@@ -124,7 +108,6 @@ describe("Entregas a la matriz · el tablero de la pantalla de liberación", () 
 
     const plegado = await app.inject({ method: "GET", url: "/liberacion" });
     assert.doesNotMatch(plegado.body, /<details[^>]*\sopen/u);
-    // El botón de actualizar es el que conserva el estado desplegado.
     assert.match(plegado.body, /href="\/liberacion\?entregas=1#entregas"/u);
 
     const abierto = await app.inject({ method: "GET", url: "/liberacion?entregas=1" });
@@ -139,8 +122,6 @@ describe("Entregas a la matriz · el tablero de la pantalla de liberación", () 
       pantalla.body,
       /action="\/liberacion\/entregas\/22222222-2222-2222-2222-222222222222\/ocultar"/u,
     );
-    // La que espera y la que tiene conflicto no la llevan: quitarlas de la vista
-    // sería perderlas mientras son las que hay que mirar.
     assert.doesNotMatch(
       pantalla.body,
       /action="\/liberacion\/entregas\/11111111-1111-1111-1111-111111111111\/ocultar"/u,
@@ -166,7 +147,6 @@ describe("Entregas a la matriz · el tablero de la pantalla de liberación", () 
 
     const despues = await app.inject({ method: "GET", url: "/liberacion?entregas=1" });
     assert.doesNotMatch(despues.body, /KCM-260829-BBBBBB/u);
-    // Y las otras dos siguen ahí: ocultar una no vacía el tablero.
     assert.match(despues.body, /KCM-260830-AAAAAA/u);
   });
 
@@ -199,7 +179,6 @@ describe("Entregas a la matriz · la regla de ocultar", () => {
 
   it("se relee el estado antes de ocultar y no se cree lo que la pantalla enseñó", async () => {
     const tablero = new TableroFalso();
-    // La pantalla la dibujó verde, pero para cuando llega la equis ya no lo es.
     tablero.entregas = [{ ...ENTREGADA, delivered: 4, state: "PENDIENTE" }];
 
     await assert.rejects(

@@ -1,18 +1,3 @@
-/**
- * Adaptador PostgreSQL / Supabase para Preliberación (Función 4).
- *
- * Mapea a las tablas del esquema `kcm`:
- * - `operacion.sesion`, `operacion.asistencia`, `sistema.bitacora_auditoria` (compartidas con quiosco)
- * - `operacion.preliberacion_revision` (una fila vigente por sesión)
- * - `operacion.sesion_evidencia` (reportes archivados, inmutables)
- * - `organizacion.trabajador`, `organizacion.puesto`, `organizacion.area`, `catalogo.capacitacion` (lectura)
- *
- * Los bytes del reporte no viven en la base: la fila de evidencia guarda la ruta
- * y el archivo va al almacén de objetos, que se inyecta. La razón es la de
- * siempre con archivos binarios en PostgreSQL, y además `operacion.sesion_evidencia` está
- * diseñada con `ruta_almacenamiento` y sin columna de contenido.
- */
-
 import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   AttendanceRecord,
@@ -30,21 +15,11 @@ import { REPORT_KIND, REPORT_MIME_TYPE } from "../../domain/preliberacion/tipos.
 import type { PreReleaseRepositoryPort } from "../../ports/preliberacion.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
-/**
- * Almacén de objetos para los archivos de evidencia. Lo implementa Supabase
- * Storage cuando exista el bucket; hoy no existe ninguno en el proyecto.
- */
 export interface ObjectStorePort {
   put(path: string, content: Uint8Array, contentType: string): Promise<void>;
   get(path: string): Promise<Uint8Array | null>;
 }
 
-/**
- * Las filas del driver se describen aquí en lugar de dejarlas como `any`: es lo
- * único que hace verificable el mapeo entre columna y campo, que es donde de
- * verdad se rompe un adaptador. `unknown` en los campos que sólo se copian y
- * tipos concretos en los que se leen.
- */
 interface FilaSesion {
   sesion_id: string;
   codigo_sesion: string;
@@ -154,10 +129,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     this.store = store;
   }
 
-  // -----------------------------------------------------------------------
-  // Sesiones
-  // -----------------------------------------------------------------------
-
   async getSessionById(sessionId: string): Promise<SessionRecord | null> {
     const res = await this.db.query<FilaSesion>(`${SESSION_SELECT} WHERE s.sesion_id = $1;`, [
       sessionId,
@@ -186,10 +157,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     );
     return res.rows.map((r) => this.mapSession(r));
   }
-
-  // -----------------------------------------------------------------------
-  // Asistencias
-  // -----------------------------------------------------------------------
 
   async listAttendancesBySession(sessionId: string): Promise<readonly AttendanceRecord[]> {
     const res = await this.db.query<FilaAsistencia>(
@@ -289,8 +256,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
   async updateManyAttendances(
     updates: readonly { attendanceId: string; updates: Partial<AttendanceRecord> }[],
   ): Promise<void> {
-    // Una sola transacción: el padrón de una revisión se mueve completo o no se
-    // mueve. Media revisión aplicada es peor que ninguna.
     await this.db.transaction(async (client) => {
       const transaccional = new SupabasePreReleaseRepository(client, this.store);
       for (const { attendanceId, updates: parche } of updates) {
@@ -307,10 +272,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     return Number(res.rows[0]?.total ?? 0);
   }
 
-  // -----------------------------------------------------------------------
-  // Revisión
-  // -----------------------------------------------------------------------
-
   async getLatestReview(sessionId: string): Promise<PreReleaseReviewRecord | null> {
     const res = await this.db.query<FilaRevision>(
       `SELECT r.*, a.nombre_visible AS revisor_nombre
@@ -324,8 +285,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
   }
 
   async upsertReview(review: PreReleaseReviewRecord): Promise<PreReleaseReviewRecord> {
-    // `sesion_id` es UNIQUE en el DDL: una sola revisión vigente por sesión, y
-    // corregir una marca no acumula historial paralelo. El rastro va en auditoría.
     await this.db.query(
       `INSERT INTO operacion.preliberacion_revision (
          revision_id, sesion_id, total_padron, total_confirmados, total_reprobados,
@@ -364,10 +323,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     );
     return review;
   }
-
-  // -----------------------------------------------------------------------
-  // Padrón
-  // -----------------------------------------------------------------------
 
   async isWorkerActive(workerNumber: WorkerNumber): Promise<boolean> {
     const res = await this.db.query<{ activo: boolean }>(
@@ -413,17 +368,10 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     };
   }
 
-  // -----------------------------------------------------------------------
-  // Reportes archivados
-  // -----------------------------------------------------------------------
-
   async archiveReport(
     record: ReportEvidenceRecord,
     content: Uint8Array,
   ): Promise<ReportEvidenceRecord> {
-    // Primero el archivo, después la fila: una evidencia registrada cuyo archivo
-    // no llegó a existir sería una promesa que la auditoría no puede cumplir.
-    // Al revés, un archivo huérfano no engaña a nadie.
     await this.store.put(record.storagePath, content, record.mimeType);
 
     await this.db.query(
@@ -482,10 +430,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     if (!record) return null;
     return this.store.get(record.storagePath);
   }
-
-  // -----------------------------------------------------------------------
-  // Auditoría
-  // -----------------------------------------------------------------------
 
   async recordAudit(
     event: Omit<AuditEventRecord, "eventId" | "occurredAt">,
@@ -558,25 +502,12 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
     return row ? this.mapAudit(row) : null;
   }
 
-  // -----------------------------------------------------------------------
-  // Bloqueo
-  // -----------------------------------------------------------------------
-
-  /**
-   * Bloqueo consultivo por clave. Es la sustitución de `LockService` del legado:
-   * serializa por sesión sin bloquear filas, y se libera al terminar aunque la
-   * operación falle.
-   */
   async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     return this.db.transaction(async (client) => {
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [key]);
       return fn();
     });
   }
-
-  // -----------------------------------------------------------------------
-  // Mapeos
-  // -----------------------------------------------------------------------
 
   private mapSession(r: FilaSesion): SessionRecord {
     return {
@@ -631,8 +562,6 @@ export class SupabasePreReleaseRepository implements PreReleaseRepositoryPort {
       sessionId: r.sesion_id,
       requestId: "",
       expectedExams: Number(r.total_padron ?? 0),
-      // El DDL guarda los cinco conteos que la revisión necesita; los derivados
-      // se recalculan al abrir el banco, así que no se persisten dos veces.
       receivedExams: Number(r.total_confirmados ?? 0) + Number(r.total_reprobados ?? 0),
       approvedExams: Number(r.total_confirmados ?? 0),
       failedExams: Number(r.total_reprobados ?? 0),
@@ -693,11 +622,6 @@ const SESSION_SELECT = `
     LEFT JOIN seguridad.actor cr ON cr.actor_id = s.creada_por
 `;
 
-/**
- * El DDL de E4 sólo admite tres estados en `revision_preliberacion.estado`, que
- * describen la etapa; el dominio maneja además el resultado de la revisión. Se
- * traduce aquí en vez de relajar la restricción de la base.
- */
 function estadoDeRevision(status: string): string {
   return status === "SIN_HALLAZGOS" || status === "CON_HALLAZGOS"
     ? "COTEJO_CONFIRMADO"

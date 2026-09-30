@@ -61,8 +61,6 @@ function validateOptions(templateOptions, confidenceCalibration) {
     "similarityFloor", "similarityCeiling", "marginFloor", "marginCeiling",
     "similarityWeight"
   ]) assertFiniteInterval(confidenceCalibration[name], name, 0, 1);
-  // Esta version no cuenta con calibracion manuscrita. El tope queda por debajo
-  // del umbral de negocio por digito (0.94) y no puede elevarse por configuracion.
   assertFiniteInterval(confidenceCalibration.standaloneConfidenceCap, "standaloneConfidenceCap", 0, 0.93);
   if (confidenceCalibration.similarityCeiling <= confidenceCalibration.similarityFloor) {
     throw new TypeError("similarityCeiling debe ser mayor que similarityFloor");

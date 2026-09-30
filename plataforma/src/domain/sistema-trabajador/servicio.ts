@@ -1,7 +1,3 @@
-/**
- * Servicio de dominio para el Sistema General por Trabajador (Función 8).
- */
-
 import { DncEngine, UNIFIED_COURSES, resolveCourse } from "../../../../packages/dnc/index.js";
 import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 import type {
@@ -24,15 +20,6 @@ import type {
   DncStatus,
 } from "./tipos.ts";
 
-/**
- * Todas las claves bajo las que conviene guardar una acreditación.
- *
- * El motor busca el historial por `trainingId`, por nombre canónico y por la
- * primera `sourceKey`; la base lo entrega con su `clave_curso` y su nombre. Se
- * guarda bajo la identidad del catálogo y bajo las de la base, en vez de
- * escoger una: guardar de más es barato y no perder una acreditación es lo que
- * está en juego.
- */
 function clavesDeHistorial(trainingId: string, courseName: string): readonly string[] {
   const claves = new Set<string>();
   for (const bruta of [trainingId, courseName]) {
@@ -56,16 +43,10 @@ export class WorkerSystemService {
     this.dncEngine = dncEngine;
   }
 
-  /**
-   * Obtiene la lista de trabajadores con filtros opcionales.
-   */
   async listWorkers(filter?: WorkerFilter): Promise<readonly WorkerRecord[]> {
     return this.repository.listWorkers(filter);
   }
 
-  /**
-   * Obtiene la ficha completa e individual de un trabajador con todas sus derivadas.
-   */
   async getWorkerProfile(
     workerNumber: WorkerNumber,
     asOfDate: Date | string = new Date(),
@@ -84,16 +65,8 @@ export class WorkerSystemService {
     const scheduledSessions = await this.repository.getWorkerScheduledSessions(workerNumber);
     const dc3Log = await this.repository.getWorkerDc3Records(workerNumber);
 
-    // Mapear el historial más reciente por curso
     const latestHistory: Record<string, string> = {};
     for (const item of trajectory) {
-      // La clave se resuelve contra el catálogo antes de guardarla. El
-      // historial llega con la identidad de la base —`clave_curso` y el nombre
-      // tal como se escribió al importarlo— y el motor busca por la suya. Sin
-      // esta traducción, «INSPECCIÓN EN LINEA» con acento no encontraba a
-      // «INSPECCION EN LINEA» y el curso salía PENDIENTE aun estando acreditado:
-      // la ficha reportaba menos de lo que la persona tiene. Los alias
-      // aprobados viven en el catálogo desde E6; lo que faltaba era usarlos aquí.
       for (const clave of clavesDeHistorial(item.trainingId, item.courseName)) {
         const current = latestHistory[clave];
         if (!current || item.completionDate > current) {
@@ -102,7 +75,6 @@ export class WorkerSystemService {
       }
     }
 
-    // Evaluar la matriz de cursos DNC
     const rawEvaluations = this.dncEngine.evaluateAllCoursesForEmployee({
       employee: {
         employeeId: worker.employeeId,
@@ -131,7 +103,6 @@ export class WorkerSystemService {
       details: ev.details,
     }));
 
-    // Métricas por trabajador (con aislamiento estricto de DATOS_INSUFICIENTES)
     let completados = 0;
     let reforzar = 0;
     let pendientes = 0;
@@ -176,22 +147,10 @@ export class WorkerSystemService {
       noAplica,
       datosInsuficientes,
       porcentajeCumplimiento,
-      publicacionAutorizada: false, // Invariante: no se publican porcentajes hasta aprobación
+      publicacionAutorizada: false,
       notaPublicacion: "Porcentajes en validación por el Departamento de Capacitación",
     };
 
-    /*
-     * Aquí se derivaba el «plan del trimestre». Se retiró, y no sólo de la
-     * pantalla: era la lista de cursos en REFORZAR y PENDIENTE —la misma que ya
-     * publica `courseEvaluations`— con dos campos inventados encima. La
-     * prioridad salía de una lista de cinco claves escrita a mano en este
-     * archivo, y el trimestre sugerido era siempre el trimestre en curso, así
-     * que no comprometía ninguna fecha. Nada de eso tenía respaldo en la base:
-     * no hay tabla, vista ni función de plan trimestral en el esquema.
-     *
-     * Un plan de capacitación se aprueba y se firma. Cuando exista, va a ser una
-     * tabla con su propio ciclo de vida, no un derivado de esta consulta.
-     */
     const areaComparison = await this.#comparacionDeArea(worker, asOfDate);
 
     return {
@@ -208,14 +167,6 @@ export class WorkerSystemService {
     };
   }
 
-  /**
-   * Cuántos compañeros de área tienen vigente cada curso que les aplica.
-   *
-   * Donde hay base la suma la base, en una consulta. En memoria se evalúa con
-   * el motor a los compañeros del área, que son pocos. Si algo falla, la ficha
-   * se dibuja sin la referencia: es un contexto para leer la telaraña, no un
-   * dato por el que valga la pena dejar a alguien sin su ficha.
-   */
   async #comparacionDeArea(
     worker: WorkerRecord,
     asOfDate: Date | string,
@@ -281,14 +232,9 @@ export class WorkerSystemService {
     }
   }
 
-  /**
-   * Resumen por departamento para la plantilla completa.
-   */
   async getDepartmentSummary(
     asOfDate: Date | string = new Date(),
   ): Promise<readonly DepartmentSummaryItem[]> {
-    // Donde hay base, el resumen lo suma la base y no se traen los mil
-    // setecientos trabajadores para contarlos aquí.
     if (this.repository.getDncSummaryByDepartment) {
       const filas = await this.repository.getDncSummaryByDepartment();
       return filas
@@ -307,8 +253,6 @@ export class WorkerSystemService {
 
     const workers = await this.repository.listWorkers({ activeOnly: true });
     const departments = await this.repository.listDepartments();
-    // Historial y sesiones de toda la planta de una vez. Ver el puerto: por
-    // trabajador, este resumen no llegaba a responder contra la base remota.
     const [historialPorTrabajador, sesionesPorTrabajador] = await Promise.all([
       this.repository.getLatestTrainingByWorker(),
       this.repository.getScheduledSessionsByWorker(),
@@ -395,16 +339,9 @@ export class WorkerSystemService {
     return result.sort((a, b) => a.department.localeCompare(b.department));
   }
 
-  /**
-   * Perfil de cobertura por curso.
-   */
   async getCourseCoverageSummary(
     asOfDate: Date | string = new Date(),
   ): Promise<readonly CourseCoverageSummaryItem[]> {
-    // Igual que el resumen por departamento: donde hay base, cuenta la base.
-    // El `trainingId` es la clave del curso en el catálogo unificado, y el
-    // identificador de la regla se compone del nivel, que es lo único que la
-    // pantalla usa para decir si el curso se exige por área o por departamento.
     if (this.repository.getDncSummaryByCourse) {
       const filas = await this.repository.getDncSummaryByCourse();
       return filas
@@ -502,16 +439,10 @@ export class WorkerSystemService {
     return result.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
   }
 
-  /**
-   * Comparativa de planta estructurada.
-   */
   async getPlantComparisonReport(
     asOfDate: Date | string = new Date(),
   ): Promise<PlantComparisonReport> {
     const departments = await this.getDepartmentSummary(asOfDate);
-    // La plantilla ya viene contada dentro del resumen: pedir otra vez la lista
-    // completa sólo para saber cuántos son costaría los mil setecientos
-    // renglones que este cambio precisamente evita traer.
     const totalWorkers = departments.reduce((total, dep) => total + dep.activeWorkersCount, 0);
 
     return {

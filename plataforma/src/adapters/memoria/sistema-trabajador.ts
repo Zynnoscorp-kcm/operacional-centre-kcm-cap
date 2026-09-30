@@ -1,8 +1,3 @@
-/**
- * Adaptador en memoria para el repositorio del Sistema General por Trabajador (Función 8).
- * Útil para desarrollo local, pruebas unitarias y entornos sintéticos sin dependencias externas.
- */
-
 import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   WorkerSystemRepositoryPort,
@@ -134,12 +129,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
     return Promise.resolve(Array.from(depts).sort());
   }
 
-  /**
-   * El tablero DNC vive sobre dos vistas de PostgreSQL, y reimplementar aquí el
-   * motor de reglas sólo produciría una segunda verdad que se desviaría de la
-   * primera. Una corrida en memoria devuelve un tablero vacío y coherente: la
-   * cobertura se prueba contra la base, que es donde se calcula.
-   */
   listDncCoverage(): Promise<readonly DncCoverageRow[]> {
     return Promise.resolve([]);
   }
@@ -180,7 +169,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
   }
 
   private _seedSyntheticData(): void {
-    // 1. Trabajador Técnico en Gerencia Mantto Eléctrico
     const w1: WorkerRecord = {
       employeeId: parseWorkerNumber("01234"),
       name: "JUAN PÉREZ GARCÍA",
@@ -218,7 +206,7 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
         recordId: "REC-003",
         trainingId: "kcm-course:loto-bloqueo",
         courseName: "LOTO",
-        completionDate: "2023-01-01", // Expirado (vigencia 12 meses) -> REFORZAR
+        completionDate: "2023-01-01",
         provenance: "XLSB_IMPORT",
         recordedAt: "2023-01-02T09:00:00Z",
         actor: "IMPORTACION_INICIAL",
@@ -267,7 +255,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
       },
     ]);
 
-    // 2. Trabajadora Operativa en Convertidora
     const w2: WorkerRecord = {
       employeeId: parseWorkerNumber("01235"),
       name: "MARÍA LÓPEZ SÁNCHEZ",
@@ -278,7 +265,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
       plant: "ECATEPEC II",
       hireDate: "2020-07-01",
       active: true,
-      // schoolingDeclared no especificado -> default SECUNDARIA
     };
     this.setWorker(w2);
     this.setTrajectory(w2.employeeId, [
@@ -303,7 +289,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
       },
     ]);
 
-    // 3. Supervisor de Calidad
     const w3: WorkerRecord = {
       employeeId: parseWorkerNumber("01236"),
       name: "ROBERTO SOTO HERNÁNDEZ",
@@ -348,7 +333,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
       },
     ]);
 
-    // 4. Analista de Recursos Humanos
     const w4: WorkerRecord = {
       employeeId: parseWorkerNumber("01237"),
       name: "ANA KAREN DÍAZ MORALES",
@@ -373,7 +357,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
       },
     ]);
 
-    // 5. Trabajador con datos insuficientes (sin departamento ni área)
     const w5: WorkerRecord = {
       employeeId: parseWorkerNumber("01238"),
       name: "CARLOS RIVERA LÓPEZ",
@@ -386,7 +369,6 @@ export class MemoryWorkerSystemRepository implements WorkerSystemRepositoryPort 
     };
     this.setWorker(w5);
 
-    // 6. Trabajadora sin fecha de ingreso
     const w6: WorkerRecord = {
       employeeId: parseWorkerNumber("01239"),
       name: "LAURA TORRES MEJÍA",

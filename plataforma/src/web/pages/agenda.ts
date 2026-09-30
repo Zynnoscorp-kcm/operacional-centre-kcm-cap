@@ -1,53 +1,19 @@
-/**
- * Agenda pública de salas.
- *
- * Es la pantalla que usa quien imparte
- * desde fuera del departamento para ver qué sala está libre y apartarla. Como
- * el quiosco, no vive dentro de la consola: no lleva rail ni encabezado de
- * plataforma, porque quien entra aquí no administra nada, sólo reserva.
- *
- * Lo único que cambia respecto del original es cómo se elige un bloque. Allá,
- * al oprimir un horario, un script llenaba el formulario de la derecha; aquí no
- * hay scripts —la política declara `default-src 'none'`—, así que cada bloque
- * libre es un enlace que vuelve a pedir la página con la sala y la hora ya
- * escogidas, y el servidor devuelve el formulario lleno. Se gasta un viaje al
- * servidor y se gana que funcione sin JavaScript.
- *
- * Por lo mismo no hay refresco automático cada quince segundos: recargar sola
- * la página borraría lo que alguien estuviera escribiendo en el formulario. La
- * disponibilidad se actualiza al consultar, y el pie lo dice.
- */
-
 import { guionHaces, hojaDeEstilos, simboloKcm } from "../estaticos.ts";
 import { html, renderDocument, type Html } from "../kit/html.ts";
 import { ROOMS, type PublicRoomOccupancy } from "../../domain/salas/tipos.ts";
 import { claseDeSala } from "../kit/marca-de-sala.ts";
 import { BLOQUE_EN_MINUTOS, FIN_DE_JORNADA, INICIO_DE_JORNADA, comoHora } from "../kit/horarios.ts";
 
-/** La jornada y el bloque canónicos del dominio de salas. */
-
 export interface DatosAgenda {
-  /** Fecha consultada, en ISO corto. */
   readonly fecha: string;
-  /** Sólo sala y horario ocupado: la agenda pública no publica identidades. */
   readonly ocupacion: readonly PublicRoomOccupancy[];
-  /** Momento actual en la planta, para atenuar los bloques que ya pasaron. */
   readonly ahora: { readonly fecha: string; readonly minutos: number };
-  /** Preselección que dejó el enlace de un bloque libre. */
   readonly salaElegida?: string | undefined;
   readonly inicioElegido?: string | undefined;
   readonly finElegido?: string | undefined;
-  /** Acuse de una reservación recién confirmada. */
   readonly aviso?: string | undefined;
   readonly error?: string | undefined;
-  /**
-   * La agenda pide contraseña sólo cuando hay una declarada, igual que `/salas`.
-   * Sin ella la pantalla no dibuja el campo y el servidor no lo exige: pedir en
-   * el servidor algo que la pantalla no ofrece es lo que dejó esta agenda
-   * inservible.
-   */
   readonly requiereClave?: boolean | undefined;
-  /** Lo capturado antes de un rechazo, para no obligar a escribirlo otra vez. */
   readonly previo?: Record<string, string> | undefined;
 }
 
@@ -73,7 +39,6 @@ export function renderAgendaPage(datos: DatosAgenda): string {
     <body class="agenda-cuerpo">
       <a class="salto-contenido" href="#disponibilidad">Saltar a disponibilidad</a>
 
-      <!-- El fondo del quiosco de sala: negro de base, lienzo de haces y viñeta. -->
       <div class="agenda-fondo" aria-hidden="true">
         <div class="agenda-fondo-negro"></div>
         <canvas id="beams-canvas" class="agenda-lienzo"></canvas>
@@ -133,7 +98,6 @@ export function renderAgendaPage(datos: DatosAgenda): string {
         <footer class="agenda-pie">Horario de 07:00 a 20:00 · hora del centro de México</footer>
       </div>
 
-      <!-- El mismo guion que dibuja los haces del quiosco, sin una constante distinta. -->
       <script src="${guionHaces.ruta}"></script>
     </body>
   </html>`;
@@ -168,9 +132,6 @@ function renderSala(sala: (typeof ROOMS)[number], datos: DatosAgenda): Html {
     bloques.push(renderBloque(sala, inicio, ocupados, datos));
   }
 
-  // La clase de marca tiñe la tarjeta con la paleta de la sala. El color entra
-  // por la hoja de estilos y no por un `style` en línea: la política de
-  // contenido declara `style-src 'self'` y descartaría el atributo.
   return html`<article class="agenda-sala ${claseDeSala(sala.roomId)}">
     <div class="agenda-sala-cabeza">
       <h3>${sala.name}</h3>
@@ -216,27 +177,12 @@ function renderBloque(
     >`;
   }
 
-  /*
-   * Selección por dos toques: el primero fija el inicio, el segundo el término.
-   *
-   * Antes un toque proponía una hora fija y reservar hora y media obligaba a
-   * corregir el campo a mano. Ahora el primer bloque ancla y el segundo cierra
-   * el rango, con los dos bloques incluidos: tocar 07:00 y luego 09:00 reserva
-   * de 07:00 a 09:30. Se eligen bloques, no bordes, que es como se lee una
-   * rejilla.
-   *
-   * Sigue sin haber JavaScript —la política de esta pantalla declara
-   * `default-src 'none'`—, así que el estado del primer toque viaja en la
-   * propia URL y lo resuelve el servidor al volver a pintar.
-   */
   const anclaEnEstaSala =
     datos.salaElegida === sala.roomId && datos.inicioElegido !== undefined
       ? enMinutos(datos.inicioElegido)
       : Number.NaN;
   const hayAncla = Number.isFinite(anclaEnEstaSala);
 
-  // Un rango no puede saltarse una reservación ajena. Si entre el ancla y este
-  // bloque hay algo ocupado, el toque no cierra el rango: vuelve a anclar aquí.
   const cruzaOcupado =
     hayAncla &&
     inicio > anclaEnEstaSala &&
@@ -245,8 +191,6 @@ function renderBloque(
     );
   const cierraRango = hayAncla && inicio > anclaEnEstaSala && !cruzaOcupado;
 
-  // Anclar propone el bloque mismo, treinta minutos. Es el mínimo del dominio y
-  // deja que el segundo toque diga hasta dónde, en vez de adivinar una hora.
   const inicioDelEnlace = cierraRango ? comoHora(anclaEnEstaSala) : etiqueta;
   const finDelEnlace = comoHora(fin);
 
@@ -423,10 +367,6 @@ function enMinutos(valor: string): number {
   return Number(coincidencia[1]) * 60 + Number(coincidencia[2]);
 }
 
-/**
- * Suma días sobre la fecha ISO sin pasar por `Date`, que al interpretar
- * `2026-08-03` como medianoche UTC corre un día en el huso de la planta.
- */
 function sumarDias(fecha: string, dias: number): string {
   const [anio, mes, dia] = fecha.split("-").map(Number);
   const punto = new Date(Date.UTC(anio ?? 1970, (mes ?? 1) - 1, dia ?? 1));

@@ -1,7 +1,3 @@
-/**
- * Tipos de dominio para el Sistema General por Trabajador (Función 8).
- */
-
 import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 
 export type DncStatus =
@@ -13,11 +9,9 @@ export interface WorkerRecord {
   readonly department: string;
   readonly area: string;
   readonly position: string;
-  /** Código de nómina de la matriz; NS = sindicalizado y NQ = confianza. */
   readonly payrollType?: string | null;
-  /** Como viene de la matriz: `ECATEPEC I`, `ECATEPEC II`, `MANTTO INGENIERIA`… */
   readonly plant?: string;
-  readonly hireDate: string | null; // ISO YYYY-MM-DD
+  readonly hireDate: string | null;
   readonly active: boolean;
   readonly schoolingDeclared?: string;
   readonly photoUrl?: string | null;
@@ -96,7 +90,7 @@ export interface CourseTrajectoryEntry {
 
 export interface Dc3WorkerLogEntry {
   readonly courseId: string;
-  readonly courseName: string; // Inducción a la empresa, QMS, LOTO
+  readonly courseName: string;
   readonly isEligible: boolean;
   readonly isIssued: boolean;
   readonly issuedAt: string | null;
@@ -104,12 +98,6 @@ export interface Dc3WorkerLogEntry {
   readonly blockingReasons: readonly string[];
 }
 
-/**
- * Cuántos trabajadores del área de una persona tienen vigente cada curso que les
- * aplica. Es la referencia contra la que la ficha dibuja a la persona: sin ella,
- * una telaraña con casi todo pendiente no dice si eso es lo normal del área o
- * un rezago propio.
- */
 export interface AreaCourseCompletion {
   readonly trainingId: string;
   readonly applicable: number;
@@ -126,7 +114,6 @@ export interface DerivedWorkerProfile {
   readonly metrics: WorkerEvaluationMetrics;
   readonly trajectory: readonly CourseTrajectoryEntry[];
   readonly dc3Log: readonly Dc3WorkerLogEntry[];
-  /** Ausente si el área no se pudo medir: la ficha se dibuja igual, sin la referencia. */
   readonly areaComparison?: readonly AreaCourseCompletion[];
 }
 

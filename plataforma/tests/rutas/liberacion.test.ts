@@ -1,11 +1,3 @@
-/**
- * Rutas de liberación sobre el servidor real, con `inject()`.
- *
- * Comprueban lo que sólo se ve de punta a punta: que la pantalla exista, que un
- * lote en conflicto no se responda como éxito, y que el journal no se publique
- * por la API aunque su lote sí sea consultable.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -101,7 +93,6 @@ describe("E10 · rutas de liberación", () => {
 
     assert.equal(respuesta.statusCode, 200);
     assert.match(respuesta.body, /Validación previa/);
-    // La política se dice en palabras, no con su clave.
     assert.match(respuesta.body, /No sobrescribe fechas/);
     assert.doesNotMatch(respuesta.body, /NO_OVERWRITE/);
     assert.match(respuesta.body, /name="requestId" value="[0-9a-f-]{36}"/i);
@@ -198,8 +189,6 @@ describe("E10 · rutas de liberación", () => {
   });
 
   it("con una fecha previa, la validación avisa en un cuadro y deja liberar o no", async () => {
-    // Antes la pantalla quedaba en «Liberar 0 registro(s)» desactivado: sin
-    // motivo, la atomicidad abortaba a todos y no había cómo capturarlo.
     const { app } = await server([buildHcRecord("10001", "2026-01-20")], "OVERWRITE_WITH_HISTORY");
     const pantalla = await app.inject({
       method: "GET",
@@ -264,7 +253,6 @@ describe("E10 · rutas de liberación", () => {
     );
     assert.equal(releaseRepository.getAllEffects().length, 0);
 
-    // Con el motivo, el mismo formulario libera y lleva al tablero de entregas.
     const conMotivo = await app.inject({
       method: "POST",
       url: "/api/release/execute",
@@ -317,8 +305,6 @@ describe("E10 · rutas de liberación", () => {
       url: `/api/release/preview/${SESSION_ID}`,
     });
 
-    // La respuesta sí trae identidades: es su función. Lo que se comprueba es
-    // que la cabecera de trazabilidad exista para poder reportar sin copiarlas.
     assert.ok(respuesta.headers["x-request-id"]);
     assert.equal(respuesta.headers["cache-control"], "no-store");
     await app.close();

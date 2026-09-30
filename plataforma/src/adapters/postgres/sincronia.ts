@@ -1,53 +1,10 @@
-/**
- * El cotejo matriz-padrón, resuelto dentro de PostgreSQL.
- *
- * Una sola consulta y un solo viaje. Los dos lados que se comparan ya están en
- * la base —el `HC_SNAPSHOT_V1` del último lote y `organizacion.trabajador` con sus
- * catálogos—, así que traerlos a Node para compararlos aquí costaría el snapshot
- * entero, unos 190 kB, más mil setecientas filas, cada vez que alguien abre la
- * pestaña. Lo que cruza el cable es el informe: un kilobyte largo.
- *
- * ── Las tres decisiones de la consulta ─────────────────────────────────────
- *
- * 1. **`FULL OUTER JOIN` y no dos consultas.** El universo se resuelve en el
- *    mismo paso que los campos, y así «quién falta de cada lado» y «en qué no
- *    coinciden los que están en los dos» salen de la misma foto. Con dos
- *    consultas podrían verse estados distintos si alguien carga en medio.
- *
- * 2. **Los siete campos se despliegan a lo largo con `VALUES`.** La alternativa
- *    —siete bloques de conteo, uno por campo— repetiría la clasificación siete
- *    veces y garantizaría que con el tiempo alguno se quedara atrás. Así la
- *    regla se escribe una vez y se aplica a todos.
- *
- * 3. **La normalización va con `translate` y no con `unaccent`.** La extensión
- *    no está instalada en el proyecto y pedirla obligaría a una migración para
- *    una comparación de pantalla. Las trece letras acentuadas del español caben
- *    en un `translate`, que además no depende de la configuración regional.
- *    Consecuencia asumida: `MUÑOZ` y `MUNOZ` se declaran equivalentes. Entre un
- *    XLSB y una columna `text` esa diferencia es casi siempre una pérdida de
- *    codificación y no dos apellidos distintos, y de todos modos el informe la
- *    enseña como equivalente y no como idéntica.
- */
-
 import type { CotejoCrudo, SincroniaPort } from "../../ports/sincronia.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
-/**
- * La expresión que decide si dos textos son el mismo dato escrito distinto.
- *
- * Colapsa espacios, recorta orillas, sube a mayúsculas y quita acentos; la
- * cadena vacía se vuelve nula para que «sin dato» y «espacio en blanco» no sean
- * dos cosas. Se declara una vez y se aplica a los dos lados.
- */
 const NORMALIZA = (columna: string): string =>
   `nullif(upper(translate(btrim(regexp_replace(${columna}, '\\s+', ' ', 'g')),
      'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNAEIOUUN')), '')`;
 
-/**
- * Los siete campos, con el nombre que llevan en cada lado y si identifican a una
- * persona. El último valor es lo que enmascara el nombre completo: sale en nulo
- * de la base y por tanto nunca llega a la pantalla.
- */
 const CAMPOS = `(VALUES
   (1, 'nombre',       (par.m)."displayName", (par.p).nombre_completo, true),
   (2, 'fechaAlta',    (par.m)."hireDate",    (par.p).fecha_alta,      false),
@@ -162,10 +119,6 @@ export class SupabaseSincroniaRepository implements SincroniaPort {
 
   async cotejar(muestra: number): Promise<CotejoCrudo | null> {
     const { rows } = await this.#db.query<{ informe: CotejoCrudo | null }>(COTEJO, [muestra]);
-    // `fuente` en nulo es el caso de «no hay snapshot guardado»: el `WITH
-    // ultimo` no devolvió fila y los conteos salen todos en cero. Se distingue
-    // aquí y no en la pantalla, porque un informe de ceros y un informe
-    // imposible se dibujan distinto.
     const informe = rows[0]?.informe ?? null;
     return informe?.fuente ? informe : null;
   }

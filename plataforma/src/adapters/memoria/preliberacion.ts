@@ -1,12 +1,4 @@
-/**
- * Repositorio en memoria para Preliberación.
- * Permite ejecutar pruebas sin dependencias externas ni credenciales.
- */
-
-/* eslint-disable @typescript-eslint/require-await --
- * El puerto es asíncrono porque su implementación real habla con PostgreSQL.
- * En memoria no hay nada que esperar, y quitar `async` obligaría a envolver
- * cada retorno en `Promise.resolve`, que dice lo mismo con más ruido. */
+/* eslint-disable @typescript-eslint/require-await */
 
 import { randomUUID } from "node:crypto";
 import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
@@ -73,7 +65,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     }
   }
 
-  // Sessions
   async getSessionById(sessionId: string): Promise<SessionRecord | null> {
     return this.sessions.get(sessionId) ?? null;
   }
@@ -90,7 +81,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     return Array.from(this.sessions.values()).filter((s) => statuses.includes(s.status));
   }
 
-  // Attendances
   async listAttendancesBySession(sessionId: string): Promise<readonly AttendanceRecord[]> {
     return Array.from(this.attendances.values()).filter((a) => a.sessionId === sessionId);
   }
@@ -133,7 +123,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     return (await this.listAttendancesBySession(sessionId)).length;
   }
 
-  // Reviews
   async getLatestReview(sessionId: string): Promise<PreReleaseReviewRecord | null> {
     return this.reviews.get(sessionId) ?? null;
   }
@@ -143,7 +132,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     return review;
   }
 
-  // Workers
   async isWorkerActive(workerNumber: WorkerNumber): Promise<boolean> {
     const emp = this.employees.get(String(workerNumber));
     return emp?.active ?? false;
@@ -153,18 +141,15 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     return this.employees.get(String(workerNumber)) ?? null;
   }
 
-  // Trainings
   async getTrainingById(trainingId: string): Promise<TrainingCatalogItem | null> {
     return this.trainings.get(trainingId) ?? null;
   }
 
-  // Reportes archivados
   async archiveReport(
     record: ReportEvidenceRecord,
     content: Uint8Array,
   ): Promise<ReportEvidenceRecord> {
     if (this.reports.has(record.evidenceId)) {
-      // La evidencia es inmutable: reescribirla borraría el hecho que respalda.
       throw new Error(`La evidencia ${record.evidenceId} ya existe y es inmutable`);
     }
     this.reports.set(record.evidenceId, { ...record });
@@ -186,7 +171,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     return this.reportContent.get(evidenceId) ?? null;
   }
 
-  // Audit
   async recordAudit(
     event: Omit<AuditEventRecord, "eventId" | "occurredAt">,
   ): Promise<AuditEventRecord> {
@@ -227,7 +211,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     return null;
   }
 
-  // Lock
   async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     while (this.locks.has(key)) {
       await this.locks.get(key);
@@ -245,7 +228,6 @@ export class MemoryPreReleaseRepository implements PreReleaseRepositoryPort {
     }
   }
 
-  // Test helpers
   getAllAudits(): readonly AuditEventRecord[] {
     return [...this.audits];
   }

@@ -19,7 +19,6 @@ describe("número de trabajador", () => {
     const numero = parseWorkerNumber("01234");
     assert.equal(numero, "01234");
     assert.equal(numero.length, 5);
-    // La comprobación que importa: en ningún punto se convirtió a número.
     assert.equal(typeof numero, "string");
     assert.notEqual(numero, String(Number("01234")));
   });

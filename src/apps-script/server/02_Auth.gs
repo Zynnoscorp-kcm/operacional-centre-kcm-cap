@@ -1,4 +1,3 @@
-/** Autorizacion obligatoria del lado servidor y tokens de quiosco de corta duracion. */
 var KcmAuth = (function () {
   "use strict";
   var ROLES = ["ADMINISTRADOR", "CAPACITACION", "AUDITOR", "CAPACITADOR"];
@@ -80,7 +79,6 @@ var KcmAuth = (function () {
       value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value);
   }
 
-  /** Primitiva de firma; la autorizacion y la sesion se validan en KcmKioskService. */
   function createKioskToken(input) {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       KcmValidation.fail("INVALID_INPUT", "No fue posible emitir el token de sesion");

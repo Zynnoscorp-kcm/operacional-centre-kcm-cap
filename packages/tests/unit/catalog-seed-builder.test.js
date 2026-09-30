@@ -11,10 +11,6 @@ const SCRIPT = path.resolve("tools/build/semilla-catalogo.js");
 const MAPPING_SCRIPT = path.resolve("tools/build/mapeo-matriz.js");
 const PRIVATE_DIR = path.resolve("referencias/privado");
 
-/**
- * Cada prueba trabaja en su propio subdirectorio privado. El generador escribe en rutas fijas,
- * asi que sin este aislamiento la suite sobrescribiria los catalogos reales del operador.
- */
 async function withSnapshot(snapshot, body) {
   const dir = path.join(PRIVATE_DIR, `.pruebas-${crypto.randomUUID()}`);
   await mkdir(dir, { recursive: true, mode: 0o700 });

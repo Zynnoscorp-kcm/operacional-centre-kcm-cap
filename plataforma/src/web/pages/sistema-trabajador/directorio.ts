@@ -1,11 +1,3 @@
-/**
- * Directorio de trabajadores: la plantilla activa, con búsqueda y filtros.
- *
- * Seis columnas, las que sirven para encontrar a alguien: nómina, nombre con
- * su puesto, área con su departamento, tipo de personal, ingreso y planta. El
- * nombre lleva a la ficha; no hace falta un botón aparte en cada renglón.
- */
-
 import type { EnvironmentName } from "../../../config/environment.ts";
 import { plantLabel } from "../../../domain/sistema-trabajador/planta.ts";
 import type { WorkerRecord } from "../../../domain/sistema-trabajador/tipos.ts";

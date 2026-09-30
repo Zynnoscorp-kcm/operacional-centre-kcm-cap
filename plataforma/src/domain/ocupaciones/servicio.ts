@@ -1,21 +1,3 @@
-/**
- * La puerta del agente de ocupaciones.
- *
- * Aquí se decide qué entra al agente, y por lo tanto qué puede llegar a un
- * proveedor externo: **dos textos, puesto y centro de costos, y nada más**. La
- * regla se aplica en el servidor y no se confía en quien llama:
- *
- * - un campo de más se rechaza en vez de ignorarse, para que un error de
- *   armado en Excel se vea el primer día y no viaje en silencio;
- * - un número de cinco dígitos o más (número de trabajador, NSS, CURP, RFC), un
- *   correo o un nombre con la forma del padrón («APELLIDO,APELLIDO,NOMBRE»)
- *   detienen el caso: son la huella de una columna equivocada.
- *
- * Cada sugerencia sale con la versión del agente y una huella de su
- * configuración —modelos, topes, instrucciones y catálogo—, para saber después
- * exactamente con qué se hizo.
- */
-
 import { createHash } from "node:crypto";
 
 import { DomainError } from "../comun/errores.ts";
@@ -42,9 +24,6 @@ const CAMPOS: Readonly<Record<keyof CasoDeOcupacion, string>> = {
   centroDeCostos: "El centro de costos",
 };
 
-// Cinco dígitos o más, aunque vengan en grupos: «1234-56-7890-1» o «55 1234 5678»
-// son un NSS y un teléfono. En los padrones de las semanas 29 y 31 ningún puesto
-// ni centro de costos real tiene esa forma.
 const NUMERO_LARGO = /\d(?:[ .\-/]?\d){4,}/u;
 const NOMBRE_DEL_PADRON = /^[\p{L} .'-]+,[\p{L} .'-]+,[\p{L} .'-]+$/u;
 
@@ -60,8 +39,6 @@ function campo(valor: unknown, nombre: string): string {
       `${nombre} pasa de ${String(LARGO_MAXIMO)} caracteres.`,
     );
   }
-  // La detección mira la forma NFKC: así «２８３９２», con dígitos de ancho
-  // completo, se ve como el número que es. El texto que viaja no cambia.
   const comparable = limpio.normalize("NFKC");
   if (
     NUMERO_LARGO.test(comparable) ||
@@ -78,7 +55,6 @@ function campo(valor: unknown, nombre: string): string {
   return limpio;
 }
 
-/** El caso tal como puede salir hacia un modelo, o un `DomainError` que dice por qué no. */
 export function leerCaso(entrada: unknown): CasoDeOcupacion {
   if (typeof entrada !== "object" || entrada === null || Array.isArray(entrada)) {
     throw new DomainError(
@@ -100,11 +76,6 @@ export function leerCaso(entrada: unknown): CasoDeOcupacion {
   };
 }
 
-/**
- * Huella corta de todo lo que decide una respuesta. Dos sugerencias con la
- * misma huella se hicieron con los mismos modelos, topes, instrucciones y
- * catálogo.
- */
 export function huellaDeConfiguracion(partes: {
   readonly version: string;
   readonly modelos: readonly string[];

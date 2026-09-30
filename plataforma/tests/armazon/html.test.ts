@@ -32,8 +32,6 @@ describe("plantilla HTML con escape por omisión", () => {
   });
 
   it("une los arreglos y escapa cada elemento", () => {
-    // Sin literales alrededor de la interpolación: así la aserción comprueba el
-    // unido y el escape, y no el sangrado que el formateador decida poner.
     const salida = html`${["a & b", "c"].map((t) => html`<li>${t}</li>`)}`;
     assert.equal(salida.__html, "<li>a &amp; b</li><li>c</li>");
   });

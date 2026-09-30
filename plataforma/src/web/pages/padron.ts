@@ -1,17 +1,3 @@
-/**
- * Padrón semanal: subida del `sem NN CAP.xlsx` y ventana de cuadre.
- *
- * La pantalla tiene tres momentos y ninguno se salta: el formulario, la
- * revisión —qué trae el archivo, en qué no cuadra con la base y qué
- * cambiaría— y el acuse de lo aplicado. Leer no escribe; entre la revisión y la
- * escritura hay un botón que alguien tiene que apretar.
- *
- * La ventana de cuadre enseña conteos, nunca el padrón. De cada lista se
- * muestran doce números como muestra y el resto es una cifra: es lo que hace
- * que revisar cueste unos cientos de bytes y no una descarga del padrón entero
- * en cada visita.
- */
-
 import type { DeploymentRole, EnvironmentName } from "../../config/environment.ts";
 import type { HojaLeida, PlanDePadron, ResultadoDePadron } from "../../domain/padron/tipos.ts";
 import type { ComparacionConLaAnterior } from "../../domain/cargas/tipos.ts";
@@ -22,29 +8,14 @@ import { renderLayout } from "../layout.ts";
 
 export interface DatosDePadron {
   readonly entorno: EnvironmentName;
-  /** Dónde está parada la persona. Decide si se ofrece cargar o se explica. */
   readonly papel?: DeploymentRole;
-  /** Rechazo ya redactado: archivo con otra forma, revisión vencida, etc. */
   readonly error?: string | undefined;
-  /** Revisión pendiente de confirmar. */
   readonly plan?: PlanDePadron | undefined;
-  /** Acuse de la última aplicación. */
   readonly resultado?: ResultadoDePadron | undefined;
-  /**
-   * Qué se cargó la última vez y en qué se parece a esto. `undefined` cuando
-   * nunca hubo una carga aplicada, que no es lo mismo que «no cambió nada».
-   */
   readonly comparacion?: ComparacionConLaAnterior | undefined;
-  /** Sin base conectada la pantalla explica y no ofrece subir nada. */
   readonly sinBase?: boolean;
 }
 
-/**
- * Nombre legible de cada campo declarado del contrato. La pantalla enseña el
- * rótulo que el libro trae de verdad al lado de éste, porque son distintos —el
- * archivo dice `FEC ALTA` donde la plataforma dice fecha de alta— y confundirlos
- * es lo que hace parecer que falta una columna que sí está.
- */
 const NOMBRE_DE_CAMPO: Readonly<Record<string, string>> = {
   employeeId: "Número de trabajador",
   displayName: "Nombre",
@@ -58,11 +29,6 @@ function hora(iso: string): string {
   return momento(iso);
 }
 
-/**
- * Un mosaico del resumen, el mismo componente que el resto de la consola: cifra
- * grande, rótulo en versalitas y una pista que dice de qué está hecha la cifra.
- * El tono distingue «nada que revisar» de «mírelo antes de aplicar».
- */
 function renderKpi(
   etiqueta: string,
   cifra: number,
@@ -77,14 +43,6 @@ function renderKpi(
   </div>`;
 }
 
-/**
- * Los encabezados que el extractor resolvió, hoja por hoja.
- *
- * Contesta la pregunta que antes sólo se podía responder abriendo el libro: qué
- * columna se leyó como qué. Un campo opcional ausente sale nombrado en lugar de
- * quedar en silencio; uno obligatorio no puede faltar, porque su ausencia habría
- * detenido la lectura antes de llegar aquí.
- */
 function renderColumnas(hojas: readonly HojaLeida[]): Html | string {
   if (hojas.length === 0) return "";
   const columnas = hojas.flatMap((hoja) => hoja.columns);

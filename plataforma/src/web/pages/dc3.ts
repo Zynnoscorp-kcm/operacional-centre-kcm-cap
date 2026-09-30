@@ -1,25 +1,3 @@
-/**
- * Por emitir: la bandeja de constancias DC-3.
- *
- * Es la pantalla que se abre desde el menú y la que se usa a diario. Contesta
- * «¿qué constancias falta sacar?» con los cursos tomados desde el corte —1 de
- * enero de 2026—, y deja revisar los de años anteriores con un filtro.
- *
- * Tres formas de emitir, sin cambiar de pantalla:
- *
- * - **Una.** La advertencia sale encima del renglón —un `popover`, que no
- *   necesita guiones— y la emisión regresa a la misma lista, en la misma página
- *   y con los mismos filtros, con el documento bajando solo.
- * - **Las marcadas.** Al marcar el primer renglón aparece la barra de selección,
- *   y las marcadas bajan en un solo PDF, con la hoja de entrega delante.
- * - **Todas las de la lista.** El procesamiento completo: todo lo que cumple los
- *   filtros puestos, en un solo archivo y en el orden de la lista.
- *
- * Todo sin una línea de JavaScript: la política declara `default-src 'none'`.
- * La barra de selección aparece con `:has()`, cuenta los renglones marcados con
- * un contador de CSS, y las advertencias son `popover` declarativos.
- */
-
 import type { AppConfig } from "../../config/environment.ts";
 import type {
   Dc3Candidate,
@@ -55,13 +33,9 @@ import {
 
 export interface Dc3PageInput {
   readonly config: AppConfig;
-  /** Cursos con obligación DC-3. Vacío cuando no hay base conectada. */
   readonly courses: readonly { readonly courseKey: string; readonly courseName: string }[];
-  /** Áreas del padrón. Se piden al mismo repositorio que las sirve en `/trabajadores`. */
   readonly areas: readonly string[];
-  /** La página que se está viendo de la situación elegida. */
   readonly candidates: readonly Dc3Candidate[];
-  /** Cuántos hay en total con estos filtros y esta situación. */
   readonly total: number;
   readonly pagina: number;
   readonly porPagina: number;
@@ -69,17 +43,11 @@ export interface Dc3PageInput {
   readonly sinBase: boolean;
   readonly pestana: Dc3PlanTab;
   readonly orden: Dc3CandidateOrder;
-  /** Cuentas de las situaciones y de los periodos, con los demás filtros puestos. */
   readonly plan?: Dc3PlanSummary | undefined;
-  /** Cuántos hay en cada curso con los demás filtros puestos. */
   readonly porCurso?: readonly { readonly courseKey: string; readonly total: number }[] | undefined;
-  /** Lo asentado de cada constancia, para decir de un renglón cuándo salió. */
   readonly emisiones?: ReadonlyMap<string, Dc3EmissionSummary> | undefined;
-  /** La página llega con las casillas puestas: lo pide «Marcar esta página». */
   readonly marcados: boolean;
-  /** La cifra de la barra del módulo. */
   readonly porEmitir?: number | undefined;
-  /** Cuántas se emiten de una vez en PDF y en ZIP. */
   readonly topeDeTanda: number;
   readonly topeDeZip: number;
   readonly acuse?: AcuseDeEmision | undefined;
@@ -87,7 +55,6 @@ export interface Dc3PageInput {
   readonly error?: string | undefined;
 }
 
-/** Lo que cada situación es, dicho como título de la lista. */
 const TITULOS: Readonly<Record<Dc3PlanTab, string>> = {
   listos: "Listas para emitir",
   incompletos: "Con datos por completar",
@@ -159,7 +126,6 @@ function renderBandeja(input: Dc3PageInput): Html {
   `;
 }
 
-/** La dirección de la lista tal como está: adonde vuelve una emisión. */
 function direccionActual(input: Dc3PageInput): string {
   return enlaceDeEmision(input.selected, {
     pestana: input.pestana,
@@ -169,7 +135,6 @@ function direccionActual(input: Dc3PageInput): string {
   });
 }
 
-/** Los filtros ya puestos, como campos ocultos de un formulario que los conserva. */
 function camposDeFiltros(selected: FiltrosDc3, conArea: boolean): Html {
   return html`
     ${selected.query ? html`<input type="hidden" name="q" value="${selected.query}" />` : ""}
@@ -193,14 +158,6 @@ function camposDeFiltros(selected: FiltrosDc3, conArea: boolean): Html {
   `;
 }
 
-/**
- * Los filtros como opciones con su cifra.
- *
- * Cada grupo cuenta con los demás filtros puestos y el suyo quitado: con «Años
- * anteriores» elegido, las situaciones dicen cuántas hay de esos años en cada
- * una, y el periodo dice cuántas hay en la situación abierta. Así una opción
- * elegida no deja a sus hermanas en cero.
- */
 function renderFacetas(input: Dc3PageInput): Html {
   const { selected, pestana, orden, plan } = input;
   const destino = { pestana, orden };
@@ -289,8 +246,6 @@ function renderFacetas(input: Dc3PageInput): Html {
     </div>
 
     <form method="GET" action="/dc3" class="faceta faceta-formulario">
-      <!-- Lo que ya está puesto viaja con el formulario: elegir un área no
-           debe devolver la lista a la pestaña de siempre. -->
       ${pestana !== "listos" ? html`<input type="hidden" name="pestana" value="${pestana}" />` : ""}
       <input type="hidden" name="orden" value="${orden}" />
       ${camposDeFiltros(selected, false)}
@@ -380,7 +335,6 @@ function renderCabeceraDeLista(input: Dc3PageInput): Html {
   </header>`;
 }
 
-/** Lo que hay que saber de la lista antes de emitir, una vez y no en cada renglón. */
 function renderNotas(input: Dc3PageInput): Html {
   const notas: Html[] = [];
   if (ocupacionComun(input)) {
@@ -409,11 +363,6 @@ function renderNotas(input: Dc3PageInput): Html {
   return html`${notas}`;
 }
 
-/**
- * Si a todos los renglones de la situación abierta les falta la ocupación.
- * Entonces el dato no distingue a nadie y se dice una vez arriba, en vez de
- * repetirse como ficha en cada renglón.
- */
 function ocupacionComun(input: Dc3PageInput): boolean {
   const plan = input.plan;
   if (!plan || input.pestana === "sin-curso") return false;
@@ -463,13 +412,6 @@ function renderLista(input: Dc3PageInput): Html {
     ${renderConfirmacionDeLista(input, volver)}`;
 }
 
-/**
- * Un renglón de la bandeja.
- *
- * La casilla va primero porque es lo que convierte la lista en una selección.
- * El nombre lleva al expediente DC-3 de la persona —todas sus constancias en
- * una pantalla— y no a la ficha general, que está a un paso desde ahí.
- */
 function renderRenglon(fila: Dc3Candidate, input: Dc3PageInput, sinOcupacionComun: boolean): Html {
   const clave = claveDeRenglon(fila);
   const cola = `${encodeURIComponent(fila.workerNumber)}/${encodeURIComponent(fila.courseKey)}`;
@@ -542,14 +484,6 @@ function renderRenglon(fila: Dc3Candidate, input: Dc3PageInput, sinOcupacionComu
   </tr>`;
 }
 
-/**
- * La advertencia de un renglón, encima de la lista.
- *
- * Emitir registra la constancia y eso no se deshace, así que se pregunta antes;
- * pero preguntar no cuesta una pantalla. Vive fuera del formulario de la lista
- * porque un formulario no puede ir dentro de otro, y el `popover` se dibuja en
- * la capa superior esté donde esté en el documento.
- */
 function renderConfirmacion(fila: Dc3Candidate, input: Dc3PageInput, volver: string): Html {
   const clave = claveDeRenglon(fila);
   const id = idDeClave("emitir", clave);
@@ -599,7 +533,6 @@ function renderConfirmacion(fila: Dc3Candidate, input: Dc3PageInput, volver: str
   </div>`;
 }
 
-/** La advertencia de «Emitir todas», con los filtros de la lista. */
 function renderConfirmacionDeLista(input: Dc3PageInput, volver: string): Html {
   if (input.total === 0 || input.total > input.topeDeTanda) return html``;
 
@@ -659,7 +592,6 @@ function renderConfirmacionDeLista(input: Dc3PageInput, volver: string): Html {
   </div>`;
 }
 
-/** El pie de la tabla: marcar la página y dónde se está. */
 function renderPieDeTabla(input: Dc3PageInput): Html {
   const paginas = Math.max(1, Math.ceil(input.total / input.porPagina));
   const hayRenglones = input.candidates.length > 0;
@@ -718,13 +650,6 @@ function renderPieDeTabla(input: Dc3PageInput): Html {
   </div>`;
 }
 
-/**
- * La barra de lo marcado.
- *
- * Aparece sola al marcar el primer renglón y se pega al borde inferior de la
- * ventana mientras se recorre la lista. La cifra la pone un contador de CSS
- * que suma las casillas marcadas; el marcado sólo le deja el sitio.
- */
 function renderBarraDeSeleccion(input: Dc3PageInput): Html {
   if (input.candidates.length === 0) return html``;
   return html`<div class="barra-seleccion" role="group" aria-label="Constancias marcadas">
@@ -749,11 +674,6 @@ function renderBarraDeSeleccion(input: Dc3PageInput): Html {
   </div>`;
 }
 
-/**
- * La lista en CSV, con los filtros puestos y sin tope de página. No lleva CURP:
- * el archivo acaba en una carpeta compartida, y lo que hace falta ahí es a
- * quién le toca, no su dato personal.
- */
 function botonDeCsv(input: Dc3PageInput): Html {
   const destino = enlaceDeEmision(input.selected, {
     pestana: input.pestana,

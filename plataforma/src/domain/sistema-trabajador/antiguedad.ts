@@ -1,7 +1,3 @@
-/**
- * Cálculo determinista de antigüedad laboral a partir de hireDate.
- */
-
 import type { SeniorityCalculation } from "./tipos.ts";
 
 export function calculateSeniority(
@@ -47,7 +43,6 @@ export function calculateSeniority(
 
   if (days < 0) {
     months -= 1;
-    // Días del mes anterior
     const prevMonthDays = new Date(
       Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 0),
     ).getUTCDate();

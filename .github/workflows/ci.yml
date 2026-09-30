@@ -1,7 +1,5 @@
 name: CI
 
-# Node 24 es el runtime destino. Las máquinas de desarrollo pueden correr una
-# versión mayor; ésta es la única corrida que acredita la 24.
 on:
   push:
     branches: ["main", "trabajo/**"]
@@ -26,10 +24,6 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      # No se prepara `referencias/`: las fuentes con datos personales están
-      # ignoradas por Git y no existen en un clon, así que la suite tiene que
-      # correr sin ellas. Crear la carpeta aquí taparía una prueba que
-      # dependiera de que otra la creó antes.
       - name: Ninguna fuente con datos personales quedó rastreada
         run: |
           set -e
@@ -58,9 +52,6 @@ jobs:
       - name: Analizador del cliente VBA
         run: npm run check:vba
 
-      # Comprueba que la imagen de producción contendría todo lo que el proceso
-      # importa. Sin esto, un import nuevo hacia un módulo fuera de `app/` sólo
-      # se detectaría al arrancar el contenedor.
       - name: Cierre de imports de la imagen
         run: npm run check:imagen
 
@@ -75,8 +66,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Construir la imagen es la única forma de acreditar el Dockerfile. No se
-      # publica: sólo se comprueba que arma.
       - name: Construir la imagen de producción
         run: docker build -f infra/docker/Dockerfile -t kcm-cap:ci .
 

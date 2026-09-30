@@ -1,21 +1,4 @@
 #!/usr/bin/env node
-/**
- * Cierre de la corrida piloto: reconstruye todos los esquemas de la plataforma
- * desde cero (ver `ESQUEMAS`).
- *
- * No borra fila por fila. Auditoria, liberaciones, acuses e historial de
- * sobrescritura son append-only y sus triggers rechazan DELETE y TRUNCATE por
- * diseno, asi que el unico cierre valido es tirar los esquemas y reaplicar
- * las migraciones. Ver `database/RESET.md`.
- *
- * Exige `KCM_ADMIN_DATABASE_URL`: la cadena del rol `postgres` del proyecto,
- * no la de `kcm_app`. `kcm_app` es NOBYPASSRLS y no puede tirar un esquema ni
- * crear roles, que es exactamente el punto de que exista.
- *
- * Uso:
- *   npm run db:reset -- --dry-run   # lista el plan, no toca la base
- *   npm run db:reset -- --confirmo  # ejecuta
- */
 
 import { createRequire } from "node:module";
 import process from "node:process";
@@ -33,11 +16,6 @@ import {
 
 const require = createRequire(import.meta.url);
 
-/**
- * Todo lo que crean las migraciones. `kcm` y `kcm_lectura` son los nombres que
- * tenian `comun` y `lectura` antes de `0043`: se incluyen para poder cerrar
- * tambien una base que se quedo antes de esa migracion.
- */
 const ESQUEMAS = [
   "lectura",
   "organizacion",
@@ -87,15 +65,10 @@ async function main() {
     console.log("Tirando esquemas...");
     await client.query(`DROP SCHEMA IF EXISTS ${ESQUEMAS.join(", ")} CASCADE`);
 
-    // El historial de Supabase quedaria describiendo una base que ya no existe.
     await client.query(
       "DELETE FROM supabase_migrations.schema_migrations WHERE name LIKE '00%' OR name IN ('journal_liberacion_marca_firmada','permisos_nonce_puente_app','credenciales_excel_sin_vencimiento')",
     );
 
-    // `kcm_app` es un rol de cluster y sobrevive al DROP, asi que `0029` salta
-    // su CREATE ROLE y la contrasena vigente sigue sirviendo. Se declara de
-    // todos modos por si alguien reconstruye contra una base donde el rol no
-    // existe todavia.
     await declararContrasenaDeApp(client, process.env.KCM_APP_PASSWORD);
 
     const pendientes = [];

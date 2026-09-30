@@ -1,4 +1,3 @@
-/** Punto de entrada HTML Service y despachador explicito de operaciones. */
 function doGet(event) {
   var requestedView = event && event.parameter ? String(event.parameter.view || "") : "";
   var kioskView = requestedView === "kiosk";

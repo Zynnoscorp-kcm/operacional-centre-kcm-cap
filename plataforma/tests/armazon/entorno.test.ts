@@ -3,11 +3,6 @@ import { describe, it } from "node:test";
 
 import { ConfigError, loadConfig, requireSecret } from "../../src/config/environment.ts";
 
-/**
- * Una configuración de producción exige base de datos: sin ella la plataforma
- * perdería asistencias, liberaciones y auditoría al reiniciar. Las pruebas de
- * producción declaran una URI válida para ejercitar el resto de las reglas.
- */
 const BD = "postgresql://u:p@localhost:5432/postgres";
 
 describe("configuración por entorno", () => {
@@ -47,8 +42,6 @@ describe("configuración por entorno", () => {
   });
 
   it("rechaza notaciones que Number() aceptaría en silencio", () => {
-    // `Number("1e4")` es 10000 y pasa `Number.isInteger`. En un puerto eso es un
-    // error de captura, no una notación alternativa.
     for (const puerto of ["1e4", "0x2000", "+8080", "Infinity", "8_080"]) {
       assert.throws(() => loadConfig({ KCM_PORT: puerto }), ConfigError, `aceptó ${puerto}`);
     }
@@ -105,8 +98,6 @@ describe("configuración por entorno", () => {
   });
 
   it("rechaza una cuenta de saltos que no es entero o se sale del rango", () => {
-    // `true` se rechaza a propósito: es la forma que confía en la cadena entera
-    // de `x-forwarded-for`, y esa cadena la empieza a escribir quien llama.
     for (const valor of ["true", "sí", "-1", "11", "1.5", "1e1"]) {
       assert.throws(() => loadConfig({ KCM_TRUST_PROXY: valor }), ConfigError, `aceptó ${valor}`);
     }

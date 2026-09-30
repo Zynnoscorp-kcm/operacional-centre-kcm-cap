@@ -1,23 +1,3 @@
-/**
- * Adaptador PostgreSQL de Liberación (Función 5).
- *
- * Implementa los dos puertos: el journal durable y el destino. Es la pieza que
- * hace que liberar en la plataforma aparezca en `RELEASE_PULL_V1`, porque el
- * efecto queda en `matriz.liberacion` y el pull lo lee desde ahí.
- *
- * Tres invariantes que aquí no son estilo sino contrato:
- *
- * 1. Nada entra al historial sin que Excel lo confirme. `applyWrites` sólo
- *    encola en `matriz.liberacion`; el registro vigente y el rastro de la
- *    sobrescritura se crean con el acuse efectivo, en una transacción y con el
- *    rastro antes que el valor.
- * 2. Un registro vigente por par. El índice parcial de `registro_hc` lo
- *    impone; la sobrescritura cierra el vigente y agrega otro, no lo edita.
- * 3. El bloqueo es del servidor. `withLock` usa `pg_advisory_xact_lock`, así
- *    que dos procesos de Node liberando la misma sesión se serializan de verdad;
- *    un candado en memoria sólo protegería dentro de un proceso.
- */
-
 import { createHash, randomUUID } from "node:crypto";
 
 import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
@@ -45,7 +25,6 @@ import { SupabaseKioskSessionRepository } from "./quiosco.ts";
 function iso(valor: string | Date): string {
   return new Date(valor).toISOString();
 }
-/** `String()` sobre `unknown` puede rendir `[object Object]`; esto acota el valor. */
 function texto(valor: unknown, porOmision = ""): string {
   if (valor === null || valor === undefined) return porOmision;
   return typeof valor === "string" ? valor : String(valor as string | number | boolean);
@@ -56,7 +35,6 @@ function fecha(valor: string | Date): string {
 
 export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixWritePort {
   readonly #db: SqlExecutor;
-  /** Sesiones y asistencias ya tienen adaptador; se reutiliza en vez de duplicar su mapeo. */
   readonly #kiosk: SupabaseKioskSessionRepository;
 
   constructor(db: SqlExecutor) {
@@ -76,8 +54,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     if (!id) throw new Error(`No fue posible resolver el actor ${identificador}`);
     return id;
   }
-
-  // ----------------------------------------------------------- sesión y asistencias
 
   getSessionById(sessionId: string): Promise<SessionRecord | null> {
     return this.#kiosk.getSessionById(sessionId);
@@ -131,8 +107,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     });
   }
 
-  // ------------------------------------------------------------- destino declarado
-
   async findActiveMapping(trainingId: string): Promise<readonly MatrixMapping[]> {
     const { rows } = await this.#db.query<{
       clave_curso: string;
@@ -166,8 +140,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     }));
   }
 
-  // -------------------------------------------------------------------- journal
-
   #mapBatch(r: Record<string, unknown>): ReleaseBatch {
     const resultados = r["resultados"] as { plan?: string; results?: string } | null;
     return {
@@ -179,14 +151,10 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
       plan: resultados?.plan ?? "",
       journalMac: texto(r["firma_hmac"]),
       results: resultados?.results ?? "",
-      // `comun.fase_liberacion` no tiene CONFLICTO: al guardar se escribe
-      // PENDIENTE con estado CONFLICTO. Sin reconstruirla aquí, un lote en
-      // conflicto se leía como abierto y bloqueaba cualquier liberación nueva de
-      // la sesión con «reintente con su requestId original».
       phase: (r["estado"] === "CONFLICTO" ? "CONFLICTO" : r["fase"]) as ReleaseBatch["phase"],
       status: r["estado"] as ReleaseBatch["status"],
       sessionOutcome: (r["resultado_sesion"] ?? null) as ReleaseBatch["sessionOutcome"],
-      overwriteReason: texto(r["motivo_sobrescritura"], ""), // columna propia desde 0028
+      overwriteReason: texto(r["motivo_sobrescritura"], ""),
       totalCandidates: Number(r["total_candidatos"]),
       totalWritten: Number(r["total_escritos"]),
       totalConflicts: Number(r["total_conflictos"]),
@@ -227,12 +195,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     return rows.map((r) => this.#mapBatch(r));
   }
 
-  /**
-   * `plan` y `results` son documentos del dominio y viajan juntos en la columna
-   * `resultados`. Separarlos en columnas propias obligaría a migrar el esquema
-   * cada vez que el plan gane un campo, y el journal ya está autenticado por
-   * `firma_hmac`: lo que protege su contenido es el HMAC, no la forma.
-   */
   async insertBatch(batch: ReleaseBatch): Promise<ReleaseBatch> {
     const creador = await this.#actorId(batch.createdBy);
     await this.#db.query(
@@ -299,8 +261,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     return batch;
   }
 
-  // --------------------------------------------------------------------- efectos
-
   #mapEffect(r: Record<string, unknown>): ReleaseEffect {
     return {
       releaseId: texto(r["liberacion_id"]),
@@ -321,11 +281,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     };
   }
 
-  /**
-   * El acuse del puente no vive en `matriz.liberacion` —es un ledger append-only—
-   * sino en `acuse_liberacion_vba`. El estado se deriva al leer: si hay acuse
-   * efectivo, ése manda; si no, el efecto sigue pendiente de Excel.
-   */
   readonly #seleccionEfecto = `
     SELECT l.*, t.numero_trabajador, c.clave_curso, lote.solicitud_id AS solicitud_lote,
            COALESCE(
@@ -390,8 +345,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     return rows.map((r) => this.#mapEffect(r));
   }
 
-  // ------------------------------------------------------------------- auditoría
-
   recordAudit(event: Omit<AuditEventRecord, "eventId" | "occurredAt">): Promise<AuditEventRecord> {
     return this.#kiosk.recordAudit(event);
   }
@@ -405,11 +358,7 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     return eventos[0] ?? null;
   }
 
-  // ------------------------------------------------- destino: réplica consultable
-
   async getHcRecord(workerNumber: WorkerNumber, trainingId: string): Promise<HcRecord | null> {
-    // Primero lo liberado que Excel todavía no confirma: para el journal y para
-    // la siguiente liberación del mismo par, esa fecha ya ocupa la celda.
     const pendiente = await this.#db.query<Record<string, unknown>>(
       `SELECT l.liberacion_id, l.clave_idempotencia, l.fecha_efectiva, l.version_mapeo,
               l.lote_id, l.marcador, l.sesion_id, l.creada_en, lo.solicitud_id
@@ -497,20 +446,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     return rows.length > 0;
   }
 
-  /**
-   * Deja las fechas del lote en la cola de Excel, sin tocar el historial.
-   *
-   * La fecha no entra a `operacion.historial_capacitacion` al liberar: entra
-   * cuando Excel confirma que la escribió en la matriz (`materializeReleases`
-   * del adaptador de Excel). Mientras tanto vive sólo en `matriz.liberacion`,
-   * que es lo que `RELEASE_PULL_V1` entrega, y `getHcRecord` la presenta como
-   * vigente para que el journal del lote la reconozca como efecto propio. Así
-   * una fecha que Excel no pudo escribir —trabajador ausente, nombre distinto,
-   * fecha más reciente— nunca aparece como tomada en la DC-3 ni en la ficha.
-   *
-   * La sobrescritura se asienta también al confirmarse: el motivo queda en el
-   * lote y la fecha anterior es la vigente en ese momento.
-   */
   async applyWrites(operations: readonly MatrixWriteOperation[]): Promise<void> {
     if (operations.length === 0) return;
     await this.#db.transaction(async (tx) => {
@@ -580,13 +515,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     }));
   }
 
-  // --------------------------------------------------------------------- bloqueo
-
-  /**
-   * Candado consultivo del servidor, tomado dentro de la transacción y liberado
-   * con ella. La clave se reduce a 64 bits con SHA-256 porque
-   * `pg_advisory_xact_lock` recibe un entero, no texto.
-   */
   async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const digest = createHash("sha256").update(key).digest();
     const clave = digest.readBigInt64BE(0);
@@ -596,7 +524,6 @@ export class SupabaseReleaseRepository implements ReleaseRepositoryPort, MatrixW
     });
   }
 
-  /** Identidad para efectos nuevos cuando el servicio no la trae. */
   static nuevoId(): string {
     return randomUUID();
   }

@@ -50,8 +50,6 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     assert.match(res.payload, /01234/);
     assert.match(res.payload, /JUAN PÉREZ GARCÍA/);
     assert.match(res.payload, /GERENCIA DE MANTTO\./);
-    // El encabezado de cada columna coincide con lo que la columna trae: la
-    // nómina va primero, y la fecha de ingreso se lee, no se descifra.
     const encabezados = [...res.payload.matchAll(/<th scope="col">([^<]+)<\/th>/gu)].map(
       (m) => m[1],
     );
@@ -65,7 +63,6 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     ]);
     assert.match(res.payload, /15 mar 2018/u);
     assert.doesNotMatch(res.payload, /2018-03-15/u);
-    // El nombre lleva a la ficha; no hace falta un botón aparte por renglón.
     assert.match(res.payload, /<a class="persona-nombre" href="\/trabajadores\/01234">/u);
   });
 
@@ -125,10 +122,8 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     assert.match(res.payload, /Avance por departamento/);
     assert.match(res.payload, /GERENCIA DE MANTTO\./);
     assert.match(res.payload, /OPERACION CONVERTIDORA/);
-    // Quien no tiene departamento se dice en palabras, no con la clave de la base.
     assert.match(res.payload, /Sin departamento/);
     assert.doesNotMatch(res.payload, /SIN_DEPARTAMENTO/);
-    // Cada departamento lleva su barra de avance y la cuenta escrita al lado.
     assert.match(res.payload, /class="avance-lienzo"/u);
     assert.match(res.payload, /<strong>0<\/strong>\/18/u);
   });
@@ -145,18 +140,12 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     assert.equal(res.statusCode, 200);
     assert.match(res.payload, /Cobertura por curso/);
     assert.match(res.payload, /BUENAS PRACTICAS DE MANUFACTURA/);
-    // Sin claves internas ni el nivel de la regla en inglés: son del catálogo, no
-    // de quien consulta la cobertura.
     assert.doesNotMatch(res.payload, /kcm-course:/u);
     assert.doesNotMatch(res.payload, />\s*DEPARTMENT\s*</u);
     assert.match(res.payload, /Avance por curso/);
     assert.match(res.payload, /sin\s+trabajadores a los que aplique/u);
   });
 
-  /**
-   * La comparativa de planta repetía las cifras de Departamentos en tarjetas.
-   * Las dos vistas son una; la dirección vieja lleva a la que quedó.
-   */
   it("GET /trabajadores/comparativa lleva a Departamentos", async () => {
     const app = await crearServidor();
 
@@ -197,24 +186,17 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     assert.equal(res.statusCode, 200);
     assert.match(res.payload, /JUAN PÉREZ GARCÍA/);
     assert.match(res.payload, /Nómina 01234/);
-    // Las cuatro cifras de la cabecera, con su palabra.
     for (const rotulo of ["Acreditados", "Por reforzar", "Programados", "Pendientes"]) {
       assert.match(res.payload, new RegExp(`${rotulo}\\s*</dt>`, "u"), rotulo);
     }
     assert.match(res.payload, /Cursos del puesto/);
     assert.match(res.payload, /Trayectoria/);
     assert.match(res.payload, /Constancias DC-3/);
-    // Desde la ficha se llega al expediente DC-3, donde se emite y se reimprime.
     assert.match(res.payload, /href="\/dc3\/trabajador\/01234"/);
-    // La procedencia de cada registro se dice en palabras.
     assert.match(res.payload, /Registro de la matriz de capacitación/);
     assert.match(res.payload, /Sesión liberada en la plataforma/);
   });
 
-  /**
-   * La ficha es para quien consulta a una persona: sin claves internas, sin
-   * niveles de regla en inglés y sin estados en mayúsculas de sistema.
-   */
   it("la ficha no enseña claves ni estados internos", async () => {
     const app = await crearServidor();
     const res = await app.inject({
@@ -235,7 +217,6 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     ]) {
       assert.ok(!res.payload.includes(interno), `la ficha enseña ${interno}`);
     }
-    // Las fechas se leen: «10 feb 2024», no «2024-02-10».
     assert.match(res.payload, /10 feb 2024/u);
   });
 
@@ -266,15 +247,9 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     assert.match(res.payload, /<svg\s+class="dnc-radar-lienzo"/u);
     assert.match(res.payload, /class="dnc-radar-persona"/u);
     assert.doesNotMatch(res.payload, /radialGradient|feGaussianBlur|radar-lente/u);
-    // Sin porcentaje de cumplimiento: se publica cuando el departamento apruebe las reglas.
     assert.doesNotMatch(res.payload, /Avance medio/u);
   });
 
-  /**
-   * El plan del trimestre se retiró de la ficha y del dominio: era la tabla de
-   * cursos por atender con una prioridad y un trimestre que la plataforma
-   * inventaba, sin respaldo en la base y sin quien los aprobara.
-   */
   it("la ficha ya no promete un plan del trimestre", async () => {
     const app = await crearServidor();
     const res = await app.inject({
@@ -368,7 +343,6 @@ describe("Función 8: Sistema General por Trabajador (Integración Web)", () => 
     });
 
     assert.equal(res.statusCode, 200);
-    // La sección activa en el lateral es Trabajadores, no la vista concreta.
     assert.match(res.payload, /href="\/trabajadores"\s+aria-current="page"/u);
     for (const vista of [
       "/trabajadores/cursos",

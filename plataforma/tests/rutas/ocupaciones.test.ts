@@ -1,11 +1,3 @@
-/**
- * Ocupaciones: la API que conduce la clasificación caso por caso y la pantalla.
- *
- * El agente es un doble y ninguna prueba gasta cupo de un modelo. El padrón es
- * un XLSX sintético de verdad, leído por el mismo extractor que en producción:
- * el plan y la escritura dependen de las celdas reales del libro.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -143,9 +135,7 @@ describe("Ocupaciones · pantalla", () => {
     assert.match(res.body, /<form class="formulario" id="form-clasificar">/u);
     assert.match(res.body, /4,737 ocupaciones del catálogo/u);
     assert.match(res.body, /<script src="\/assets\/ocupaciones-[a-z]+\.js"><\/script>/u);
-    // La lista de «Cómo funciona» se quitó, y con ella la promesa de dos modelos.
     assert.doesNotMatch(res.body, /Cómo funciona|Flujo de clasificación|dos modelos/u);
-    // Sin búsqueda no hay tabla de resultados.
     assert.doesNotMatch(res.body, /N\.º STPS/u);
   });
 
@@ -176,7 +166,6 @@ describe("Ocupaciones · pantalla", () => {
     const res = await abrir("/ocupaciones?subarea=05.5");
     assert.match(res.body, /Se muestran 60 de 230/u);
     assert.match(res.body, /<option value="05\.5" selected>/u);
-    // Una subárea que no existe se ignora en vez de romper la pantalla.
     const rara = await abrir("/ocupaciones?subarea=99.9");
     assert.equal(rara.statusCode, 200);
     assert.doesNotMatch(rara.body, /Se muestran/u);
@@ -197,8 +186,6 @@ describe("Ocupaciones · pantalla", () => {
     assert.equal(plan.statusCode, 503);
   });
 });
-
-// --------------------------------------------------------- el padrón sintético
 
 const armarZip = buildZip as (entradas: readonly (readonly [string, string])[]) => Buffer;
 
@@ -299,7 +286,6 @@ function libro(hojas: Readonly<Record<string, readonly Renglon[]>>): Buffer {
   ]);
 }
 
-/** Dos operarios de Higiénicos sin clave, un supervisor que ya la trae y un mecánico sin ella. */
 const PADRON = libro({
   "SND ACTIVOS": [
     {
@@ -418,7 +404,6 @@ describe("Ocupaciones · clasificación caso por caso", () => {
     assert.equal(plan.trabajadores, 3);
     assert.equal(plan.conClave, 1);
     assert.deepEqual(plan.pendientes, { casos: 0, trabajadores: 0 });
-    // Al navegador sólo vuelven puestos y centros de costos: ni nombres, ni CURP, ni números.
     assert.doesNotMatch(res.body, /PERSONA SINTETICA|HDF|0000[1-4]/u);
   });
 
@@ -455,7 +440,6 @@ describe("Ocupaciones · clasificación caso por caso", () => {
     assert.equal(res.statusCode, 200);
     assert.match(String(res.headers["content-type"]), /spreadsheetml\.sheet/u);
     assert.equal(res.headers["x-kcm-celdas-escritas"], "2");
-    // Una cabecera sólo admite latin-1: el nombre real viaja codificado y el simple, sin acento.
     assert.equal(
       res.headers["content-disposition"],
       `attachment; filename="sem 31 CAPACITACION con ocupaciones.xlsx"; ` +
@@ -491,17 +475,14 @@ describe("Ocupaciones · clasificación caso por caso", () => {
           ]),
         }),
       );
-    // Otro par puesto-centro con el mismo número de caso: sería la celda de otra persona.
     const otroCaso = await intentar({ puesto: "MECANICO" });
     assert.equal(otroCaso.statusCode, 400);
     assert.match(
       otroCaso.json<{ error: { message: string } }>().error.message,
       /no corresponden a los casos de este padrón/u,
     );
-    // Una clave que no existe en el catálogo tampoco pasa.
     const inventada = await intentar({ codigo: "999999999" });
     assert.equal(inventada.statusCode, 400);
-    // Sin claves no hay nada que escribir.
     const vacia = await enviar("/api/ocupaciones/escribir", multiparte(PADRON, { codigos: "[]" }));
     assert.equal(vacia.statusCode, 400);
   });

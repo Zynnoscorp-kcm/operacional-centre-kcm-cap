@@ -1,16 +1,3 @@
-/**
- * Sobrescritura gobernada.
- *
- * Sobrescribir una fecha no está prohibido, pero tampoco es libre: exige
- * historial, actor y motivo. Estas pruebas fijan las cuatro condiciones que la
- * vuelven gobernada y no un permiso abierto:
- *
- * 1. La política del destino declarado la habilita; ninguna otra cosa lo hace.
- * 2. Sin motivo capturado no hay sobrescritura.
- * 3. El historial se persiste antes que el valor nuevo.
- * 4. El valor anterior y su procedencia quedan consultables para siempre.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -51,8 +38,6 @@ function build(policy: OverwritePolicy, hcRecords: readonly HcRecord[]) {
   return { repository, service };
 }
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · la política del destino es la que habilita", () => {
   it("con NO_OVERWRITE una fecha previa bloquea el lote", async () => {
     const { repository, service } = build("NO_OVERWRITE", [buildHcRecord("10001", FECHA_PREVIA)]);
@@ -70,7 +55,6 @@ describe("E10 · la política del destino es la que habilita", () => {
     const bloqueado = outcome.results.find((result) => result.employeeId === "10001");
     assert.equal(bloqueado?.status, "OVERWRITE_NOT_ALLOWED");
 
-    // Ni un motivo válido cambia la política declarada del destino.
     const registro = await repository.getHcRecord(parseWorkerNumber("10001"), TRAINING_ID);
     assert.equal(registro?.completionDate, FECHA_PREVIA);
     assert.equal(repository.getAllHistory().length, 0);
@@ -101,8 +85,6 @@ describe("E10 · la política del destino es la que habilita", () => {
     assert.equal(registro?.provenance, "SESSION_RELEASE");
   });
 });
-
-// ---------------------------------------------------------------------------
 
 describe("E10 · sin motivo no hay sobrescritura", () => {
   it("una fecha más reciente no detiene la liberación: se reemplaza con motivo e historial", async () => {
@@ -181,13 +163,9 @@ describe("E10 · sin motivo no hay sobrescritura", () => {
     assert.equal(preview.overwriteRequiresReason, true);
     assert.equal(preview.counts.overwrites, 1);
     assert.equal(preview.atomicBatchReady, false);
-    // Pero no deja la pantalla en cero: el lote se ve completo para poder
-    // capturar el motivo y liberar.
     assert.equal(preview.counts.included, 2);
   });
 });
-
-// ---------------------------------------------------------------------------
 
 describe("E10 · el historial se escribe antes que el valor", () => {
   it("registra el historial primero y el registro después", async () => {
@@ -250,8 +228,6 @@ describe("E10 · el historial se escribe antes que el valor", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · el historial es consultable y conserva el hecho", () => {
   it("guarda valor anterior, procedencia, actor, motivo y momento", async () => {
     const { repository, service } = build("OVERWRITE_WITH_HISTORY", [
@@ -303,7 +279,6 @@ describe("E10 · el historial es consultable y conserva el hecho", () => {
       CAPACITACION,
     );
 
-    // Una segunda sesión del mismo curso vuelve a tocar la misma celda.
     const segundaSesion = buildSession({
       sessionId: "SES-0002",
       sessionCode: "KCM-260820-BBBBBB",
@@ -326,7 +301,6 @@ describe("E10 · el historial es consultable y conserva el hecho", () => {
     );
     assert.equal(historial.length, 2);
 
-    // Del más reciente al más antiguo: la cadena completa sigue reconstruible.
     assert.equal(historial[0]?.previousCompletionDate, SESSION_DATE);
     assert.equal(historial[0]?.completionDate, "2026-08-20");
     assert.equal(historial[0]?.previousProvenance, "SESSION_RELEASE");

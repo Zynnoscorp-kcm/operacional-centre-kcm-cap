@@ -1,12 +1,3 @@
-/**
- * Las dos pantallas que miran la base por dentro: el registro de campos y el
- * previsualizador.
- *
- * Las dos dicen en su encabezado lo que no hacen, y no es modestia: quien
- * abre «Campos» esperando un `ALTER TABLE` y quien abre «Explorador» esperando
- * editar un renglón necesitan saberlo antes de intentarlo, no después.
- */
-
 import type { AppConfig } from "../../config/environment.ts";
 import {
   ORIGENES_DE_CAMPO,
@@ -19,10 +10,6 @@ import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
 const SIN_BASE = "Sin conexión con la base de datos: no hay tablas que consultar.";
-
-// -----------------------------------------------------------------------------
-// Campos declarados
-// -----------------------------------------------------------------------------
 
 export function renderDeclaredFieldsPage(input: {
   readonly config: AppConfig;
@@ -175,10 +162,6 @@ function renderCampo(campo: DeclaredField, requiereSesion: boolean): Html {
     </td>
   </tr>`;
 }
-
-// -----------------------------------------------------------------------------
-// Previsualizador
-// -----------------------------------------------------------------------------
 
 export function renderTableCatalogPage(input: {
   readonly config: AppConfig;

@@ -1,12 +1,3 @@
-/**
- * Cobertura DNC: cuántos cursos exigibles tiene cubiertos cada trabajador.
- *
- * Arriba, el estado de los datos: se mira después de cargar una matriz o un
- * padrón nuevos, y contesta si las fuentes cuadran. Una CURP faltante o un
- * trabajador sin cursos asignados delata un archivo desalineado. Debajo, la
- * lista por trabajador con sus filtros.
- */
-
 import type { EnvironmentName } from "../../../config/environment.ts";
 import type { DncCoverageRow, DncReconciliation } from "../../../ports/sistema-trabajador.port.ts";
 import { fechaCorta } from "../../kit/fechas.ts";
@@ -28,7 +19,6 @@ export interface DatosCoberturaDnc {
   readonly entorno: EnvironmentName;
 }
 
-/** Tope de renglones que devuelve la consulta del tablero. */
 const TOPE_DE_RENGLONES = 2000;
 
 function renderOpciones(valores: readonly string[], elegido?: string): Html {

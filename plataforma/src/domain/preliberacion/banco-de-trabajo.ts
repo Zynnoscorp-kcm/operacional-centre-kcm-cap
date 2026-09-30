@@ -1,18 +1,3 @@
-/**
- * Banco de trabajo de preliberación — operaciones con mutación de estado.
- *
- * Banco de trabajo de preliberación y reconciliación de exámenes.
- * Cada operación que muta es serializada con lock, idempotente por requestId
- * y deja auditoría antes de persistir.
- *
- * Invariantes de E9:
- * - Guardar NO cambia el estado de la sesión
- * - Excluir exige motivo
- * - Una asistencia ya liberada no admite exclusión
- * - Alta manual idempotente por requestId, rechaza duplicados
- * - Transiciones bloqueadas, idempotentes y auditadas
- */
-
 import { randomUUID } from "node:crypto";
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { PreReleaseRepositoryPort } from "../../ports/preliberacion.port.ts";
@@ -71,23 +56,12 @@ export class WorkbenchService {
     this.clock = deps.clock;
   }
 
-  // -----------------------------------------------------------------------
-  // Consultas
-  // -----------------------------------------------------------------------
-
-  /** Abre el workbench para una sesión revisable. */
   async open(sessionId: string): Promise<WorkbenchState> {
     const session = await this.requireSession(sessionId);
     this.assertReviewable(session);
     return this.buildState(session);
   }
 
-  /**
-   * Abre el banco en la modalidad que corresponda a la etapa: editable mientras
-   * la sesión se revisa, sólo lectura una vez que pasó a la bandeja de
-   * liberación. Es lo que usa la pantalla, que no debería tener que adivinar
-   * cuál de los dos caminos tomar ni provocar un error para averiguarlo.
-   */
   async openForStage(sessionId: string): Promise<WorkbenchState> {
     const session = await this.requireSession(sessionId);
     if (session.status === RELEASE_QUEUE_STATUS) {
@@ -98,7 +72,6 @@ export class WorkbenchService {
     return this.buildState(session);
   }
 
-  /** Vista de sólo lectura desde la bandeja de liberación. */
   async releaseReview(sessionId: string): Promise<WorkbenchState> {
     const session = await this.requireSession(sessionId);
     if (session.status !== RELEASE_QUEUE_STATUS) {
@@ -108,16 +81,10 @@ export class WorkbenchService {
     return { ...state, editable: false, releaseAvailable: false };
   }
 
-  /**
-   * Bandeja de revisión: sesiones en etapa revisable. Devuelve encabezados, nunca
-   * el padrón, para que la lista inicial no exponga identidades que la vista no
-   * necesita.
-   */
   async listEditableSessions(identity: ActorIdentity): Promise<readonly SessionHeader[]> {
     return this.listSessionHeaders(EDITABLE_STATUSES, identity);
   }
 
-  /** Bandeja de liberación: lo que ya pasó la revisión y espera a la función 5. */
   async listReleaseQueue(identity: ActorIdentity): Promise<readonly SessionHeader[]> {
     return this.listSessionHeaders([RELEASE_QUEUE_STATUS], identity);
   }
@@ -128,8 +95,6 @@ export class WorkbenchService {
   ): Promise<readonly SessionHeader[]> {
     const sessions = await this.repo.listSessionsByStatuses(statuses);
 
-    // Un capacitador sólo ve lo que él creó. Los demás roles de revisión ven la
-    // bandeja completa.
     const visible =
       identity.role === "CAPACITADOR"
         ? sessions.filter((s) => s.createdBy === identity.actor)
@@ -152,17 +117,6 @@ export class WorkbenchService {
       .slice(0, MAX_LISTED_SESSIONS);
   }
 
-  // -----------------------------------------------------------------------
-  // Mutaciones
-  // -----------------------------------------------------------------------
-
-  /**
-   * Guarda la revisión completa en una sola operación serializada.
-   * Idempotente por sesión: la fila de revisión se reemplaza.
-   * El rastro de cada cambio queda en auditoría.
-   *
-   * INVARIANTE: Guardar NO cambia el estado de la sesión.
-   */
   async save(input: SaveReviewInput, identity: ActorIdentity): Promise<WorkbenchState> {
     const sessionId = this.requireIdentifier(input.sessionId, "sessionId");
     const requestId = this.requireIdentifier(input.requestId, "requestId");
@@ -184,7 +138,6 @@ export class WorkbenchService {
       const auditInputs: Omit<AuditEventRecord, "eventId" | "occurredAt">[] = [];
       const attendancePatches = new Map<string, Partial<AttendanceRecord>>();
 
-      // Apply exam outcomes
       for (const entry of outcomes) {
         const attendance = attendances.find((a) => String(a.workerNumber) === entry.employeeId);
         if (!attendance) continue;
@@ -211,7 +164,6 @@ export class WorkbenchService {
         });
       }
 
-      // Apply exclusions
       for (const entry of exclusions) {
         const attendance = attendances.find((a) => String(a.workerNumber) === entry.employeeId);
         if (!attendance) continue;
@@ -221,16 +173,11 @@ export class WorkbenchService {
         )
           continue;
 
-        // INVARIANTE: una asistencia ya liberada no admite exclusión
         if (attendance.released) {
           throw new InvalidPreReleaseStateError("Una asistencia ya liberada no admite exclusión");
         }
 
         const patch = attendancePatches.get(attendance.attendanceId) ?? {};
-        // Reincorporar limpia motivo, actor y momento con cadena vacía, no
-        // borrando el campo: dejar el actor de la exclusión anterior sobre una
-        // fila ya reincorporada haría ver responsable a quien ya no lo es. El
-        // hecho no se pierde, queda en el asiento de auditoría.
         attendancePatches.set(attendance.attendanceId, {
           ...patch,
           excludedFromRelease: entry.excluded,
@@ -255,7 +202,6 @@ export class WorkbenchService {
         });
       }
 
-      // Confirm attendance proof for all with validated identity
       for (const attendance of attendances) {
         if (!attendance.identityValidated || attendance.attendanceProven || attendance.released)
           continue;
@@ -282,7 +228,6 @@ export class WorkbenchService {
         });
       }
 
-      // Persist attendance updates
       if (attendancePatches.size > 0) {
         const updates = Array.from(attendancePatches.entries()).map(([id, upd]) => ({
           attendanceId: id,
@@ -291,7 +236,6 @@ export class WorkbenchService {
         await this.repo.updateManyAttendances(updates);
       }
 
-      // Rebuild roster after patches
       const refreshedAttendances = await this.repo.listAttendancesBySession(sessionId);
       const refreshedRoster = this.buildRoster(refreshedAttendances, session, employees);
       const receivedExams = refreshedRoster.filter(
@@ -301,7 +245,6 @@ export class WorkbenchService {
       const derived = derivedFindings(refreshedRoster, receivedExams);
       const allFindings = derived.concat(declared.filter((c) => !derived.includes(c)));
 
-      // Upsert review record
       const existing = await this.repo.getLatestReview(sessionId);
       const record: PreReleaseReviewRecord = {
         revisionId: existing?.revisionId ?? randomUUID(),
@@ -324,7 +267,6 @@ export class WorkbenchService {
       };
       await this.repo.upsertReview(record);
 
-      // Auditoría
       if (auditInputs.length > 0) {
         await this.repo.recordManyAudits(auditInputs);
       }
@@ -346,10 +288,6 @@ export class WorkbenchService {
     });
   }
 
-  /**
-   * Alta manual de un trabajador en el padrón de la sesión.
-   * Idempotente por requestId; otra solicitud para la misma persona falla.
-   */
   async addWorker(input: AddWorkerInput, identity: ActorIdentity): Promise<WorkbenchState> {
     if (!input || typeof input !== "object") {
       throw new PreReleaseInputError("Solicitud de alta inválida");
@@ -362,7 +300,6 @@ export class WorkbenchService {
       const session = await this.requireSession(sessionId);
       this.assertReviewable(session);
 
-      // Verify worker exists and is active
       const employeeInfo = await this.repo.getEmployeeInfo(employeeId as WorkerNumber);
       if (!employeeInfo || !employeeInfo.active) {
         throw new PreReleaseNotFoundError("El número de nómina no pertenece al padrón activo");
@@ -372,7 +309,6 @@ export class WorkbenchService {
       const existing = attendances.find((a) => String(a.workerNumber) === employeeId);
 
       if (existing) {
-        // Check idempotency — same requestId returns state
         const priorAudit = await this.repo.findAuditEvent({
           sessionId,
           entityType: "Attendance",
@@ -388,12 +324,10 @@ export class WorkbenchService {
         );
       }
 
-      // Check capacity
       if (attendances.length >= 40) {
         throw new PreReleaseCapacityError("La sesión alcanzó el máximo de registros");
       }
 
-      // Check requestId reuse with different employee
       const priorAuditByRequest = await this.repo.findAuditEvent({
         sessionId,
         entityType: "Attendance",
@@ -448,17 +382,12 @@ export class WorkbenchService {
     });
   }
 
-  /**
-   * Confirma la revisión y cambia la sesión a PRELIBERACION.
-   * Idempotente: si ya está en PRELIBERACION, devuelve el estado.
-   */
   async enterPreRelease(sessionId: string, identity: ActorIdentity): Promise<WorkbenchState> {
     const sid = this.requireIdentifier(sessionId, "sessionId");
 
     return this.repo.withLock(`prerelease:state:${sid}`, async () => {
       const session = await this.requireSession(sid);
 
-      // Idempotente
       if (session.status === "PRELIBERACION") {
         return this.buildState(session);
       }
@@ -469,7 +398,6 @@ export class WorkbenchService {
         );
       }
 
-      // Must have a saved review
       const review = await this.repo.getLatestReview(sid);
       if (!review || !review.reviewedAt) {
         throw new InvalidPreReleaseStateError(
@@ -497,17 +425,12 @@ export class WorkbenchService {
     });
   }
 
-  /**
-   * Pasa a LISTA_PARA_LIBERAR.
-   * Requiere: estado PRELIBERACION, sesión autorizada, todos los exámenes clasificados, revisión guardada.
-   */
   async submit(sessionId: string, identity: ActorIdentity): Promise<WorkbenchState> {
     const sid = this.requireIdentifier(sessionId, "sessionId");
 
     return this.repo.withLock(`prerelease:state:${sid}`, async () => {
       const session = await this.requireSession(sid);
 
-      // If already in release queue, return release review
       if (session.status === RELEASE_QUEUE_STATUS) {
         return this.releaseReview(sid);
       }
@@ -531,7 +454,6 @@ export class WorkbenchService {
         );
       }
 
-      // All exams must be classified (no EXAMEN_PENDIENTE)
       const attendances = await this.repo.listAttendancesBySession(sid);
       const pending = attendances.filter(
         (a) => (a.examStatus || "EXAMEN_PENDIENTE") === "EXAMEN_PENDIENTE",
@@ -563,17 +485,12 @@ export class WorkbenchService {
     });
   }
 
-  /**
-   * Retorna de LISTA_PARA_LIBERAR a PRELIBERACION.
-   * Idempotente: si ya está en PRELIBERACION, devuelve el estado.
-   */
   async returnToPreRelease(sessionId: string, identity: ActorIdentity): Promise<WorkbenchState> {
     const sid = this.requireIdentifier(sessionId, "sessionId");
 
     return this.repo.withLock(`prerelease:state:${sid}`, async () => {
       const session = await this.requireSession(sid);
 
-      // Idempotente
       if (session.status === "PRELIBERACION") {
         return this.buildState(session);
       }
@@ -602,7 +519,6 @@ export class WorkbenchService {
     });
   }
 
-  /** Nombre del padrón por nómina, para las advertencias de liberación. */
   async employeeNames(workerNumbers: readonly string[]): Promise<ReadonlyMap<string, string>> {
     const nombres = new Map<string, string>();
     for (const numero of new Set(workerNumbers)) {
@@ -611,10 +527,6 @@ export class WorkbenchService {
     }
     return nombres;
   }
-
-  // -----------------------------------------------------------------------
-  // Internos
-  // -----------------------------------------------------------------------
 
   private assertReviewable(session: SessionRecord): void {
     if (!EDITABLE_STATUSES.includes(session.status)) {
@@ -683,19 +595,12 @@ export class WorkbenchService {
         label: def.label,
         derived: def.derived,
       })),
-      // Sólo las tres alternativas que el revisor puede escoger. `EXAMEN_PENDIENTE`
-      // existe en el registro pero no se ofrece: es el valor de partida, no una
-      // decisión de la revisión.
       examOutcomes: SELECTABLE_EXAM_OUTCOMES.map((code) => ({
         code,
         label: EXAM_OUTCOME_LABELS[code],
       })),
     };
   }
-
-  // -----------------------------------------------------------------------
-  // Validación
-  // -----------------------------------------------------------------------
 
   private requireIdentifier(value: string, field: string): string {
     const trimmed = (value ?? "").trim();
@@ -735,9 +640,6 @@ export class WorkbenchService {
           "La revisión incluye a alguien que no asistió a la sesión",
         );
       }
-      // El cliente sólo puede mandar una de las tres alternativas visibles.
-      // Aceptar `EXAMEN_PENDIENTE` por esta vía dejaría revertir una
-      // clasificación desde el formulario y volvería a abrir el estado inicial.
       if (!SELECTABLE_EXAM_OUTCOMES.includes(entry.examStatus)) {
         throw new PreReleaseInputError("Resultado de examen no válido");
       }

@@ -1,7 +1,3 @@
-/**
- * Quiosco y agenda en dominios propios: desde ellos no se llega a la consola.
- */
-
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";

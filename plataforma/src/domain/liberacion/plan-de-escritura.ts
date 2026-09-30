@@ -1,12 +1,3 @@
-/**
- * Construcción y validación del plan de escritura.
- *
- * Porta `KcmMatrixGateway.plan` y `KcmReleaseService.validatePlan`. El plan es
- * lo único que la fase de efectos consulta: una vez congelado y firmado, ni la
- * preliberación ni el catálogo pueden cambiar lo que se va a escribir sin que
- * la revalidación lo note.
- */
-
 import { ReleaseConflictError, ReleaseInputError } from "./errores.ts";
 import {
   MAX_ENTRIES_PER_BATCH,
@@ -23,10 +14,6 @@ const COLUMN = /^[A-Z]{1,3}$/;
 const MAPPING_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,59}$/;
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
 
-// ---------------------------------------------------------------------------
-// Validadores elementales
-// ---------------------------------------------------------------------------
-
 export function assertIdentifier(value: string, field: string): string {
   const text = String(value ?? "").trim();
   if (!IDENTIFIER.test(text)) {
@@ -35,11 +22,6 @@ export function assertIdentifier(value: string, field: string): string {
   return text;
 }
 
-/**
- * INVARIANTE: el número de trabajador es texto de cinco dígitos y jamás se
- * convierte a número. Se acepta relleno con ceros porque el legado guardaba el
- * valor sin rellenar en algunas hojas, pero nunca se reinterpreta como entero.
- */
 export function assertEmployeeId(value: string): string {
   const text = String(value ?? "")
     .trim()
@@ -62,15 +44,6 @@ export function assertIsoDate(value: string, field = "fecha"): string {
   return text;
 }
 
-// ---------------------------------------------------------------------------
-// Clave idempotente
-// ---------------------------------------------------------------------------
-
-/**
- * Invariante: la clave efectiva concatena sesión, trabajador,
- * capacitación y versión de mapeo. Cambiar cualquiera de los cuatro es un
- * efecto distinto; repetir los cuatro es el mismo efecto.
- */
 export function releaseIdempotencyKey(params: {
   sessionId: string;
   employeeId: string;
@@ -80,11 +53,6 @@ export function releaseIdempotencyKey(params: {
   return [params.sessionId, params.employeeId, params.trainingId, params.mappingVersion].join("|");
 }
 
-// ---------------------------------------------------------------------------
-// Mapeo
-// ---------------------------------------------------------------------------
-
-/** No existe escritura a un destino no declarado, ni con política inventada. */
 export function assertMapping(mapping: MatrixMapping): MatrixMapping {
   const column = String(mapping.destinationColumn ?? "")
     .trim()
@@ -124,7 +92,6 @@ export function assertMapping(mapping: MatrixMapping): MatrixMapping {
   };
 }
 
-/** Dos mapeos son el mismo si coinciden en todo lo que gobierna un efecto. */
 export function sameMapping(left: MatrixMapping, right: MatrixMapping): boolean {
   const fields: readonly (keyof MatrixMapping)[] = [
     "trainingId",
@@ -138,10 +105,6 @@ export function sameMapping(left: MatrixMapping, right: MatrixMapping): boolean 
   ];
   return fields.every((field) => String(left[field]) === String(right[field]));
 }
-
-// ---------------------------------------------------------------------------
-// Construcción
-// ---------------------------------------------------------------------------
 
 export interface PlanCandidate {
   readonly attendanceId: string;
@@ -198,15 +161,6 @@ export function buildWritePlan(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Validación
-// ---------------------------------------------------------------------------
-
-/**
- * Se aplica tanto al plan recién construido como al restaurado del journal. Un
- * plan restaurado pasó por almacenamiento: revalidarlo cuesta microsegundos y
- * es lo único que separa "el journal dice esto" de "esto es aplicable".
- */
 export function validateWritePlan(plan: WritePlan): WritePlan {
   if (!plan || typeof plan !== "object") {
     throw new ReleaseConflictError("El plan de liberación no es válido");
@@ -221,9 +175,6 @@ export function validateWritePlan(plan: WritePlan): WritePlan {
   if (plan.session.date !== completionDate) {
     throw new ReleaseConflictError("El plan de liberación no coincide con la fecha de la sesión");
   }
-  // La guarda se hace sobre una copia `unknown`: un plan restaurado del
-  // journal viene de JSON, así que el tipo declarado es una afirmación, no un
-  // hecho, pero comprobarlo no debe borrar el tipo del resto de la función.
   const rawEntries: unknown = plan.entries;
   if (!Array.isArray(rawEntries) || plan.entries.length < 1) {
     throw new ReleaseConflictError("El plan de liberación no contiene un lote válido");
@@ -267,11 +218,6 @@ export function validateWritePlan(plan: WritePlan): WritePlan {
   return plan;
 }
 
-/**
- * Los resultados guardados en el journal se cotejan contra el plan antes de
- * usarlos. Cada resultado debe corresponder a una entrada, sin sobrar ni
- * faltar ninguna, y sin haber cambiado ningún campo del efecto.
- */
 export function validateResults<T extends { idempotencyKey: string; status: string }>(
   plan: WritePlan,
   results: readonly T[],

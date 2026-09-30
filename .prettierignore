@@ -1,6 +1,3 @@
-# El formateador sólo toca la plataforma. Los módulos compartidos de
-# `packages/` y las herramientas de `tools/` son JavaScript puro con su propio
-# estilo, y el cliente VBA no es JavaScript.
 /*
 !/plataforma
 /plataforma/**/*.md

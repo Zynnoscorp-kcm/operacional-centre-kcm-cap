@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-/**
- * Verificaciones de proyecto que ESLint no cubre.
- *
- * Revisa las fuentes JavaScript que quedan fuera de la configuracion de ESLint
- * —los paquetes compartidos, el cliente de Excel y las herramientas—, ejecuta
- * el analizador del cliente VBA y aplica dos guardas de datos: que Git no
- * rastree material privado y que ningun numero de trabajador viaje como
- * entero.
- */
 import { readdir, readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 
@@ -47,8 +38,6 @@ for (const file of files.filter((item) => item.endsWith(".js"))) {
   if (result.status !== 0) failures.push(`Sintaxis invalida en ${file}: ${result.stderr.trim()}`);
 }
 
-// El editor de VBA no existe en este entorno; el analizador propio cubre la
-// clase de fallo que si es detectable fuera de Excel.
 const vba = spawnSync(process.execPath, ["tools/check/vba.js"], { encoding: "utf8" });
 if (vba.status !== 0) failures.push(`Analisis VBA con hallazgos:\n${vba.stderr.trim()}`);
 
@@ -61,8 +50,6 @@ if (rastreadoPrivado.stdout.trim()) {
   failures.push(`Git rastrea material privado:\n${rastreadoPrivado.stdout.trim()}`);
 }
 
-// El numero de trabajador es texto de cinco digitos y jamas se convierte a
-// numero: un literal entero en una fuente delata una conversion perdida.
 const suspicious = [];
 for (const file of files.filter((item) => /\.(js|html|json|md)$/.test(item))) {
   const source = await readFile(file, "utf8");

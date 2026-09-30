@@ -1,7 +1,3 @@
-/**
- * Reglas versionadas para derivar la categoría laboral a partir del puesto (position).
- */
-
 import type { DerivedCategory } from "./tipos.ts";
 
 export const CATEGORY_RULE_V1 = {
@@ -23,13 +19,9 @@ export function deriveCategoryFromPosition(position: string | null | undefined):
     };
   }
 
-  // Cada rama de la cadena asigna las dos, incluida la final: darles un valor
-  // aquí sería un inicializador muerto que sugiere un caso por omisión que no
-  // existe.
   let category: DerivedCategory["category"];
   let explanation: string;
 
-  // 1. Gerencial / Superintendencia
   if (
     cleanPos.includes("GERENTE") ||
     cleanPos.includes("SUPERINTENDENTE") ||
@@ -37,9 +29,7 @@ export function deriveCategoryFromPosition(position: string | null | undefined):
   ) {
     category = "GERENCIAL";
     explanation = "Puesto directivo o de gestión de área/departamento";
-  }
-  // 2. Mando medio / Supervisión
-  else if (
+  } else if (
     cleanPos.includes("SUPERVISOR") ||
     cleanPos.includes("COORDINADOR") ||
     cleanPos.includes("FACILITADOR") ||
@@ -48,9 +38,7 @@ export function deriveCategoryFromPosition(position: string | null | undefined):
   ) {
     category = "MANDO_MEDIO";
     explanation = "Mando medio de operación, mantenimiento o calidad";
-  }
-  // 3. Técnico especializado
-  else if (
+  } else if (
     cleanPos.includes("MECANICO") ||
     cleanPos.includes("MECÁNICO") ||
     cleanPos.includes("ELECTRICO") ||
@@ -68,9 +56,7 @@ export function deriveCategoryFromPosition(position: string | null | undefined):
   ) {
     category = "TECNICO";
     explanation = "Personal técnico calificado de mantenimiento o soporte de planta";
-  }
-  // 4. Administrativo y de soporte
-  else if (
+  } else if (
     cleanPos.includes("ANALISTA") ||
     cleanPos.includes("ASISTENTE") ||
     cleanPos.includes("AUXILIAR") ||
@@ -81,9 +67,7 @@ export function deriveCategoryFromPosition(position: string | null | undefined):
   ) {
     category = "ADMINISTRATIVO";
     explanation = "Personal administrativo, de planeación o soporte documental";
-  }
-  // 5. Operativo por omisión
-  else {
+  } else {
     category = "OPERATIVO";
     explanation = "Personal operativo directo de máquinas, líneas de conversión o almacén";
   }

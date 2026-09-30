@@ -1,12 +1,3 @@
-/**
- * El padrón completo y la baja cuando falta en las dos fuentes (0046).
- *
- * Lo que se vigila: que todas las columnas personales se comparen y se
- * escriban sin borrar lo que el archivo no trae; que la baja dependa de las dos
- * fuentes y no de una sola; y que la matriz aplique la misma regla desde su
- * lado.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 

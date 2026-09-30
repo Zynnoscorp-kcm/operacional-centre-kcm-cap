@@ -327,11 +327,6 @@ function createBoxGroundTruth(homography) {
   })));
 }
 
-/**
- * Genera una fotografia sintetica anonima y su verdad geometrica.
- * `templatePng` puede contener la plantilla publica vacia; si se omite se usa
- * una representacion anonima derivada de `TEMPLATE_GEOMETRY`.
- */
 export function createDistortedAttendanceFixture({
   templatePng,
   seed = "normalization-fixture-v1",

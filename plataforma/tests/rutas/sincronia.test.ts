@@ -1,23 +1,3 @@
-/**
- * Sincronía entre la matriz y el padrón: el servicio, la pantalla y la ruta.
- *
- * Lo que se vigila aquí son las tres reglas que hacen útil la pestaña, y las
- * tres son de interpretación, no de acopio:
- *
- * 1. **Cotejar no escribe.** Es una lectura; el puerto falso lo comprueba
- *    contando llamadas y no ofreciendo un solo método que mute.
- * 2. **Equivalente no es discrepante.** Un acento de más no puede contarse como
- *    dato en desacuerdo, ni desaparecer como si fuera idéntico. Es la mitad
- *    «similitud» del análisis y es lo único que separa esta pantalla de un
- *    comparador de cadenas.
- * 3. **El nombre no se imprime.** El enmascarado llega hecho desde la consulta,
- *    así que lo que se prueba es que la pantalla no lo reponga por su cuenta ni
- *    se rompa al recibirlo en nulo.
- *
- * El adaptador de PostgreSQL no entra: su consulta se ejercita contra la base
- * real, no contra un doble. Lo que se prueba es todo lo que decide qué se lee.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -52,9 +32,6 @@ const CAMPOS = [
   "planta",
 ] as const;
 
-// ------------------------------------------------------------- constructores
-
-/** Un campo que cuadra del todo, salvo lo que se le pida cambiar. */
 function campo(nombre: (typeof CAMPOS)[number], extra: Partial<ConteoDeCampo> = {}): ConteoDeCampo {
   const base = {
     campo: nombre,
@@ -65,8 +42,6 @@ function campo(nombre: (typeof CAMPOS)[number], extra: Partial<ConteoDeCampo> = 
     soloPadron: 0,
   };
   const conteo = { ...base, ...extra };
-  // Los cinco conteos reparten a los mismos cien trabajadores: un doble que no
-  // sume cien probaría una aritmética que la base nunca produce.
   return {
     ...conteo,
     iguales:
@@ -103,14 +78,11 @@ function cotejo(
   };
 }
 
-/** Devuelve lo que se le dé y cuenta cuántas veces se lo pidieron. */
 class PuertoFalso implements SincroniaPort {
   llamadas = 0;
   muestraPedida = 0;
   readonly #respuesta: CotejoCrudo | null;
 
-  // Sin propiedad de parámetro: Node borra los tipos sin transformarlos y esa
-  // forma no existe en el JavaScript resultante.
   constructor(respuesta: CotejoCrudo | null) {
     this.#respuesta = respuesta;
   }
@@ -123,8 +95,6 @@ class PuertoFalso implements SincroniaPort {
 }
 
 const TODO_IGUAL = CAMPOS.map((nombre) => campo(nombre));
-
-// ------------------------------------------------------------------ servicio
 
 describe("análisis de sincronía · servicio", () => {
   it("sin matriz guardada devuelve nulo en vez de un informe de ceros", async () => {
@@ -155,8 +125,6 @@ describe("análisis de sincronía · servicio", () => {
 
     const informe = await servicio.cotejar();
     assert.ok(informe);
-    // Ni discrepancia —no hay nada que corregir— ni silencio: el veredicto
-    // propio existe justamente para poder decir las dos cosas a la vez.
     assert.equal(informe.veredicto, "EQUIVALENTES");
     assert.equal(informe.diferenciasTotales, 0);
     assert.equal(informe.equivalentesTotales, 4);
@@ -211,9 +179,6 @@ describe("análisis de sincronía · servicio", () => {
 
     const informe = await servicio.cotejar();
     assert.ok(informe);
-    // La similitud sigue siendo perfecta —sobre quienes se pueden comparar, lo
-    // son— y aun así el veredicto no puede decir «sincronizados»: a alguien le
-    // falta la fila. Las dos cosas son ciertas y se dicen por separado.
     assert.equal(informe.similitudGlobal, 1);
     assert.equal(informe.veredicto, "CON_DISCREPANCIAS");
     assert.equal(informe.diferenciasTotales, 1);
@@ -254,8 +219,6 @@ describe("análisis de sincronía · servicio", () => {
     assert.equal(informe?.campos.find((c) => c.campo === "nombre")?.muestras.length, 0);
   });
 });
-
-// -------------------------------------------------------------------- rutas
 
 describe("análisis de sincronía · pantalla y ruta", () => {
   async function servidor(repositorio?: SincroniaPort) {
@@ -329,8 +292,6 @@ describe("análisis de sincronía · pantalla y ruta", () => {
     assert.equal(res.statusCode, 200);
     assert.equal(puerto.llamadas, 1);
     assert.match(res.body, /Sincronizados/u);
-    // El informe es cifras y nada más: ni glosa, ni columna de «qué significa»,
-    // ni pie que narre la tabla. Se fija aquí para que no vuelvan solas.
     assert.doesNotMatch(res.body, /Qué significa|Lectura|ausencia no es baja|Idéntico en las dos/u);
 
     await app.inject({ method: "GET", url: "/sincronia", headers: { cookie } });
@@ -367,9 +328,6 @@ describe("análisis de sincronía · pantalla y ruta", () => {
   });
 
   it("una diferencia entre diez mil no se redondea hasta desaparecer", async () => {
-    // 9 999 de 10 000 es 99.99 %, que a un decimal se imprime «100.0 %». Ese
-    // redondeo diría que las dos fuentes cuadran teniendo una diferencia viva,
-    // y es justo lo que esta pantalla existe para no hacer.
     const campos = [
       {
         campo: "nombre" as const,
@@ -427,7 +385,6 @@ describe("análisis de sincronía · pantalla y ruta", () => {
 
     assert.equal(res.statusCode, 503);
     assert.match(res.body, /El cotejo no pudo completarse/u);
-    // La envoltura sigue en pie: se puede saltar a las otras pestañas de Cargas.
     assert.match(res.body, /href="\/matriz"/u);
   });
 });

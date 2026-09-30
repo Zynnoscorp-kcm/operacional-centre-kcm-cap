@@ -292,7 +292,6 @@ export function parseRelationships(xmlBuffer, ownerPart) {
       try {
         decodedTarget = decodeURIComponent(decodedTarget);
       } catch {
-        // Se conserva el nombre literal si no es una URI valida.
       }
       decodedTarget = decodedTarget.replaceAll("\\", "/");
       target = path.posix.normalize(

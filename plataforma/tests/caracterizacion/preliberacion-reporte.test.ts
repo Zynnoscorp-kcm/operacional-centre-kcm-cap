@@ -1,17 +1,3 @@
-/**
- * Caracterización del reporte de preliberación.
- *
- * Congela las garantías del generador de reportes de preliberación:
- * - la vista previa no cambia la revisión, ni la etapa, ni deja rastro;
- * - hay dos documentos, acta de hallazgos y talón de sesión concluida;
- * - el archivo queda buscable por sesión, que es la búsqueda de auditoría.
- *
- * Y añade lo que el legado no podía dar, porque delegaba en el convertidor de
- * Google: bytes deterministas, y por tanto un SHA-256 que identifica al archivo.
- *
- * Ninguna identidad de estas pruebas es real.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryPreReleaseRepository } from "../../src/adapters/memoria/preliberacion.ts";
@@ -95,7 +81,6 @@ function setup(opts: { session?: Partial<SessionRecord>; attendances?: Attendanc
   return { repo, workbench, service };
 }
 
-/** Un PDF válido abre con la firma y cierra con el marcador de fin de archivo. */
 function assertEsPdf(bytes: Uint8Array): void {
   const texto = Buffer.from(bytes).toString("latin1");
   assert.ok(texto.startsWith("%PDF-1.4"), "el archivo debe empezar con la firma PDF");
@@ -132,7 +117,6 @@ describe("Reporte de preliberación — composición", () => {
   });
 
   it("lleva el logotipo de la empresa aunque no exista referencias/privado", async () => {
-    // Así corre en Vercel: la raíz publicada no trae la carpeta privada.
     const { repo, workbench } = setup();
     const service = new PreReleaseReportService({
       repository: repo,
@@ -170,20 +154,10 @@ describe("Reporte de preliberación — composición", () => {
     assert.ok(reporte.findings.includes("EXAMENES_FALTANTES"));
     const texto = Buffer.from(reporte.content).toString("latin1");
     assert.match(texto, /Acta de hallazgos de preliberaci\\363n/);
-    // La observación va con el nombre que se lee y no con su código interno:
-    // `EXAMENES_FALTANTES` no significa nada para quien recibe la hoja.
     assert.match(texto, /Ex\\341menes faltantes/);
     assert.doesNotMatch(texto, /EXAMENES_FALTANTES/);
   });
 
-  /**
-   * La plantilla tiene dos bloques y nada más.
-   *
-   * Lo que se congela aquí es lo que se quitó, porque volver a agregarlo es
-   * fácil y nadie lo notaría hasta imprimir: la banda de color con el veredicto,
-   * los seis recuadros de contadores y las tres líneas de firma empujaban el
-   * detalle —lo único que alguien consulta de verdad— a la segunda hoja.
-   */
   it("no lleva banda, recuadros de contadores ni firmas", async () => {
     const { service } = setup();
     const reporte = await service.generate(
@@ -199,18 +173,14 @@ describe("Reporte de preliberación — composición", () => {
       /APROBADOS/,
       /SIN ENTREGAR/,
       /A LIBERAR\)/,
-      // `REVISOR` sólo existía como rótulo de firma; `INSTRUCTOR` no sirve de
-      // señal porque también es un campo de los datos generales.
       /REVISOR/,
     ]) {
       assert.doesNotMatch(texto, retirado, `el reporte conserva ${String(retirado)}`);
     }
 
-    // Y los dos bloques que sí van, en su orden.
     const encabezado = texto.indexOf("DATOS GENERALES DE LA SESI");
     const detalle = texto.indexOf("DETALLE DE LA SESI");
     assert.ok(encabezado > 0 && detalle > encabezado, "encabezado arriba, detalle abajo");
-    // El detalle empieza en la primera hoja: es lo que se ganó al quitar lo demás.
     assert.match(texto, /Type \/Pages \/Count 1/);
   });
 
@@ -407,7 +377,6 @@ describe("Reporte de preliberación — archivado y búsqueda en auditoría", ()
     const { service, repo } = setup();
     await service.generate({ sessionId: "ses-001", mode: "ARCHIVO" }, IDENTITY);
 
-    // El segundo se archiva un minuto después para que el orden sea observable.
     const despues = new Date(FIXED_DATE.getTime() + 60_000);
     const workbench = new WorkbenchService({
       repository: repo,

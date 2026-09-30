@@ -41,26 +41,16 @@ import {
 } from "../web/pages/dc3/kit.ts";
 import { renderDc3PanelPage } from "../web/pages/dc3/panel.ts";
 
-/**
- * Renglones por página. Cincuenta caben en una pantalla de escritorio sin
- * desplazar tres veces, y son pocos como para que el navegador los dibuje al
- * instante.
- */
 const POR_PAGINA = 50;
 
-/** Tope del CSV. Es alto porque el archivo se abre en Excel, no en la pantalla. */
 const MAXIMO_DEL_CSV = 5000;
 
-/** Fallas que el acuse nombra una por una; del resto dice cuántas son. */
 const FALLAS_NOMBRADAS = 20;
 
-/** Asientos por página del historial. Es un registro: se lee de corrido. */
 const POR_PAGINA_DEL_HISTORIAL = 100;
 
-/** Renglones que trae la búsqueda: unas sesenta personas, tres cursos cada una. */
 const MAXIMO_DE_BUSQUEDA = 180;
 
-/** Quien emite cuando no hay sesión nominal: el acceso abierto del piloto. */
 const ACTOR_POR_OMISION = "USUARIO_CAPACITACION";
 
 interface Topes {
@@ -70,16 +60,6 @@ interface Topes {
   readonly reimpresionZip: number;
 }
 
-/**
- * Cuántas constancias salen de una vez.
- *
- * Una constancia suelta pesa de veinte a doscientos kilobytes según lleve o no
- * el logotipo del sindicato. En un solo PDF el logotipo se guarda una vez y
- * cada constancia suma unos cuantos kilobytes: dos mil caben en un archivo que
- * el equipo local entrega sin problema. En un ZIP cada archivo lleva el suyo.
- * En la nube la respuesta se corta a los 4.5 MB, y por eso allá los topes son
- * menores.
- */
 export const TOPES_LOCALES: Topes = {
   tanda: 2000,
   zip: 300,
@@ -104,12 +84,6 @@ function pestanaDe(valor: unknown): Dc3PlanTab {
   return PESTANAS.find((p) => p === pedida) ?? "listos";
 }
 
-/**
- * Los órdenes que la pantalla sabe pedir. Se comprueba contra la lista y no se
- * confía en lo que venga en la dirección: el valor acaba componiendo el
- * `ORDER BY` de la consulta, así que cualquier cosa que no sea uno de éstos cae
- * al orden de la bandeja.
- */
 const ORDENES: readonly Dc3CandidateOrder[] = ["nombre", "personal"];
 
 function ordenDe(valor: unknown): Dc3CandidateOrder {
@@ -121,19 +95,16 @@ function texto(valor: unknown): string {
   return typeof valor === "string" ? valor.trim() : "";
 }
 
-/** Página pedida, siempre un entero positivo: la dirección la escribe cualquiera. */
 function paginaDe(valor: unknown): number {
   const numero = Number.parseInt(texto(valor), 10);
   return Number.isFinite(numero) && numero > 1 ? numero : 1;
 }
 
-/** Lo que la bandeja pide a la bitácora; lo que no reconoce es la bandeja de siempre. */
 function vistaDe(valor: unknown): VistaDeEmision | undefined {
   const pedida = texto(valor);
   return pedida === "emitidas" || pedida === "parciales" || pedida === "todas" ? pedida : undefined;
 }
 
-/** Los filtros de la bandeja tal como llegan en la dirección o en un formulario. */
 function filtrosDe(consulta: Record<string, unknown>): FiltrosDc3 {
   const vista = vistaDe(consulta["emision"]);
   return {
@@ -146,13 +117,6 @@ function filtrosDe(consulta: Record<string, unknown>): FiltrosDc3 {
   };
 }
 
-/**
- * Los filtros de la pantalla traducidos a los del puerto.
- *
- * Sin vista pedida, la bandeja enseña lo que falta emitir: es la pregunta de
- * todos los días. «Todas» es la única vista que no filtra por la bitácora. Sin
- * periodo pedido, sólo cuentan los cursos desde el corte.
- */
 function filtroDelPuerto(filtros: FiltrosDc3): Dc3CandidateFilter {
   const vista = filtros.emission ?? "pendientes";
   return {
@@ -165,28 +129,21 @@ function filtroDelPuerto(filtros: FiltrosDc3): Dc3CandidateFilter {
   };
 }
 
-/** Un campo del formulario que puede llegar repetido, como las casillas. */
 function lista(valor: unknown): readonly string[] {
   if (Array.isArray(valor)) return valor.map((v) => String(v).trim()).filter(Boolean);
   const uno = texto(valor);
   return uno ? [uno] : [];
 }
 
-/** Una celda de CSV que no rompe el archivo aunque el dato traiga comas. */
 function celda(valor: string | null | undefined): string {
   const limpio = (valor ?? "").replace(/"/gu, '""');
   return `"${limpio}"`;
 }
 
-/** Un CSV que Excel en Windows abre con los acentos en su sitio. */
 function csv(encabezado: readonly string[], filas: readonly (readonly string[])[]): string {
-  // El BOM no es capricho: sin él, Excel en Windows lee el archivo como
-  // Latin-1 y los nombres con acento salen rotos, que es justo la lista que
-  // alguien va a imprimir para repartir.
   return `\uFEFF${[encabezado.join(","), ...filas.map((fila) => fila.join(","))].join("\r\n")}\r\n`;
 }
 
-/** Los parámetros del acuse: se quitan de la dirección de regreso antes de poner los nuevos. */
 const PARAMETROS_DE_ACUSE = [
   "emitidas",
   "solicitud",
@@ -201,16 +158,8 @@ const PARAMETROS_DE_ACUSE = [
   "marcar",
 ] as const;
 
-/** El número de una solicitud, tal como lo genera el servidor. */
 const SOLICITUD = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
-/**
- * La dirección a la que vuelve una emisión, validada.
- *
- * Viaja en el formulario, así que la escribe quien quiera: sólo se acepta una
- * dirección de este mismo módulo, sin esquema ni anfitrión. Cualquier otra cosa
- * sería una redirección abierta hacia donde el formulario dijera.
- */
 function volverSeguro(valor: unknown): string | undefined {
   const pedido = texto(valor);
   if (!/^\/dc3(?:\/[A-Za-z0-9_/-]*)?(?:\?[^#\s]*)?$/u.test(pedido) || pedido.includes("//")) {
@@ -221,17 +170,9 @@ function volverSeguro(valor: unknown): string | undefined {
   return `${url.pathname}${url.search}`;
 }
 
-/**
- * Lo que una emisión deja en la dirección de regreso.
- *
- * No viajan las claves de lo emitido sino el número de la solicitud que las
- * asentó: dos mil claves no caben en una dirección, y el número basta para que
- * la descarga las encuentre en la bitácora, en este equipo o en cualquier otro.
- */
 interface ResultadoParaVolver {
   readonly emitidas: number;
   readonly solicitud: string;
-  /** La clave, cuando fue una sola: el acuse dice de quién. */
   readonly clave?: string | undefined;
   readonly blancos: number;
   readonly fallidas: readonly { readonly clave: string; readonly codigo: string }[];
@@ -246,7 +187,6 @@ type AcuseLeido = Omit<ResultadoParaVolver, "solicitud"> & {
   readonly fallidasTotal: number;
 };
 
-/** La dirección de regreso con el acuse puesto. */
 function conAcuse(volver: string, resultado: ResultadoParaVolver): string {
   const url = new URL(volver, "http://kcm.invalid");
   if (resultado.emitidas > 0) {
@@ -274,7 +214,6 @@ function conAcuse(volver: string, resultado: ResultadoParaVolver): string {
   return `${url.pathname}${url.search}`;
 }
 
-/** La dirección del documento de lo recién emitido, que no vuelve a asentarlo. */
 function direccionDeDocumento(resultado: {
   readonly solicitud: string;
   readonly formato: "pdf" | "zip";
@@ -290,12 +229,10 @@ function direccionDeDocumento(resultado: {
   return `/dc3/documentos?${parametros.toString()}`;
 }
 
-/** Un entero no negativo de la dirección; lo que no lo sea es cero. */
 function cuenta(valor: unknown): number {
   return Math.max(0, Number.parseInt(texto(valor), 10) || 0);
 }
 
-/** Lee el acuse que trae la dirección, si lo trae. */
 function acuseDe(consulta: Record<string, unknown>): AcuseLeido | undefined {
   const emitidas = cuenta(consulta["emitidas"]);
   const solicitud = texto(consulta["solicitud"]);
@@ -324,7 +261,6 @@ function acuseDe(consulta: Record<string, unknown>): AcuseLeido | undefined {
   };
 }
 
-/** El acuse como lo pinta la pantalla, con la descarga de lo emitido. */
 function acuseParaPantalla(
   leido: AcuseLeido,
   una: { readonly workerName: string; readonly courseName: string } | undefined,
@@ -342,7 +278,6 @@ function acuseParaPantalla(
   };
 }
 
-/** De qué va una tanda, para el encabezado de su hoja de entrega. */
 function contextoDeTanda(
   filtros: FiltrosDc3,
   cursos: readonly { readonly courseKey: string; readonly courseName: string }[],
@@ -358,7 +293,6 @@ function contextoDeTanda(
   return partes.length ? partes.join(" · ") : undefined;
 }
 
-/** El periodo del historial y el día desde el que cuenta. */
 function periodoDe(valor: unknown): PeriodoDeHistorial {
   const pedido = texto(valor);
   return pedido === "hoy" || pedido === "semana" || pedido === "mes" ? pedido : "todo";
@@ -368,7 +302,6 @@ function diasDeCorte(hoy: string): { today: string; week: string; month: string 
   return { today: hoy, week: sumarDias(hoy, -6), month: `${hoy.slice(0, 7)}-01` };
 }
 
-/** Por qué no se puede emitir una lista entera, dicho sin culpar a nadie. */
 function listaDemasiadoLarga(tope: number): string {
   return (
     `Se emiten hasta ${String(tope)} constancias de una vez y la lista tiene más. ` +
@@ -380,19 +313,8 @@ export function registerDc3Routes(
   app: FastifyInstance,
   deps: {
     readonly config: AppConfig;
-    /** La emisión. Ausente sin base: la pantalla lo explica. */
     readonly certificates?: Dc3CertificateService;
-    /**
-     * El mismo repositorio que sirve las áreas en `/trabajadores`. Se reutiliza
-     * en vez de escribir otra consulta: dos listas de áreas que se calculan
-     * distinto acaban ofreciendo opciones distintas para el mismo padrón.
-     */
     readonly workers?: WorkerSystemRepositoryPort;
-    /**
-     * Las sesiones de la consola, para firmar cada emisión con la cuenta de
-     * quien la hizo. Sin ellas —o con el acceso abierto del piloto— la bitácora
-     * recibe el actor de servicio.
-     */
     readonly sessions?: ConsoleSessionCodec;
     readonly clock?: Clock;
   },
@@ -400,13 +322,11 @@ export function registerDc3Routes(
   const clock = deps.clock ?? systemClock;
   const limites = topes(deps.config);
 
-  /** La cuenta de consola que está emitiendo, o el actor de servicio. */
   const actorDe = (peticion: FastifyRequest): string =>
     deps.sessions?.leer(peticion.headers.cookie, clock.now())?.usuario ?? ACTOR_POR_OMISION;
 
   const hoy = (): string => hoyEnPlanta(clock.now());
 
-  /** Lo que falta emitir desde el corte: la cifra de la barra del módulo. */
   const cuentaPorEmitir = async (): Promise<number | undefined> => {
     if (!deps.certificates) return undefined;
     const plan = await deps.certificates.summarizePlan({
@@ -416,10 +336,6 @@ export function registerDc3Routes(
     return plan.ready + plan.incomplete;
   };
 
-  /**
-   * La bandeja: una sola lista, poblada desde el primer momento. La pregunta de
-   * esta pantalla es qué falta emitir, y la contesta sin pedir un botón antes.
-   */
   const pintar = async (
     peticion: FastifyRequest,
     respuesta: FastifyReply,
@@ -469,7 +385,6 @@ export function registerDc3Routes(
       certificados.emissionIndex(),
       cuentaPorEmitir(),
     ]);
-    // Una página que ya no existe —la lista se vació al emitir— cae en la última.
     const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
     if (pagina > paginas) pagina = paginas;
     const candidates = await certificados.listCandidates(
@@ -518,13 +433,6 @@ export function registerDc3Routes(
 
   app.get("/dc3", (peticion, respuesta) => pintar(peticion, respuesta));
 
-  /**
-   * El buscador de la barra del módulo.
-   *
-   * Una nómina que existe va directo a su expediente, y un nombre que sólo
-   * encaja con una persona también: la ventanilla quiere a la persona, no una
-   * lista de un renglón.
-   */
   app.get("/dc3/buscar", async (peticion, respuesta) => {
     const consulta = (peticion.query ?? {}) as Record<string, unknown>;
     const q = texto(consulta["q"]).slice(0, 80);
@@ -572,12 +480,10 @@ export function registerDc3Routes(
     );
   });
 
-  /** El expediente DC-3 de una persona: sus cursos y lo que ya salió. */
   app.get(
     "/dc3/trabajador/:numero",
     async (peticion: FastifyRequest<{ Params: { numero: string } }>, respuesta: FastifyReply) => {
       const numero = peticion.params.numero;
-      // La nómina es texto de cinco dígitos. Lo que no lo sea no llega a la base.
       if (!/^\d{5}$/u.test(numero)) {
         return respuesta
           .code(404)
@@ -633,7 +539,6 @@ export function registerDc3Routes(
     },
   );
 
-  /** Cobertura: cuánto falta por curso y por área, de los cursos desde el corte. */
   app.get("/dc3/panel", async (_peticion, respuesta) => {
     const desdeElCorte: Dc3CandidateFilter = { period: "desde-corte" };
     const [coverage, porArea, emisiones, porEmitir] = await Promise.all([
@@ -655,7 +560,6 @@ export function registerDc3Routes(
     );
   });
 
-  /** Datos del formato: qué imprime cada curso y qué sale en blanco. */
   app.get("/dc3/datos", async (_peticion, respuesta) => {
     const [cursos, huecos, combinaciones, porEmitir] = deps.certificates
       ? await Promise.all([
@@ -679,13 +583,6 @@ export function registerDc3Routes(
     );
   });
 
-  /**
-   * Los trabajadores activos sin clave de ocupación, para completar el padrón.
-   *
-   * Sale ordenado por área y puesto, que es como se decide la clave, con la
-   * columna de la clave vacía y titulada como la espera el padrón. No lleva
-   * CURP: lo que hace falta ahí es a quién le falta, no su dato personal.
-   */
   app.get("/dc3/sin-ocupacion.csv", async (peticion, respuesta) => {
     if (!deps.certificates) {
       return pintar(peticion, respuesta, {
@@ -712,7 +609,6 @@ export function registerDc3Routes(
       );
   });
 
-  /** Los filtros del historial tal como llegan en la dirección. */
   const filtrosDelHistorial = (consulta: Record<string, unknown>): FiltrosDeHistorial => {
     const como = texto(consulta["como"]);
     return {
@@ -800,13 +696,6 @@ export function registerDc3Routes(
     );
   });
 
-  /**
-   * El historial en CSV, con los filtros puestos.
-   *
-   * Lo pide cualquier revisión: «enséñame lo que emitiste este mes». Sale con
-   * las mismas columnas de la pantalla y en el mismo orden, para que el archivo
-   * y la pantalla no puedan contar cosas distintas. La hora es la de la planta.
-   */
   app.get("/dc3/historial.csv", async (peticion, respuesta) => {
     const consulta = (peticion.query ?? {}) as Record<string, unknown>;
     const emisiones = deps.certificates
@@ -838,13 +727,6 @@ export function registerDc3Routes(
       );
   });
 
-  /**
-   * La lista en CSV.
-   *
-   * Sin CURP y sin tope de página: el archivo se abre en Excel para repartir o
-   * cotejar, y ahí el dato que hace falta es a quién le toca y qué le falta. La
-   * CURP vive en la constancia, que es donde tiene que estar.
-   */
   app.get("/dc3/pendientes.csv", async (peticion, respuesta) => {
     if (!deps.certificates) {
       return pintar(peticion, respuesta, {
@@ -899,18 +781,6 @@ export function registerDc3Routes(
       );
   });
 
-  /**
-   * Emitir varias de una vez.
-   *
-   * Las marcadas —o la lista entera con sus filtros— se leen juntas, se
-   * componen para comprobar que salen y se asientan en un solo viaje a la base.
-   * La respuesta no es el archivo: es la vuelta a la misma lista, con el acuse
-   * arriba y el documento bajando solo. Así una recarga no vuelve a emitir, y
-   * quien emite sigue donde estaba.
-   *
-   * Es `POST` por lo mismo que la emisión individual: deja huella, y eso no
-   * puede dispararse navegando a una dirección ni recargando una pestaña vieja.
-   */
   app.post("/dc3/emitir-tanda", async (peticion, respuesta) => {
     if (!deps.certificates) {
       return pintar(peticion, respuesta, {
@@ -1003,16 +873,6 @@ export function registerDc3Routes(
     );
   });
 
-  /**
-   * Lo ya emitido, compuesto otra vez: la descarga que sigue a una emisión y la
-   * reimpresión del historial y del expediente.
-   *
-   * No asienta nada, y por eso sólo compone lo que ya está asentado: una
-   * reimpresión masiva de lo que nunca se emitió sería una emisión sin rastro.
-   * Mirar una constancia que no ha salido sigue siendo la vista previa, de una
-   * en una. Lo recién emitido se pide por el número de la solicitud que lo
-   * asentó; lo que se reimprime, por clave.
-   */
   app.get("/dc3/documentos", async (peticion, respuesta) => {
     if (!deps.certificates) {
       return pintar(peticion, respuesta, {
@@ -1061,14 +921,11 @@ export function registerDc3Routes(
       });
 
       if (documento.formato === "zip") {
-        return (
-          respuesta
-            .type("application/zip")
-            .header("content-disposition", `attachment; filename="${documento.nombre}"`)
-            // Lleva nombre, CURP y puesto de varias personas: no se guarda en caché.
-            .header("cache-control", "no-store")
-            .send(empaquetarZip(documento.archivos ?? []))
-        );
+        return respuesta
+          .type("application/zip")
+          .header("content-disposition", `attachment; filename="${documento.nombre}"`)
+          .header("cache-control", "no-store")
+          .send(empaquetarZip(documento.archivos ?? []));
       }
       const disposicion = texto(consulta["ver"]) === "1" ? "inline" : "attachment";
       return respuesta
@@ -1083,16 +940,6 @@ export function registerDc3Routes(
     }
   });
 
-  /**
-   * La constancia de una persona, compuesta sin registrarla.
-   *
-   * Es la ruta del ojo de vista previa. Mirar el documento no es una emisión
-   * nueva: no puede ensuciar la bitácora ni hacer que un renglón aparezca
-   * emitido dos veces.
-   *
-   * El generador es determinista, así que el PDF que se ve aquí es byte por
-   * byte el que queda registrado al emitir.
-   */
   app.get(
     "/dc3/vista-previa/:workerNumber/:courseKey",
     async (
@@ -1136,15 +983,6 @@ export function registerDc3Routes(
     },
   );
 
-  /**
-   * La advertencia previa a emitir, como pantalla.
-   *
-   * La bandeja pregunta encima del renglón; esta pantalla es el respaldo del
-   * navegador que no entiende `popover`. Aquí todavía no pasa nada: se compone
-   * la constancia en modo vista previa —que no registra— para poder decir de
-   * quién es y qué recuadros saldrían vacíos. Las compuertas de siempre siguen
-   * delante: sin fecha y sin declararlo, ni se llega a preguntar.
-   */
   app.get(
     "/dc3/constancia/:workerNumber/:courseKey",
     async (
@@ -1204,15 +1042,6 @@ export function registerDc3Routes(
     },
   );
 
-  /**
-   * La emisión de verdad: el «sí» de la advertencia.
-   *
-   * Es `POST` porque deja huella —asienta la constancia en la bitácora— y eso no
-   * se puede disparar por navegar a una dirección ni por recargar. Responde con
-   * la vuelta a la lista de donde se emitió, con el acuse arriba y el PDF
-   * bajando solo: quien emite varias seguidas no pierde ni la página ni los
-   * filtros, y una recarga no emite otra vez.
-   */
   app.post(
     "/dc3/constancia/:workerNumber/:courseKey",
     async (
@@ -1235,9 +1064,6 @@ export function registerDc3Routes(
           actor: actorDe(peticion),
           requestId: String(peticion.id),
           editable: texto(cuerpo["editable"]) === "1",
-          // Lo piden los renglones que ya se sabe que salen con blancos, y sólo
-          // ellos: sin la bandera, quien no tiene fecha del curso sigue sin
-          // recibir constancia.
           allowMissingDate: texto(cuerpo["enBlanco"]) === "1",
         });
 

@@ -1,20 +1,3 @@
-/**
- * Consola interna sin base.
- *
- * Es el adaptador que sostiene la corrida en memoria y las pruebas. Dos de sus
- * tres mitades no pueden fingirse y no lo intentan:
- *
- * · Auditoría: sin base no hay sesiones, reservaciones ni liberaciones que
- *   auditar. Devuelve listas vacías, y la pantalla lo dice con todas sus
- *   letras en vez de enseñar un listado vacío que se lee igual que «no pasó
- *   nada esta semana».
- * · Previsualizador: sin base no hay catálogo. Mismo trato.
- * · Campos declarados: éste sí es fiel. El registro de campos es una lista
- *   con reglas —nombre único, aprobación con actor y momento— y esas reglas se
- *   sostienen igual en un `Map`, lo que permite probar el servicio completo
- *   sin credenciales.
- */
-
 import type {
   DeclareFieldInput,
   DeclaredField,
@@ -57,8 +40,6 @@ export class MemoryInternalConsoleRepository implements InternalConsolePort {
 
   declareField(input: DeclareFieldInput, _actor: string): Promise<DeclaredField> {
     if ([...this.#campos.values()].some((campo) => campo.name === input.name)) {
-      // El esquema lo impone con un UNIQUE; aquí se impone a mano para que una
-      // prueba en memoria falle por lo mismo que fallaría contra la base.
       return Promise.reject(new Error(`El campo ${input.name} ya está declarado.`));
     }
 

@@ -1,9 +1,3 @@
-/**
- * El adaptador de modelos compatibles y los parámetros del agente, sin red:
- * `fetch` es un doble que anota lo que se le pidió y contesta lo que la prueba
- * decide.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -51,7 +45,6 @@ function fetchDeMentira(respuestas: Response[]): { fetch: typeof fetch; llamadas
   return { fetch: fetchFalso, llamadas };
 }
 
-/** El cuerpo JSON que se mandó al proveedor. */
 function cuerpoDe(llamada: Llamada | undefined): Record<string, unknown> {
   const cuerpo = llamada?.init.body;
   assert.equal(typeof cuerpo, "string");
@@ -233,7 +226,6 @@ describe("IA · parámetros del agente", () => {
         "google/gemma-4-26b-a4b-it:free",
       ],
     );
-    // Ya no hay segunda opinión: los parámetros no traen verificador.
     assert.equal(parametros && "verificador" in parametros, false);
     for (const destino of parametros?.principal ?? []) {
       assert.equal(destino.url, "https://openrouter.ai/api/v1");
@@ -244,12 +236,10 @@ describe("IA · parámetros del agente", () => {
         provider: { require_parameters: true },
       });
     }
-    // Nemotron admite esquema estricto; Gemma sólo JSON simple.
     assert.deepEqual(
       parametros?.principal.map((destino) => destino.formato),
       ["json_schema", "json_object", "json_object"],
     );
-    // El plazo del caso cabe en los 120 s de la función publicada.
     assert.ok((parametros?.limites.tiempoMaximoMs ?? 0) <= 110_000);
   });
 
@@ -375,14 +365,11 @@ describe("IA · parámetros del agente", () => {
       reloj: () => ahora,
     });
 
-    // Dots se cuelga y a Qwen le quedan 25 s: se intenta porque pasa del mínimo.
     await cadena.responderJson(SOLICITUD, { tiempoMaximoMs: 95_000 });
-    // En la siguiente llamada Dots se salta y Qwen recibe los 95 s completos.
     const segunda = await cadena.responderJson(SOLICITUD, { tiempoMaximoMs: 95_000 });
     assert.deepEqual(vistos, ["dots:95000", "qwen:25000", "qwen:95000"]);
     assert.deepEqual(segunda.desvios, ["dots se saltó: falló hace poco"]);
 
-    // Pasado el enfriamiento, Dots vuelve a intentarse primero.
     ahora += 300_001;
     vistos.length = 0;
     await cadena.responderJson(SOLICITUD, { tiempoMaximoMs: 95_000 });
@@ -425,7 +412,6 @@ describe("IA · parámetros del agente", () => {
       () => leerAgenteDelEntorno({ KCM_IA_OPENROUTER_LLAVE: "o", LANGSMITH_TRACING: "true" }),
       ConfigError,
     );
-    // Sin agente encendido, la variable no importa: LangChain nunca se carga.
     assert.equal(leerAgenteDelEntorno({ LANGSMITH_TRACING: "true" }), undefined);
   });
 });

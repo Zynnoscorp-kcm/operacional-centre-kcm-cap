@@ -1,39 +1,9 @@
-/**
- * Acceso a la plataforma central.
- *
- * Dos hojas que cubren la pantalla: la izquierda azul con la marca en blanco, la
- * derecha blanca con las credenciales. Al entrar, las dos se corren hacia sus
- * orillas y dejan ver la consola. La puerta es del mismo material que lo que
- * abre —mismo azul, mismas tarjetas blancas, misma hoja de estilos—, que es lo
- * que antes no pasaba: era la pantalla del quiosco de sala, con su negro, sus
- * haces de WebGL y sus tipografías de Google, copiada atributo por atributo.
- *
- * De ahí salieron tres cosas al rediseñarla: el bloque `<style>` en línea, las
- * fuentes de un origen externo y `three.min.js` desde un CDN. Lo único que carga
- * ahora es la hoja de la consola y un guion propio de sesenta líneas servido
- * desde `/assets`, así que la política puede volver a ser `'self'` y nada más.
- *
- * Detrás hay un directorio real —`seguridad.credencial_consola`, migración 0038— con
- * una cuenta por persona y la contraseña sólo como derivación scrypt. Lo que
- * sigue sin cambiar es que entrar no cierra ninguna pantalla: la consola
- * responde igual con sesión y sin ella.
- */
-
 import { guionAcceso, hojaDeEstilos, simboloKcm } from "../estaticos.ts";
 import { html, renderDocument, type Html } from "../kit/html.ts";
 
 export interface AccessPageProps {
-  /**
-   * Motivo del rechazo anterior, ya redactado para mostrarse. Nunca dice si lo
-   * que falló fue el usuario o la contraseña: eso confirmaría cuentas.
-   */
   readonly error?: string | undefined;
-  /** A dónde volver una vez dentro. Se valida en la ruta, no aquí. */
   readonly destino?: string | undefined;
-  /**
-   * Corrida con el acceso abierto. La pantalla lo dice en voz alta: una puerta
-   * que no comprueba nada y no lo advierte es peor que no tener puerta.
-   */
   readonly accesoAbierto?: boolean | undefined;
 }
 
@@ -54,8 +24,6 @@ export function renderAccessPage(props: AccessPageProps): string {
     <body class="puerta">
       <a class="salto-contenido" href="#contenido">Saltar al contenido</a>
 
-      <!-- La silueta de la consola. No es la consola: son cuatro rectángulos
-           con la geometría del armazón, que es lo que la puerta descubre. -->
       <div class="puerta-fondo" aria-hidden="true">
         <div class="puerta-fondo-lateral"></div>
         <div class="puerta-fondo-lienzo">
@@ -151,11 +119,6 @@ export function renderAccessPage(props: AccessPageProps): string {
   return renderDocument(documento);
 }
 
-/**
- * Un solo renglón de ayuda: gris cuando informa, rojo y en negrita cuando el
- * intento anterior falló. Es único porque los dos campos lo referencian con
- * `aria-describedby`, y el rechazo nunca dice cuál de los dos falló.
- */
 function renderAyuda(error: string | undefined, accesoAbierto: boolean): Html {
   if (error) {
     return html`<p class="puerta-ayuda puerta-ayuda-error" id="acceso-ayuda" role="alert">

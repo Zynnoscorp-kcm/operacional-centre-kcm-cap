@@ -1,10 +1,3 @@
-/**
- * Adaptador para extraer snapshots de libros binarios XLSB en sólo lectura.
- *
- * Utiliza el extractor puro ZIP/BIFF12 existente, sin dependencias nativas
- * y con validación exhaustiva de diagnósticos, fórmulas y metadatos.
- */
-
 // @ts-expect-error script en JavaScript sin definiciones de tipos
 import { extractHcSnapshotFromBuffer } from "../../../../packages/xlsb/extract-hc-xlsb.js";
 import type { MatrixSnapshot } from "../../domain/importacion-matriz/tipos.ts";

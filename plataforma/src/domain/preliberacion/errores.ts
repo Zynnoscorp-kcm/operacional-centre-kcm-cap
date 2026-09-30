@@ -1,7 +1,3 @@
-/**
- * Errores de dominio para Preliberación.
- */
-
 import { DomainError } from "../comun/errores.ts";
 
 export class PreReleaseNotFoundError extends DomainError {

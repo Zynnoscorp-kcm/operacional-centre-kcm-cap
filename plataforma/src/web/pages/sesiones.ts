@@ -1,8 +1,3 @@
-/**
- * Pantalla Web de Sesiones Operativas (Funciones 2 y 3).
- * Muestra sesiones activas y recientemente cerradas (últimos 14 días) con auditoría y creación de sesiones.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import type { OperativeSessionSummary, TrainingCatalogItem } from "../../domain/quiosco/tipos.ts";
 import { ROOMS } from "../../domain/salas/tipos.ts";
@@ -17,13 +12,7 @@ export interface SessionsPageProps {
   readonly sessions: readonly OperativeSessionSummary[];
   readonly trainings: readonly TrainingCatalogItem[];
   readonly cutoffDate: string;
-  /**
-   * Si la autorización pide PIN. Dibujar un campo `required` que el servidor ya
-   * no comprueba impediría enviar el formulario sin razón; no dibujarlo cuando
-   * sí se comprueba deja el botón inservible. Manda el servidor.
-   */
   readonly pidePin?: boolean;
-  /** Acuse de una creación reciente, ya redactado por la ruta. */
   readonly aviso?: string | undefined;
   readonly error?: string | undefined;
 }
@@ -133,13 +122,6 @@ export function renderSessionsPage(props: SessionsPageProps): string {
 
         <div class="fila-campos">
           <div class="grupo-campo">
-            <!--
-              Un desplegable y no un campo de hora libre: son exactamente los
-              mismos bloques que ofrece la agenda pública, de media hora, así que
-              la sesión y la reservación de sala caen siempre en el mismo
-              horario. Escribiéndolo a mano se podía teclear 09:10, que la
-              reservación tenía que redondear.
-            -->
             <label for="startTime">Hora de inicio</label>
             <select id="startTime" name="startTime" class="control-formulario">
               <option value="">Sin hora definida</option>
@@ -201,7 +183,6 @@ export function renderSessionsPage(props: SessionsPageProps): string {
   });
 }
 
-/** «09:00–10:30»: el fin se deduce del inicio y la duración asentada. */
 function horario(s: OperativeSessionSummary): string {
   const partes = /^(\d{2}):(\d{2})/u.exec(s.startTime ?? "");
   if (!partes) return "—";

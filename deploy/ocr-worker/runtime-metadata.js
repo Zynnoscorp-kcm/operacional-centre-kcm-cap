@@ -29,10 +29,6 @@ function probeVersion(runner, { name, command, args, pattern }) {
   return version;
 }
 
-/**
- * Inspecciona binarios efectivos. La salida publica omite rutas, argumentos,
- * variables de entorno y cualquier diagnostico devuelto por los procesos.
- */
 export function inspectOcrRuntime({
   containerBuildId,
   runner = spawnSync,

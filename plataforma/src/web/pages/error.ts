@@ -1,12 +1,3 @@
-/**
- * Pantalla de error.
- *
- * Muestra el código público, un mensaje que ya viene saneado y el `requestId`.
- * Nunca el rastro de pila, nunca el mensaje original de una falla interna: lo
- * que se enseña en pantalla es lo que se le puede dictar por teléfono a soporte
- * sin revelar el interior del sistema.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import { html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";

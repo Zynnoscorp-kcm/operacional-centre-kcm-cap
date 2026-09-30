@@ -1,14 +1,3 @@
-/**
- * Paridad de identidad entre el cliente Excel y el extractor Node.
- *
- * `sourceKey` decide el `trainingId` de cada capacitacion. Si el cliente VBA deriva una identidad
- * distinta a la que produjo el extractor, la importacion no reconoce el curso: HC lo da de alta
- * como una capacitacion nueva y desactiva la anterior. `normalizedName` tiene un efecto inmediato:
- * el servidor lo recalcula y responde CONFLICT si no coincide.
- *
- * Aqui se reconstruye en JavaScript el algoritmo declarado en `KcmBridgeCore.bas` -- incluida su
- * tabla de plegado, leida del propio `.bas` -- y se contrasta contra el extractor.
- */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -19,13 +8,11 @@ import { normalizedCourseName, normalizedLabel } from "../../xlsb/extract-hc-xls
 const core = await readFile(path.resolve("clients/excel/vba/KcmBridgeCore.bas"), "utf8");
 const matrixSync = await readFile(path.resolve("clients/excel/vba/KcmMatrixSync.bas"), "utf8");
 
-/** Tabla de plegado tal como la declara el cliente. */
 const foldTable = new Map();
 for (const match of core.matchAll(/KcmAddFold "([A-Z]+)", "([0-9A-F,]+)"/g)) {
   for (const code of match[2].split(",")) foldTable.set(Number.parseInt(code, 16), match[1]);
 }
 
-/** Intervalos de separador compartido declarados en `KcmIsSharedSeparator`. */
 const separatorRanges = (() => {
   const body = core.slice(
     core.indexOf("Private Function KcmIsSharedSeparator"),
@@ -44,7 +31,6 @@ const separatorRanges = (() => {
 
 const isSharedSeparator = (code) => separatorRanges.some(([low, high]) => code >= low && code <= high);
 
-/** `KcmNormalizeLabel`: recorre unidades de codigo UTF-16, igual que `Mid$`. */
 function vbaNormalizeLabel(value) {
   let output = "";
   for (const character of String(value).split("")) {
@@ -59,7 +45,6 @@ function vbaNormalizeLabel(value) {
   return output.replace(/ +$/, "");
 }
 
-/** `KcmSourceSlug`. */
 function vbaSourceSlug(value) {
   return vbaNormalizeLabel(String(value).split("&").join(" y "))
     .toLowerCase()
@@ -67,7 +52,6 @@ function vbaSourceSlug(value) {
     .join("-");
 }
 
-/** `KcmUnfoldableCharacter`. */
 function vbaUnfoldableCharacter(value) {
   for (const character of String(value).split("")) {
     const code = character.charCodeAt(0);
@@ -135,8 +119,6 @@ test("cada caracter que el cliente trata como separador tambien lo es para el ex
   const unsafe = [];
   for (const [low, high] of separatorRanges) {
     for (let code = low; code <= high; code += 1) {
-      // El extractor conserva letras y digitos tras NFKD; si sobrevive alguno, el cliente y el
-      // extractor producirian slugs distintos para la misma etiqueta.
       if (normalizedLabel(String.fromCharCode(code)) !== "") {
         unsafe.push(`U+${code.toString(16).toUpperCase().padStart(4, "0")}`);
       }

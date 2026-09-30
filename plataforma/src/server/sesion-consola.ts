@@ -1,16 +1,3 @@
-/**
- * Sesión de la consola central.
- *
- * Lo que hay aquí es deliberadamente poco: una cookie firmada con HMAC que dice
- * quién entró por `/acceso` y hasta cuándo. No hay directorio de identidad, no
- * hay roles y no cierra ninguna pantalla: las rutas de la consola siguen
- * respondiendo igual con o sin sesión. Es lo acordado para la corrida piloto.
- *
- * La llave se sortea al arrancar el proceso y nunca se escribe. Consecuencia
- * buscada: reiniciar el servidor invalida todas las sesiones abiertas, que es
- * exactamente lo que se quiere de una credencial de prueba.
- */
-
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const NOMBRE_DE_COOKIE = "kcm_sesion";
@@ -28,7 +15,6 @@ export class ConsoleSessionCodec {
     this.llave = llave;
   }
 
-  /** Devuelve el valor completo de la cabecera `set-cookie`. */
   emitir(usuario: string, ahora: Date, seguro: boolean): string {
     const sesion: SesionDeConsola = {
       usuario,
@@ -39,12 +25,10 @@ export class ConsoleSessionCodec {
     return this.cookie(valor, Math.floor(DURACION_MS / 1000), seguro);
   }
 
-  /** Cookie vacía y vencida: es la única forma de cerrar sesión sin estado. */
   revocar(seguro: boolean): string {
     return this.cookie("", 0, seguro);
   }
 
-  /** `undefined` ante cualquier duda: firma alterada, cuerpo ilegible o vencida. */
   leer(cabeceraCookie: string | undefined, ahora: Date): SesionDeConsola | undefined {
     const valor = extraerCookie(cabeceraCookie, NOMBRE_DE_COOKIE);
     if (valor === undefined) return undefined;
@@ -78,8 +62,6 @@ export class ConsoleSessionCodec {
       "SameSite=Lax",
       `Max-Age=${String(maxAge)}`,
     ];
-    // Sin HTTPS no se puede marcar `Secure`, o el navegador descarta la cookie
-    // y la sesión del piloto en `localhost` nunca llegaría a existir.
     if (seguro) partes.push("Secure");
     return partes.join("; ");
   }
@@ -96,11 +78,6 @@ function extraerCookie(cabecera: string | undefined, nombre: string): string | u
   return undefined;
 }
 
-/**
- * Comparación de secretos sin fuga por tiempo. `timingSafeEqual` exige la misma
- * longitud, así que las cadenas se resumen antes: comparar los resúmenes es
- * comparar longitud y contenido a la vez.
- */
 export function igualEnTiempoConstante(recibido: string, esperado: string): boolean {
   const a = createHmac("sha256", "kcm-comparacion").update(recibido).digest();
   const b = createHmac("sha256", "kcm-comparacion").update(esperado).digest();

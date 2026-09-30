@@ -1,17 +1,3 @@
-/**
- * Dominios dedicados del quiosco y de la agenda.
- *
- * El quiosco está en la sala y la agenda es pública. Si comparten dominio con
- * la consola, basta borrar `/quiosco` o `/agenda` de la barra para llegar a la
- * puerta de la plataforma central. Con un dominio propio (`KCM_DOMINIO_QUIOSCO`,
- * `KCM_DOMINIO_AGENDA`), ese dominio sólo sirve su pantalla y lo que ella
- * necesita; cualquier otra dirección vuelve a la pantalla, y un envío a otra
- * ruta no existe.
- *
- * En el dominio de la consola nada cambia: `/quiosco` y `/agenda` siguen
- * respondiendo ahí para quien administra.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";

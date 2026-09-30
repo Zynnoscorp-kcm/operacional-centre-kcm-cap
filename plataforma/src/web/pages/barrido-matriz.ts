@@ -1,25 +1,3 @@
-/**
- * Barrido de la matriz: encargo, revisión y acuse.
- *
- * La pantalla es hermana de la del padrón semanal y tiene los mismos tres
- * momentos: el botón que encarga el barrido, la revisión —qué columnas trae
- * el libro, si cuadran con SQL y qué cambiaría— y el acuse de lo aplicado.
- * Entre la revisión y la escritura hay un botón que alguien tiene que apretar.
- *
- * Dos diferencias con el padrón, y las dos vienen del mismo hecho: el archivo no
- * se sube, se lee en la PC donde vive.
- *
- * 1. El botón no ejecuta el barrido, lo encarga. La plataforma no abre
- *    Excel; el libro controlador recoge la orden cuando pregunta.
- * 2. De las dos listas, la de columnas va completa —son las treinta y tantas
- *    de la hoja y el punto es verlas con nombre— y todo lo demás va sólo con lo
- *    que cambió, con doce de muestra y el resto como cifra.
- *
- * Aquí no aparece el nombre de ningún trabajador: quien cambió de puesto se
- * identifica por su número de nómina, que es lo que hace falta para ir a
- * buscarlo en la matriz.
- */
-
 import type { DeploymentRole, EnvironmentName } from "../../config/environment.ts";
 import type {
   ColumnaDetectada,
@@ -34,32 +12,14 @@ import { renderLayout } from "../layout.ts";
 
 export interface DatosDeBarrido {
   readonly entorno: EnvironmentName;
-  /** Dónde está parada la persona. Decide si se explica dónde mandar el barrido. */
   readonly papel?: DeploymentRole;
-  /** Rechazo ya redactado: revisión vencida, conflictos, snapshot inválido. */
   readonly error?: string | undefined;
-  /** Revisión pendiente de confirmar. */
   readonly informe?: InformeDeBarrido | undefined;
-  /** Acuse de la última aplicación. */
   readonly resultado?: ResultadoDeBarrido | undefined;
-  /**
-   * Qué libro se aplicó la última vez y en qué se parece a éste. Es lo que
-   * distingue «no cambió nada» de «se volvió a barrer el archivo de siempre».
-   */
   readonly comparacion?: ComparacionConLaAnterior | undefined;
-  /** Sin base la pantalla explica y no ofrece encargar nada. */
   readonly sinBase?: boolean;
 }
 
-/**
- * Un mosaico del resumen. Es el mismo componente que usan la consola interna, la
- * auditoría y los tableros de la Función 8: cifra grande, rótulo en versalitas y
- * una pista debajo que dice de qué está hecha la cifra.
- *
- * El tono no es decorativo. Verde es «nada que revisar», ámbar es «mírelo antes
- * de aplicar» y rojo es «esto bloquea». Un número sin tono obliga a recordar
- * cuál de los dieciséis era el preocupante.
- */
 function renderKpi(
   etiqueta: string,
   cifra: number,
@@ -88,11 +48,6 @@ function insigniaDeColumna(columna: ColumnaDetectada): Html {
   return html`<span class="insignia insignia-completado">Coincide</span>`;
 }
 
-/**
- * Los cursos del libro contra los de la base, plegados: casi siempre coinciden
- * todos y la lista es larga. El resumen de la cabecera dice si hay algo que
- * abrir.
- */
 function renderColumnas(informe: InformeDeBarrido): Html {
   const c = informe.cuadre;
   const coinciden = c.columnasEnMatriz - c.columnasNuevas - c.columnasRenombradas;
@@ -159,8 +114,6 @@ function renderColumnas(informe: InformeDeBarrido): Html {
 
 function renderRevision(informe: InformeDeBarrido): Html {
   const c = informe.cuadre;
-  // Sin detalle (una revisión guardada antes de 0046) no se sabe quién sigue en
-  // el padrón: se cuenta a todos como ausentes, sin anunciar bajas.
   const bajasReales = informe.detalle
     ? informe.detalle.bajas.filter((persona) => persona.soloAviso !== true).length
     : 0;
@@ -260,15 +213,6 @@ function renderResultado(resultado: ResultadoDeBarrido): Html {
   `;
 }
 
-/**
- * Dónde se manda el barrido completo.
- *
- * Vive aparte y se dibuja en las dos ramas de `renderEncargo` a propósito: el
- * papel es una propiedad del proceso y no de sus conexiones, así que esconderlo
- * detrás de «hay base o no hay base» dejaría a quien abre la pantalla sin base
- * creyendo que el problema es la conexión, cuando además está en la máquina
- * equivocada. Es la misma regla que sigue la carga del padrón.
- */
 function avisoDePapel(datos: DatosDeBarrido): Html {
   if (datos.papel !== "nube") return html``;
   return html`<p class="texto-nota">

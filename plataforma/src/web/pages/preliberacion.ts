@@ -1,16 +1,3 @@
-/**
- * Pantallas de Preliberación (Función 4).
- *
- * Dos vistas: la bandeja de sesiones revisables y el banco de trabajo de una
- * sesión. Se rinden en servidor y sin una sola línea de script: la política
- * de contenido de la plataforma declara `default-src 'none'`, así que todo lo
- * que la pantalla hace, lo hace con formularios.
- *
- * Esa restricción manda en el diseño del banco: el revisor marca el padrón
- * completo y lo guarda de una vez, que es además como se comporta el servicio
- * —una sola operación serializada— y no fila por fila.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import { etiquetaDeEstadoDeSesion } from "../kit/etiquetas.ts";
 import { fechaCorta } from "../kit/fechas.ts";
@@ -44,16 +31,10 @@ export interface DatosBancoPreliberacion {
   readonly entorno: EnvironmentName;
   readonly estado: WorkbenchState;
   readonly reportes: readonly ReportEvidenceRecord[];
-  /** Quién de la sesión ya tiene fecha del curso en la copia de la matriz. */
   readonly fechasPrevias?: readonly ExistingDate[];
-  /** Identificador de la solicitud que llevarán los formularios de mutación. */
   readonly requestId: string;
   readonly aviso?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Bandeja
-// ---------------------------------------------------------------------------
 
 export function renderPreReleaseInboxPage(datos: DatosBandejaPreliberacion): string {
   const { entorno, revisables, aviso } = datos;
@@ -124,14 +105,6 @@ function renderTablaSesiones(sesiones: readonly SessionHeader[], vacio: string):
   `;
 }
 
-// ---------------------------------------------------------------------------
-// Banco de trabajo
-// ---------------------------------------------------------------------------
-
-/**
- * Aviso de quién ya tiene fecha del curso. Antes sólo se sabía al liberar, y
- * entonces la pantalla pedía un motivo que nadie había previsto.
- */
 function renderFechasPrevias(fechas: readonly ExistingDate[]): Html {
   if (fechas.length === 0) return html``;
   return html`<section class="tarjeta" aria-labelledby="fechas-previas-titulo">
@@ -441,7 +414,6 @@ ${estado.review.comments}</textarea>
   `;
 }
 
-/** La insignia que le toca a cada situación; el texto lo pone el dominio. */
 const INSIGNIA_POR_SITUACION: Readonly<Record<RosterSituation, string>> = Object.freeze({
   EXCLUIDO: "insignia-aviso",
   PENDIENTE: "insignia-pendiente",
@@ -450,8 +422,6 @@ const INSIGNIA_POR_SITUACION: Readonly<Record<RosterSituation, string>> = Object
 
 function renderFilaPadron(fila: RosterRow, estado: WorkbenchState, editable: boolean): Html {
   const situacion = rosterSituation(fila);
-  // Los motivos acompañan a la exclusión, que es donde explican algo. Junto a
-  // «Pendiente» sólo repetirían, en jerga, que la revisión no se ha guardado.
   const motivos = situacion === "EXCLUIDO" ? fila.blockingReasons.join(", ") : "";
 
   return html`
@@ -540,9 +510,6 @@ function renderTransiciones(estado: WorkbenchState, requestId: string): Html {
   const enPreliberacion = sesion.status === "PRELIBERACION";
   const enBandeja = sesion.status === "LISTA_PARA_LIBERAR";
   const revisionGuardada = Boolean(estado.review.reviewedAt);
-  // Limpia es sin un solo hallazgo, ni de los que el revisor declara ni de los
-  // que la revisión deriva sola. Es la condición del atajo, y se calcula aquí
-  // igual que en la ruta para que la pantalla y el servidor no discrepen.
   const sinHallazgos = estado.findings.length === 0 && estado.derivedFindings.length === 0;
 
   return html`
@@ -568,10 +535,6 @@ function renderTransiciones(estado: WorkbenchState, requestId: string): Html {
 
       <div class="acciones-busqueda">
         ${
-          // El orden lo impone el servidor: sin revisión guardada, entrar a
-          // preliberación se rechaza. Ofrecer el botón igual dejaba al revisor
-          // ante un error y sin saber qué le faltaba, así que el paso aparece
-          // cuando de verdad se puede dar y, si no, se dice qué falta.
           !enPreliberacion && !enBandeja
             ? revisionGuardada
               ? html`
@@ -585,16 +548,6 @@ function renderTransiciones(estado: WorkbenchState, requestId: string): Html {
             : ""
         }
         ${
-          // Dos caminos y uno solo visible a la vez, según lo que la sesión traiga.
-          //
-          // Limpia: un botón que revisa y libera en el mismo acto. La segunda
-          // revisión de una sesión sin hallazgos no es un control —nada exige que
-          // la firme otra persona— sino una ceremonia que cuesta dos pantallas.
-          //
-          // Con hallazgos: el camino de siempre, en dos pasos, porque ahí la
-          // segunda mirada sí tiene algo que mirar. El atajo no se ofrece, y el
-          // servidor lo vuelve a comprobar por si la sesión se ensució entre que
-          // se pintó esta pantalla y alguien pulsó.
           enPreliberacion
             ? sinHallazgos
               ? html`

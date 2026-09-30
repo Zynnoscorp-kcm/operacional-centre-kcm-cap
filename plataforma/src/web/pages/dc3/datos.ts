@@ -1,14 +1,3 @@
-/**
- * Datos del formato: qué imprime la constancia, de dónde sale cada dato y qué
- * sale en blanco.
- *
- * La pregunta que más se repite frente a una constancia es «¿por qué salió este
- * recuadro vacío?». Aquí está la respuesta entera, y es de sólo lectura: los
- * datos se completan donde viven —el padrón y el catálogo de cursos—, no desde
- * una pantalla. Lo que sí se puede hacer aquí es llevarse la lista de lo que
- * falta a quien lo tiene que dar.
- */
-
 import type { AppConfig } from "../../../config/environment.ts";
 import { nombreDeAreaTematica } from "../../../domain/dc3/areas-tematicas.ts";
 import type { FormatoVisibleDc3 } from "../../../domain/dc3/constancia.ts";

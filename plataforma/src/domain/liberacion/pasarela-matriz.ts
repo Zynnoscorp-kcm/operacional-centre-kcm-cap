@@ -1,20 +1,3 @@
-/**
- * Gateway de escritura a la réplica consultable de la matriz.
- *
- * Aplica fechas validadas sobre registros con procedencia. Aquí vive la
- * sobrescritura gobernada.
- *
- * Tres reglas gobiernan todo lo que sigue:
- *
- * 1. Preflight antes de cualquier efecto. `inspect` no escribe nada; sólo
- *    clasifica. `write` vuelve a inspeccionar y aborta si algo cambió.
- * 2. Atomicidad por lote. Un solo conflicto convierte las entradas listas
- *    en `ATOMIC_BATCH_ABORTED` y el lote no escribe nada. Media liberación es
- *    peor que ninguna: deja la sesión en un estado que nadie declaró.
- * 3. Sobrescribir sí, borrar no. El historial se arma y se persiste antes
- *    que el valor nuevo, con actor, motivo, momento y procedencia anterior.
- */
-
 import { randomUUID } from "node:crypto";
 
 import { parseWorkerNumber } from "../comun/numero-trabajador.ts";
@@ -40,9 +23,7 @@ export interface MatrixGatewayDeps {
 }
 
 export interface InspectOptions {
-  /** Motivo capturado para la sobrescritura. Vacío significa "no autorizada". */
   readonly overwriteReason?: string;
-  /** Contexto durable del lote; ausente durante la vista previa. */
   readonly context?: DurableContext;
 }
 
@@ -63,16 +44,6 @@ export class MatrixGateway {
     this.#clock = deps.clock;
   }
 
-  // -------------------------------------------------------------------------
-  // Preflight
-  // -------------------------------------------------------------------------
-
-  /**
-   * Clasifica cada entrada del plan contra el destino sin tocarlo.
-   *
-   * El resultado ya viene con la regla de atomicidad aplicada: si hay algún
-   * conflicto, ninguna entrada queda en estado listo.
-   */
   async inspect(plan: WritePlan, options: InspectOptions = {}): Promise<MatrixWriteResult[]> {
     assertMapping(plan.mapping);
 
@@ -109,30 +80,20 @@ export class MatrixGateway {
 
     const existing = await this.#matrix.getHcRecord(workerNumber, entry.trainingId);
 
-    // Celda libre: el caso normal.
     if (!existing || existing.status !== "VIGENTE" || !existing.completionDate) {
       return { ...base, status: "READY" };
     }
 
-    // ¿La escribió este mismo lote? Es lo que convierte un reintento en
-    // recuperación y no en un segundo efecto.
     if (options.context && this.#isOwnEffect(plan, entry, existing, options.context)) {
       return { ...base, status: "RECOVERED" };
     }
 
-    // Mismo valor ya presente: no hay nada que escribir ni que historiar. El
-    // esquema además rechaza un historial cuya fecha anterior iguale la nueva.
     if (existing.completionDate === entry.completionDate) {
       return plan.mapping.overwritePolicy === "OVERWRITE_WITH_HISTORY"
         ? { ...base, status: "ALREADY_APPLIED" }
         : { ...base, status: "EXISTING_VALUE_CONFLICT" };
     }
 
-    // Una fecha más reciente ya no detiene la liberación: la pantalla la
-    // enseña como advertencia antes de confirmar, y se trata como cualquier
-    // otra sobrescritura, con motivo e historial.
-
-    // Hay un valor distinto. Aquí decide la política declarada del destino.
     if (plan.mapping.overwritePolicy !== "OVERWRITE_WITH_HISTORY") {
       return {
         ...base,
@@ -173,14 +134,6 @@ export class MatrixGateway {
     return String(existing.marker ?? "") === expected;
   }
 
-  // -------------------------------------------------------------------------
-  // Efecto
-  // -------------------------------------------------------------------------
-
-  /**
-   * Aplica el lote. Vuelve a inspeccionar antes de escribir: entre el
-   * preflight y aquí pudo entrar una importación que ocupara la celda.
-   */
   async write(plan: WritePlan, options: ApplyOptions): Promise<MatrixWriteResult[]> {
     const inspected = await this.inspect(plan, options);
 
@@ -188,7 +141,6 @@ export class MatrixGateway {
       return inspected;
     }
 
-    // Nada que escribir: el lote entero ya estaba aplicado.
     if (!inspected.some((result) => isReady(result.status))) {
       return inspected;
     }
@@ -213,9 +165,6 @@ export class MatrixGateway {
       const workerNumber = parseWorkerNumber(entry.employeeId);
       const existing = await this.#matrix.getHcRecord(workerNumber, entry.trainingId);
       const marker = markerFor(this.#secret, plan, options.context, entry);
-      // `operacion.historial_capacitacion.registro_id` e `historial_id` son UUID en PostgreSQL.
-      // El prefijo que se usaba en memoria era válido allí, pero no puede
-      // cruzar la frontera del adaptador Supabase.
       const recordId = existing?.recordId ?? randomUUID();
 
       const record: HcRecord = {
@@ -238,8 +187,6 @@ export class MatrixGateway {
         version: (existing?.version ?? 0) + 1,
       };
 
-      // El historial sólo existe cuando de verdad se sustituye un valor. La
-      // entrada se arma aquí y el adaptador la persiste antes que el registro.
       const history =
         result.status === "READY_OVERWRITE" && existing?.completionDate
           ? {
@@ -281,18 +228,6 @@ export class MatrixGateway {
     return applied;
   }
 
-  // -------------------------------------------------------------------------
-  // Verificación
-  // -------------------------------------------------------------------------
-
-  /**
-   * Confirma que el destino sostiene los efectos que el journal afirma.
-   *
-   * Se llama antes de avanzar de fase y en cada reanudación. Sin ella, un
-   * journal que dijera "matriz aplicada" bastaría para dar por escrita una
-   * fecha que nunca se escribió.
-   */
-  /** El registro vigente del par, tal como lo ve la liberación. */
   currentRecord(employeeId: string, trainingId: string): Promise<HcRecord | null> {
     return this.#matrix.getHcRecord(parseWorkerNumber(employeeId), trainingId);
   }
@@ -330,8 +265,6 @@ export class MatrixGateway {
         throw new ReleaseConflictError("La matriz no confirma los efectos autenticados del lote");
       }
 
-      // `ALREADY_APPLIED` reconoce un valor que este lote no escribió: exigirle
-      // el marcador propio lo declararía falsamente ajeno.
       if (
         declared.status !== "ALREADY_APPLIED" &&
         !this.#isOwnEffect(plan, entry, actual, context)
@@ -344,15 +277,6 @@ export class MatrixGateway {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Atomicidad
-// ---------------------------------------------------------------------------
-
-/**
- * Un conflicto en cualquier entrada aborta el lote entero. Las entradas que
- * iban a escribirse conservan su rastro como `ATOMIC_BATCH_ABORTED`, para que
- * quien revise distinga "esta fila falló" de "esta fila no llegó a intentarse".
- */
 export function applyAtomicity(results: readonly MatrixWriteResult[]): MatrixWriteResult[] {
   const blocked = results.some((result) => isConflict(result.status));
   if (!blocked) return [...results];

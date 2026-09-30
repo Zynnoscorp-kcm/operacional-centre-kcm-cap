@@ -1,24 +1,3 @@
-/**
- * Sincronía entre la matriz y el padrón.
- *
- * La cuarta pestaña de Cargas contesta una pregunta que las otras tres no
- * contestan. El barrido dice qué cambiaría un libro nuevo; la revisión del
- * padrón, qué escribiría un archivo nuevo; el historial, qué entró. Ninguna dice
- * si lo que **ya está aplicado** sigue diciendo lo mismo en las dos fuentes. Eso
- * se responde aquí, sin subir nada: los dos lados ya viven en la base.
- *
- * La pantalla enseña cifras y nada más. No lleva glosa, ni pie explicativo, ni
- * columna de «qué significa»: quien la abre sabe qué son la matriz y el padrón,
- * y una tabla de siete renglones no necesita que se la narren al lado. Lo que
- * antes decían esas leyendas está donde corresponde —en estos comentarios, que
- * los lee quien mantiene el código, no quien opera la consola—.
- *
- * Aquí no aparece el nombre de ninguna persona. Cuando el nombre completo
- * discrepa se enseña el número de nómina y nada más, y los dos valores llegan
- * enmascarados desde la consulta: la regla es la misma del barrido y del
- * historial, y se cumple en la base para que no dependa de esta plantilla.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import {
   NOMBRE_DE_CAMPO,
@@ -33,13 +12,9 @@ import { renderLayout } from "../layout.ts";
 
 export interface DatosDeSincronia {
   readonly entorno: EnvironmentName;
-  /** Ausente con las dos causas de abajo: sin base, o sin matriz guardada. */
   readonly informe?: InformeDeSincronia | undefined;
-  /** Cuándo se aplicó el último padrón. Ausente si nunca se ha aplicado uno. */
   readonly padronAplicadoEn?: string | undefined;
-  /** Sin base no hay ni matriz ni padrón que cotejar. */
   readonly sinBase?: boolean;
-  /** Rechazo ya redactado. */
   readonly error?: string | undefined;
 }
 
@@ -65,17 +40,6 @@ const INSIGNIA_DE_VEREDICTO: Readonly<Record<VeredictoDeSincronia, Html>> = {
   CON_DISCREPANCIAS: html`<span class="insignia insignia-aviso">Con diferencias</span>`,
 };
 
-/**
- * Un decimal, y sólo cuando hace falta.
- *
- * Los dos extremos están acotados a mano y no por redondeo. Con 16 839
- * coincidencias de 16 840, el redondeo a un decimal imprime `100.0 %` teniendo
- * una diferencia viva, que es exactamente el error que esta pantalla existe para
- * no cometer; en el otro extremo, una sola coincidencia entre miles se
- * redondearía a `0.0 %` y se leería como que no hay ninguna. Así que `100 %` y
- * `0 %` sólo se imprimen cuando la proporción es exacta, y todo lo demás se
- * queda del lado honesto del tope.
- */
 function porcentaje(proporcion: number): string {
   if (proporcion >= 1) return "100 %";
   if (proporcion <= 0) return "0 %";
@@ -87,7 +51,6 @@ function hora(iso: string): string {
   return momento(iso);
 }
 
-/** Cifra y rótulo. Sin pista debajo: la cifra se explica sola en esta tabla. */
 function renderKpi(
   etiqueta: string,
   cifra: string,
@@ -100,7 +63,6 @@ function renderKpi(
   </div>`;
 }
 
-/** Doce números y el resto como cifra. */
 function renderMuestraDeNominas(valores: readonly string[], total: number): Html {
   if (total === 0) return html`<span class="texto-atenuado">—</span>`;
   const restantes = total - valores.length;
@@ -125,7 +87,6 @@ function renderResumen(informe: InformeDeSincronia): Html {
   </div>`;
 }
 
-/** De qué matriz y de qué padrón se está hablando. Sin esto no es reproducible. */
 function renderFuente(informe: InformeDeSincronia, padronAplicadoEn: string | undefined): Html {
   const f = informe.fuente;
   return html`<section class="tarjeta">
@@ -171,7 +132,6 @@ function renderFuente(informe: InformeDeSincronia, padronAplicadoEn: string | un
   </section>`;
 }
 
-/** Quién está en cada lado. Las dos ausencias se cuentan por separado. */
 function renderUniverso(informe: InformeDeSincronia): Html {
   const u = informe.universo;
   return html`<section class="tarjeta">
@@ -223,11 +183,6 @@ function renderFilaDeCampo(campo: CampoDelInforme): Html {
   </tr>`;
 }
 
-/**
- * La tabla de los siete campos. Las cinco columnas de conteo son la partición
- * completa de los comparados: sumadas dan el total, de modo que la tabla se
- * verifica sola sin que haya que decirlo en un pie.
- */
 function renderCampos(informe: InformeDeSincronia): Html {
   return html`<section class="tarjeta">
     <div class="seccion-cabecera"><h2>Campo por campo</h2></div>
@@ -252,7 +207,6 @@ function renderCampos(informe: InformeDeSincronia): Html {
   </section>`;
 }
 
-/** Los casos concretos de un campo, hasta doce. Sólo para lo que no cuadra. */
 function renderDetalle(campo: CampoDelInforme): Html {
   const total = campo.diferencias + campo.equivalentes;
   const restantes = total - campo.muestras.length;
@@ -321,9 +275,6 @@ function renderDetalles(informe: InformeDeSincronia): Html | string {
 export function renderSyncPage(datos: DatosDeSincronia): string {
   const { informe } = datos;
 
-  // Los dos estados vacíos conservan una frase, y sólo una: sin ella la pantalla
-  // quedaría en blanco y el blanco se lee como «cuadra todo», que es justo lo
-  // contrario de lo que pasa cuando no hay nada que cotejar.
   const cuerpo = datos.sinBase
     ? html`<section class="tarjeta">
         <div class="seccion-cabecera"><h2>Sin conexión con la base de datos</h2></div>

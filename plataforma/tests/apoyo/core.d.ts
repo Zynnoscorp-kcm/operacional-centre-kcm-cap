@@ -1,15 +1,3 @@
-/**
- * Declaraciones del nucleo JavaScript que consumen las pruebas de
- * caracterizacion de la liberacion.
- *
- * El nucleo se importa sin adaptarlo ni convertirlo a TypeScript: convertirlo
- * produciria una copia con la que el puerto podria concordar por construccion,
- * que es justamente lo que una prueba de caracterizacion no debe permitir.
- *
- * Las firmas cubren solo lo que las pruebas consumen y son deliberadamente
- * laxas: su papel es dejar `tsc` limpio, no tipar el nucleo.
- */
-
 declare module "*/packages/contracts/contracts.js" {
   export const CONTRACT_VERSION: string;
   export const MAX_PARTICIPANTS_PER_SESSION: number;
@@ -22,7 +10,6 @@ declare module "*/packages/contracts/contracts.js" {
 }
 
 declare module "*/packages/core/eligibility.js" {
-  /** Las claves se enumeran para que el acceso no devuelva `undefined`. */
   export const BLOCKING_REASONS: Readonly<{
     INVALID_IDENTITY: string;
     ATTENDANCE_NOT_PROVEN: string;

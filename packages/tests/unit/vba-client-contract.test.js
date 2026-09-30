@@ -6,20 +6,9 @@ import test from "node:test";
 const files = [
   "KcmBridgeCore.bas", "KcmBridgeHttp.bas", "KcmMatrixSync.bas",
   "KcmReleaseSync.bas", "KcmActualizador.bas",
-  // Los tres modulos del barrido gobernado. Entran a la lista porque son los que
-  // devolvieron `ROSTER_PATH` al cliente, y la frontera que eso reabre —el
-  // padron se entrega, no se interpreta aqui— necesita quedar fijada.
   "KcmMatrixPanel.bas", "KcmPadronSync.bas", "KcmJornada.bas",
-  // El puerto de plataforma y lo que se saco de en medio para que exista: las
-  // codificaciones en VBA puro, el mapa que sustituye al de Windows y la
-  // autoprueba con la que un equipo ajeno devuelve evidencia.
   "KcmPlataforma.bas", "KcmCodec.bas", "KcmDiccionario.cls", "KcmPruebas.bas",
-  // El subpanel de sesiones entrantes: lo que convirtio "recibir todo" en
-  // "recibir lo que se escoja".
   "KcmEntradas.bas",
-  // La voz del cliente. Entra a la lista porque el tono es una propiedad del
-  // codigo y no de la memoria de quien escribe la siguiente rutina: sin una
-  // prueba, el proximo `MsgBox` suelto vuelve a sonar a recado.
   "KcmAvisos.bas", "KcmPanel.bas", "KcmConfigButtons.bas", "KcmAsistente.bas",
 ];
 const modules = Object.fromEntries(await Promise.all(files.map(async (file) => [
@@ -32,32 +21,20 @@ test("el cliente es uno solo con modulos separados y sin secreto incrustado", ()
     assert.match(source, /Option Explicit/, `${file} exige declaraciones explicitas`);
     assert.doesNotMatch(source, /\/\*|\*\//, `${file} usa comentarios validos de VBA`);
   }
-  // Las dos entregas del dia salen de la jornada: bajar liberaciones y mandar la matriz.
   assert.match(modules["KcmJornada.bas"], /KcmApplyPendingReleases/);
-  assert.match(modules["KcmJornada.bas"], /KcmTransmitirMatriz/);
-  // La credencial la entrega el puerto, que sabe donde vive en cada sistema: variables de
-  // usuario en Windows, llavero en macOS. Ningun otro modulo la busca por su cuenta.
+  assert.match(modules["KcmMatrixPanel.bas"], /Public Sub KcmTransmitirMatriz\(\)/);
   assert.match(modules["KcmBridgeHttp.bas"], /token = KcmCredencialLeer\(\)/);
   assert.match(modules["KcmPlataforma.bas"], /Environment\("USER"\)\(KCM_TOKEN_ENV\)/);
   assert.match(modules["KcmPlataforma.bas"], /security.*find-generic-password/s);
   assert.doesNotMatch(everything, /UqU7cJ-_HnsNA3fRtMy/);
 });
 
-/**
- * La emision DC-3 volvio al generador Node, que compone el PDF de una pagina y lleva su propio
- * ledger. Dos rutas de emision compartiendo la plantilla oficial podrian emitir dos constancias
- * del mismo curso al mismo trabajador, cada una con su propio folio.
- */
 test("el cliente VBA no emite constancias DC-3", () => {
   for (const [file, source] of Object.entries(modules)) {
     const code = source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n");
     assert.doesNotMatch(code, /Dc3|DC3/, `${file} conserva codigo de DC-3`);
     assert.doesNotMatch(code, /DC3_TEMPLATE_PATH|DC3_OUTPUT_PATH/,
       `${file} conserva la emision de documentos`);
-    // `FileCopy` era el rastro de la emision de constancias y sigue prohibido, con una
-    // excepcion nombrada: en macOS la huella de un archivo que vive fuera del contenedor de
-    // Excel se calcula sobre una copia dentro de el, porque el proceso hijo hereda la caja de
-    // arena. Copia y original tienen el mismo digest; la copia se borra enseguida.
     if (file !== "KcmPlataforma.bas") {
       assert.doesNotMatch(code, /FileCopy/, `${file} copia archivos`);
     }
@@ -66,23 +43,7 @@ test("el cliente VBA no emite constancias DC-3", () => {
     "la fecha de corte solo servia a la DC-3 y la resuelve el generador Node");
 });
 
-/**
- * `ROSTER_PATH` volvio, y no es una regresion de la DC-3.
- *
- * Se retiro en 2026-08-01 porque solo servia para que el cliente leyera el padron y emitiera
- * constancias. Ahora existe otra vez por un motivo distinto: el barrido del padron entrega el
- * archivo a la plataforma para revision. Lo que esta prueba fija es esa frontera —la clave la
- * usan el instalador y el modulo de barrido, y nadie mas— para que su regreso no arrastre de
- * vuelta la lectura del padron dentro de la macro.
- */
 test("ROSTER_PATH sirve al barrido del padron y no a la emision", () => {
-  // `KcmJornada` declara cual es el archivo de la semana y lo suelta al
-  // entregarlo; no lo abre ni lo lee. La frontera que esta prueba defiende es la
-  // lectura, no el nombre, y por eso el modulo que pide la ruta puede conocerla
-  // mientras siga sin tocar los bytes: eso se comprueba abajo.
-  // `KcmPanel` entra por lo mismo: rotula la clave en la tabla de configuracion
-  // para que quien instala el cliente sepa que es y cada cuanto cambia. Rotular
-  // no es leer, y abajo se comprueba que tampoco toque los bytes.
   const permitidos = new Set([
     "KcmBridgeCore.bas", "KcmPadronSync.bas", "KcmJornada.bas", "KcmPanel.bas"
   ]);
@@ -93,7 +54,6 @@ test("ROSTER_PATH sirve al barrido del padron y no a la emision", () => {
   }
   const barrido = modules["KcmPadronSync.bas"];
   assert.ok(barrido, "falta el modulo del barrido del padron");
-  // El archivo se entrega tal cual: lo lee el extractor del servidor, no la macro.
   assert.match(barrido, /KcmFileBase64/, "el barrido debe entregar los bytes del archivo");
   assert.match(barrido, /ROSTER_SCAN_V1/, "el barrido debe usar la accion de solo lectura");
   assert.doesNotMatch(barrido, /Workbooks\.Open|KcmOpenMaster/,
@@ -121,10 +81,6 @@ test("ROSTER_PATH sirve al barrido del padron y no a la emision", () => {
     "el panel rotula la ruta del padron, pero no abre ni lee el archivo");
 });
 
-/**
- * El analisis lexico es la unica barrera disponible sin Excel para Windows: seis literales de
- * cadena mal escapados impidieron compilar `KcmMatrixSync` sin que ninguna prueba lo notara.
- */
 test("el analisis estatico de las fuentes VBA no reporta hallazgos", () => {
   const result = spawnSync(process.execPath, ["tools/check/vba.js"], { encoding: "utf8" });
   assert.equal(result.status, 0, `tools/check/vba.js reporto:\n${result.stderr}`);
@@ -152,10 +108,6 @@ test("las fuentes son ASCII puro para sobrevivir la importacion del editor VBA",
     assert.equal(match, null,
       `${file} contiene ${JSON.stringify(match?.[0])}; use ChrW$ en su lugar`);
   }
-  // Los dos caracteres que se construian con `ChrW$` -la eNe de la CURP y la O acentuada de los
-  // nombres oficiales de curso- pertenecian a la DC-3. Sin ella, el codigo de produccion no
-  // necesita ninguno. La autoprueba si: su vector de codificacion es un apellido con enie, y
-  // construirlo por codigo es justamente lo que la regla ASCII prescribe.
   for (const [file, source] of Object.entries(modules)) {
     if (file === "KcmPruebas.bas") continue;
     assert.doesNotMatch(source, /ChrW\$/, `${file} construye un caracter fuera de ASCII`);
@@ -165,38 +117,26 @@ test("las fuentes son ASCII puro para sobrevivir la importacion del editor VBA",
 
 test("la liberacion VBA decide por la fecha de la celda y conserva la nota que ya estaba", () => {
   const source = modules["KcmReleaseSync.bas"];
-  // La nota se reescribe conservando el apunte humano y agregando debajo la linea de la plataforma.
   assert.match(source, /KcmNotaConMarcador/);
   assert.match(source, /KcmNotaSinMarcador/);
-  // Una celda vacia con nota ya no es conflicto, y el efecto se reconoce por la fecha sola.
   assert.doesNotMatch(source, /nota ajena/);
   assert.doesNotMatch(source, /currentComment = marker/);
 });
 
-/**
- * Desde el 2026-09-29 la nota de cada fecha dice el codigo de su sesion (KC-0001) y no la clave
- * tecnica. El codigo sale de RELEASE_SESSIONS_V1: RELEASE_PULL_V1 no lo trae, y su lector exige
- * columnas exactas, asi que agregarle una romperia a los libros con modulos anteriores.
- */
 test("la nota de cada fecha liberada dice el codigo de su sesion", () => {
   const source = modules["KcmReleaseSync.bas"];
   assert.match(source, /target\.AddComment KcmNotaConMarcador\(previousNote, KcmNotaDeLaSesion\(row\)\)/);
-  // Los codigos se consultan antes de abrir la matriz: si fallan, no se escribe nada.
   const aplicar = source.slice(source.indexOf("Public Sub KcmApplyPendingReleases"));
   const cuerpo = aplicar.slice(0, aplicar.indexOf("End Sub"));
   const consulta = cuerpo.indexOf("Set codigos = KcmCodigosDeSesion()");
   assert.ok(consulta > 0 && consulta < cuerpo.indexOf("KcmOpenMaster"),
     "el codigo de sesion debe conocerse antes de tocar la matriz");
   assert.match(source, /KcmHttpPost\("RELEASE_SESSIONS_V1", ""\)/);
-  // La descarga conserva sus doce columnas exactas.
   assert.match(source, /"idempotencyKey", "batchId", "sessionId", "employeeId", "trainingId", _\r?\n\s+"completionDate", "destinationSheet", "destinationColumn", "headerRow", _\r?\n\s+"destinationHeader", "targetMappingVersion", "overwritePolicy"\)/);
-  // Una liberacion posterior reemplaza la linea del codigo en vez de apilar otra, y la clave
-  // tecnica de las notas anteriores tambien se retira.
   const linea = source.slice(source.indexOf("Private Function KcmEsLineaDeLaPlataforma"));
   const reconoce = linea.slice(0, linea.indexOf("End Function"));
   assert.match(reconoce, /Like "KC-####"/);
   assert.match(reconoce, /KCM_MARKER_PREFIX/);
-  // Sin codigo, la celda conserva el marcador tecnico: nunca queda una fecha sin rastro.
   const nota = source.slice(source.indexOf("Private Function KcmNotaDeLaSesion"));
   assert.match(nota.slice(0, nota.indexOf("End Function")), /KcmReleaseMarker\(row\)/);
 });
@@ -234,7 +174,6 @@ test("un conflicto de hoja, columna o encabezado produce acuse en lugar de abort
   assert.match(source, /KcmSheetExists/, "la hoja destino se verifica antes de indexarla");
   assert.match(source, /InspectionError:/, "el preflight por fila atrapa lo inesperado");
   assert.match(source, /KcmSetRowStatus row, "ERROR"/, "un fallo inesperado viaja como ERROR");
-  // `destinationAddress` es un dato de reporte; el destino real viaja como fila y columna.
   assert.match(source, /row\.(?:Item|Fijar)[ (]"destinationRow"/);
   assert.match(source, /row\.(?:Item|Fijar)[ (]"destinationColumnNumber"/);
   assert.doesNotMatch(source, /Split\(CStr\(row\.Item\("destinationAddress"\)\), "!"\)/,
@@ -260,11 +199,6 @@ test("el modo de calculo se restituye antes de guardar la matriz maestra", () =>
     "la jornada no fija el modo de calculo: lo restituye quien lo cambia");
 });
 
-/**
- * Con `KcmFileSha256` dentro de la ventana de rollback, un fallo al calcular la huella borraba las
- * celdas y volvia a guardar un lote que ya estaba escrito y guardado en disco. El efecto es durable
- * y recuperable por fecha mas marcador desde que `master.Save` retorna: ahi termina la ventana.
- */
 test("ni la huella ni el acuse pueden revertir un lote ya guardado", () => {
   const source = modules["KcmReleaseSync.bas"];
   const save = source.indexOf("If written.Count > 0 Then master.Save");
@@ -285,11 +219,6 @@ test("revertir un lote restituye el formato previo de cada celda", () => {
     "limpiar solo el contenido dejaba impuesto el formato de fecha");
 });
 
-/**
- * Las entradas de una sola etapa no cierran la matriz, asi que la referencia sobrevive a la
- * corrida. Reutilizar un libro que el operador cerro a mano fallaba con un error de automatizacion
- * sin explicacion en lugar de volver a abrirlo.
- */
 test("la matriz en cache se sondea antes de reutilizarla", () => {
   const core = modules["KcmBridgeCore.bas"];
   assert.match(core, /Private Function KcmMasterStillOpen/);
@@ -301,22 +230,14 @@ test("la matriz en cache se sondea antes de reutilizarla", () => {
 test("la sincronizacion emite HC_SNAPSHOT_V1 sin literales de comillas triples", () => {
   const matrix = modules["KcmMatrixSync.bas"];
   assert.match(matrix, /HC_SNAPSHOT_V1/);
-  // El snapshot se arma aquí; lo transmite y lo barre el panel, etapa por etapa.
   assert.match(modules["KcmMatrixPanel.bas"], /KcmHttpPost\("MATRIX_IMPORT_V1"/);
   assert.match(modules["KcmMatrixPanel.bas"], /KcmHttpPost\("MATRIX_SCAN_V1"/);
   assert.match(matrix, /Dos columnas comparten la misma identidad/);
-  // Una constante de error escrita a mano no tiene formula: contar solo errores de formula la
-  // habria dejado pasar como celda vacia y la fecha se perderia sin aviso.
   assert.match(matrix, /If IsError\(values\(rowIndex, columnIndex\)\) Then/);
   assert.match(matrix, /celdas de error en el rango importado/);
-  // La direccion de la primera celda rota sigue nombrandose, pero ya no es lo unico que se dice:
-  // se listan hasta veinte y se decide si transmitir omitiendo esos renglones o detenerse. Sin la
-  // lista, quien opera solo puede corregir de una en una y volver a transmitir cada vez.
   assert.match(matrix, /direcciones/);
   assert.match(matrix, /KcmDecidirCeldasConError/);
   assert.match(matrix, /MATRIX_CELDAS_ERROR/);
-  // La fila con una celda rota se omite completa y se declara: un trabajador con un atributo en
-  // blanco que nadie escribio es un dato falso, y el servidor rechaza el lote que declare errores.
   assert.match(matrix, /skippedEmployeeCount", skippedEmployeeCount/);
   assert.match(matrix, /EMPLOYEE_CELL_ERROR/);
   assert.doesNotMatch(matrix, /"""/,
@@ -356,8 +277,6 @@ test("el sorteo de identidad y la codificacion lineal sobreviven al puerto", () 
   assert.match(puerto, /\/dev\/urandom/, "macOS sortea con entropia del sistema");
   assert.doesNotMatch(everything, /CreateObject\("Scriptlet\.TypeLib"\)/,
     "scrobj.dll suele estar bloqueado y su GUID trae un terminador nulo");
-  // La codificacion trabaja sobre arreglos de bytes preasignados. Concatenar por byte volvia
-  // cuadratico el costo y hacia inviable un cuerpo de megabytes.
   assert.match(codec, /ReDim destino\(0 To \(usados \* 6\) - 1\)/);
   assert.doesNotMatch(codec, /salida = salida & Chr\$/);
   assert.match(http, /encodedPayload = KcmBase64WebEncode\(payload\)/);
@@ -365,17 +284,9 @@ test("el sorteo de identidad y la codificacion lineal sobreviven al puerto", () 
     "base64 web-safe ya es no reservado: recodificarlo solo duplicaba el costo");
 });
 
-/**
- * La frontera de plataforma es la garantia que sostiene "Mac primero, Windows en paralelo": el
- * compilador de cada sistema compila SOLO su rama, asi que un error dentro de `#If Mac` no se
- * manifiesta al compilar en el otro. La unica defensa es que esa superficie sea chica y este en
- * un lugar conocido. El linter lo exige y esta prueba lo fija tambien desde aqui.
- */
 test("todo lo que depende del sistema operativo vive en el puerto", () => {
   for (const [file, source] of Object.entries(modules)) {
     if (file === "KcmPlataforma.bas") continue;
-    // Se comparan solo las lineas de codigo: los comentarios nombran la directiva a proposito,
-    // para explicar donde vive y por que.
     const codigo = source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n");
     assert.doesNotMatch(codigo, /#If\s+.*\bMac\b/i, `${file} abre una rama por sistema`);
     assert.doesNotMatch(codigo, /CreateObject\(/, `${file} instancia COM de Windows`);
@@ -383,12 +294,6 @@ test("todo lo que depende del sistema operativo vive en el puerto", () => {
   }
 });
 
-/**
- * `Scripting.Dictionary`, `ADODB.Stream` y `Msxml2.DOMDocument` son parte de Windows y no existen
- * en Excel para Mac. Se sustituyeron por codigo propio que corre igual en los dos sistemas, en vez
- * de por una rama mas: cuanto menos codigo dependa del sistema, mas dice la prueba hecha en uno
- * sobre el otro.
- */
 test("el cliente no depende de ningun objeto COM que falte en macOS", () => {
   const codigo = Object.entries(modules)
     .map(([, source]) => source.split(/\r?\n/).filter((line) => !/^\s*'/.test(line)).join("\n"))
@@ -400,17 +305,11 @@ test("el cliente no depende de ningun objeto COM que falte en macOS", () => {
   assert.match(modules["KcmBridgeCore.bas"], /Set KcmNuevoDiccionario = New KcmDiccionario/);
 });
 
-/**
- * Las dos vias de macOS ejecutan un vector de argumentos, nunca una linea de shell concatenada.
- * Con concatenacion, una ruta con espacios o un endpoint pegado en KCM_CONFIG podrian inyectar
- * un comando; con argumentos sueltos, cualquier cosa que llegue es un dato.
- */
 test("macOS ejecuta vectores de argumentos y no lineas de shell", () => {
   const puerto = modules["KcmPlataforma.bas"];
   assert.match(puerto, /AppleScriptTask\(KCM_MAC_GUION, "kcmComando", argv\)/);
   assert.match(puerto, /KcmCitarShell\(CStr\(piezas\(indice\)\)\)/);
   assert.match(puerto, /Split\(argv, vbTab\)/);
-  // El cuerpo viaja por archivo: el snapshot pesa megabytes y no cabe en una linea de comandos.
   assert.match(puerto, /--data-binary" & vbTab & "@" & rutaCuerpo/);
   assert.match(puerto, /KcmBorrarArchivo rutaCuerpo/);
 });
@@ -420,30 +319,19 @@ test("el reintento renueva nonce y sentAt pero conserva el requestId", () => {
   const attempt = http.slice(http.indexOf("Private Function KcmHttpAttempt"));
   assert.match(attempt, /"&nonce=" & KcmUrlEncode\(KcmNewRequestId\("nonce"\)\)/);
   assert.match(attempt, /"&sentAt=" & KcmUrlEncode\(KcmUtcIsoNow\(\)\)/);
-  // Tres intentos por omision; quien llama puede pedir mas para lo que se repite sin riesgo.
   assert.match(http, /If intentos < 1 Then intentos = KCM_HTTP_ATTEMPTS\s+For attempt = 1 To intentos/);
   assert.match(http, /retryable = \(status = 408 Or status = 429 Or status >= 500\)/);
-  // El transporte exige TLS con una sola excepcion: loopback, donde el trafico no
-  // sale de la maquina. Un nombre de equipo o una IP de la red local en claro
-  // siguen rechazandose, porque el token viaja en el cuerpo del POST.
   assert.match(http, /If Not KcmEndpointPermitido\(endpoint\) Then/);
-  // Una sola direccion: lo que no cabe en una peticion sale en partes por la
-  // misma, y ya no hay plataforma que encender en ninguna computadora.
   assert.match(http, /endpoint = KcmConfigValue\("ENDPOINT"\)/);
   assert.doesNotMatch(http, /ENDPOINT_LOCAL|ENVIO_LOCAL|KCM_ACCIONES_LOCALES/);
-  // Cada peticion cabe en la nube con holgura: 3 MB contra los 4.5 MB del alojamiento.
   assert.match(http, /Private Const KCM_PARTE_MAXIMA As Long = 3000000/);
   assert.match(http, /If Len\(encodedPayload\) <= KCM_PARTE_MAXIMA Then/);
-  // Las partes van con la accion original, su numero, el total y el largo, y
-  // conservan el requestId del envio: la plataforma las junta por el.
   assert.match(http, /"&target=" & KcmUrlEncode\(action\)/);
   assert.match(http, /"&part=" & CStr\(parte\)/);
   assert.match(http, /"&parts=" & CStr\(partes\)/);
   assert.match(http, /"&length=" & CStr\(Len\(encodedPayload\)\)/);
   assert.match(http, /KcmHttpConReintentos\(endpoint, "UPLOAD_PART_V1", clientId, requestId, token/);
-  // Si la ultima parte no junta el envio, se dice en vez de darlo por hecho.
   assert.match(http, /KcmResponseField\(response, "uploadComplete"\)\) <> "TRUE"/);
-  // Quien envia puede decir como salio: envio normal o en N partes.
   assert.match(http, /response\.Fijar "envioPartes"/);
   assert.match(http, /Public Function KcmDescribirEnvio\(/);
   for (const modulo of ["KcmMatrixPanel.bas", "KcmPadronSync.bas"]) {
@@ -459,7 +347,6 @@ test("el ledger local se escribe en bloque en lugar de guardar el libro por fila
   assert.match(core, /Public Sub KcmLedgerAppendRows/);
   assert.match(modules["KcmReleaseSync.bas"], /KcmLedgerAppendRows KCM_RELEASE_LEDGER_SHEET, ledgerRows/);
   assert.doesNotMatch(modules["KcmReleaseSync.bas"], /KcmAppendLedger\b/);
-  // El indice por clave logica y la escritura fila a fila solo servian al ledger de DC-3.
   assert.doesNotMatch(core, /KcmLedgerIndex|KcmFindLedgerRow|KcmLedgerSetCell|KcmSaveControlWorkbook/);
 });
 
@@ -477,11 +364,6 @@ test("la configuracion se lee una vez por ejecucion y detecta claves repetidas",
     "el panel cierra la matriz que abrio en lugar de dejarla abierta");
 });
 
-/**
- * `KcmOperationalHcService.normalizedCourseName` recalcula el nombre normalizado y responde
- * CONFLICT si no coincide con el del snapshot. La tabla de plegado del cliente debe cubrir cada
- * caracter que esa regla convierte en una letra A-Z, o una vocal acentuada llegaria como separador.
- */
 test("la tabla de plegado del cliente cubre la regla de normalizacion del servidor", () => {
   const core = modules["KcmBridgeCore.bas"];
   const table = new Map();
@@ -509,25 +391,10 @@ test("la tabla de plegado del cliente cubre la regla de normalizacion del servid
     "la cadena de Replace$ anterior dependia de UCase$ y de la configuracion regional");
 });
 
-/**
- * El subpanel de sesiones entrantes.
- *
- * Antes de el, el libro solo sabia contestar cuantas liberaciones habia y aplicarlas todas. Lo
- * que fija esta prueba son las dos fronteras que ese cambio no puede cruzar:
- *
- * 1. El filtro por sesion no puede convertirse en la unica forma de recibir. El boton Actualizar
- *    llama a `KcmApplyPendingReleases` sin argumentos, y esa llamada tiene que seguir significando
- *    "todas": si el parametro dejara de tener valor por omision, Actualizar empezaria a no
- *    escribir nada sin que nadie lo notara.
- * 2. El subpanel pregunta cuando alguien pulsa, nunca solo. `Application.OnTime` es lo que
- *    programa un reloj en Excel, y aqui no debe aparecer: la vigilancia atiende ordenes que
- *    esperan, y una liberacion no espera nada del libro hasta que una persona decide escribirla.
- */
 test("el subpanel de entradas escoge sesiones sin volverse un reloj", () => {
   const entradas = modules["KcmEntradas.bas"];
   const release = modules["KcmReleaseSync.bas"];
 
-  // Recibir todo sigue siendo lo que ocurre sin pedir nada.
   assert.match(release, /Optional ByVal sesiones As String = ""/,
     "el filtro por sesion debe tener valor por omision");
   assert.match(modules["KcmJornada.bas"], /\r?\n    KcmApplyPendingReleases\r?\n/,
@@ -536,32 +403,15 @@ test("el subpanel de entradas escoge sesiones sin volverse un reloj", () => {
   assert.match(filtro.slice(0, filtro.indexOf("End Function")), /If Len\(sesiones\) = 0 Then/,
     "una lista vacia de sesiones significa todas");
 
-  // El subpanel no programa relojes: se actualiza pulsando.
   assert.doesNotMatch(entradas, /Application\.OnTime/,
     "el subpanel se actualiza a peticion, no por reloj");
-  // Y parte de configuracion fresca, como toda entrada publica que sale al puente.
   const actualizar = entradas.slice(entradas.indexOf("Public Sub KcmEntradasActualizar"));
   assert.match(actualizar.slice(0, actualizar.indexOf("End Sub")), /KcmResetCaches/,
     "consultar debe partir de configuracion fresca");
-  // La sesion se identifica por su UUID y se enseña por su codigo: las dos cosas viajan.
   assert.match(entradas, /RELEASE_SESSIONS_V1/);
   assert.match(entradas, /"sessionId", "sessionCode", "trainingId", "completionDate", "pending"/);
 });
 
-/**
- * La voz del cliente.
- *
- * Los avisos del cliente los escribia quien escribia la rutina, uno a uno, y el
- * resultado era desigual: unos llevaban titulo y la mayoria no, unos terminaban
- * en punto y otros en dos puntos con el mensaje crudo del sistema pegado detras,
- * y varios hablaban de snapshots, subpaneles y caches. Leidos en fila no sonaban
- * a una plataforma sino a notas sueltas.
- *
- * `KcmAvisos` es ahora el unico sitio del cliente donde se abre un cuadro de
- * dialogo, y esta prueba es lo que impide que eso se deshaga. Sin ella, el
- * proximo `MsgBox` escrito a mano en cualquier modulo pasa `npm test` intacto y
- * la voz vuelve a separarse un aviso a la vez.
- */
 test("todo aviso sale por KcmAvisos y ninguno se escribe a mano", () => {
   for (const [file, source] of Object.entries(modules)) {
     if (file === "KcmAvisos.bas") continue;
@@ -573,8 +423,6 @@ test("todo aviso sale por KcmAvisos y ninguno se escribe a mano", () => {
 
 test("todo aviso lleva titulo con la marca, que es lo que lo separa de una nota", () => {
   const avisos = modules["KcmAvisos.bas"];
-  // Sin titulo, Excel escribe "Microsoft Excel" en la barra y el mensaje parece
-  // venir de la hoja de calculo en lugar de la plataforma.
   assert.match(avisos, /MARCA As String = "Plataforma KCM"/);
   for (const llamada of ["KcmAvisoHecho", "KcmAvisoAtencion", "KcmAvisoFallo", "KcmAvisoConfirmar"]) {
     assert.match(avisos, new RegExp(`${llamada}[\\s\\S]{0,400}?KcmAvisoTitulo\\(accion\\)`),
@@ -588,23 +436,14 @@ test("la causa tecnica va rotulada y aparte, no pegada detras de dos puntos", ()
 });
 
 test("el plural se resuelve y no se insinua entre parentesis", () => {
-  // `1 sesion(es) marcada(s)` era lo que habia. La funcion existe para que no
-  // vuelva, y aqui se comprueba que ningun modulo siga escribiendolo.
   assert.match(modules["KcmAvisos.bas"], /Function KcmPlural\(/);
   for (const [file, source] of Object.entries(modules)) {
-    // `KcmAvisos` es el unico que puede escribirlo: su cabecera cita el
-    // contraejemplo para explicar la regla que el resto tiene que cumplir.
     if (file === "KcmAvisos.bas") continue;
     assert.doesNotMatch(source, /\(s\)|\(es\)/,
       `${file} insinua el plural entre parentesis; use KcmPlural`);
   }
 });
 
-/**
- * Todo boton del libro sale del mismo pintor, en KcmPanel. La hoja KCM_CONFIG tiene
- * sus propias tarjetas y botones (revisar, respaldar, conectar), pero los dibuja con
- * las piezas compartidas en vez de crear formas por su cuenta.
- */
 test("las dos superficies pintan el boton con el mismo pintor", () => {
   assert.match(modules["KcmPanel.bas"], /Public Sub KcmPintarBoton\(/,
     "el pintor compartido vive en KcmPanel");
@@ -614,24 +453,12 @@ test("las dos superficies pintan el boton con el mismo pintor", () => {
     "la hoja de configuracion ya no dibuja formas por su cuenta");
 });
 
-/**
- * El adorno no puede impedir que se dibuje el boton. El degradado y la sombra
- * usan propiedades que no todas las compilaciones de Excel para Mac aceptan, y
- * un boton sin sombra sigue siendo un boton mientras que una hoja sin botones no
- * es nada.
- */
 test("el relieve de las formas no puede tumbar el dibujo", () => {
   const panel = modules["KcmPanel.bas"];
   const relieve = panel.slice(panel.indexOf("Public Sub KcmPanelRelieve"));
   assert.match(relieve.slice(0, relieve.indexOf("End Sub")), /On Error Resume Next/);
 });
 
-/**
- * VBA exige que las declaraciones del modulo vayan antes del primer procedimiento: una
- * constante despues de un `End Sub` no compila ("Only comments may appear after End Sub").
- * Las que viven dentro de un bloque `#If` quedan fuera de esta regla, porque al compilar
- * la rama inactiva no existe.
- */
 test("ninguna declaracion de modulo aparece despues de un procedimiento", () => {
   for (const [file, source] of Object.entries(modules)) {
     let profundidad = 0;
@@ -656,11 +483,6 @@ test("ninguna declaracion de modulo aparece despues de un procedimiento", () => 
   }
 });
 
-/**
- * Un parentesis de mas o de menos no lo nota ninguna otra prueba y Excel lo rechaza al
- * compilar ("Syntax error"). Se cuenta por sentencia, uniendo las continuaciones de linea
- * y sin contar lo que va dentro de cadenas ni de comentarios.
- */
 test("toda sentencia VBA cierra los parentesis que abre", () => {
   for (const [file, source] of Object.entries(modules)) {
     const lineas = source.split(/\r?\n/);

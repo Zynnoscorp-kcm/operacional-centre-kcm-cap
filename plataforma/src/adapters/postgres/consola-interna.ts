@@ -1,17 +1,3 @@
-/**
- * Adaptador PostgreSQL de la consola interna.
- *
- * Casi todo lo que hay aquí es `SELECT`. Las dos únicas escrituras —declarar un
- * campo y aprobarlo— van sobre `organizacion.atributo_definicion`, que es un catálogo, y
- * dejan su evento en `sistema.bitacora_auditoria` dentro de la misma transacción: si la
- * bitácora falla, el alta no queda.
- *
- * Nada de aquí toca el camino de operación. Ni sesiones, ni asistencias, ni
- * liberaciones, ni el puente VBA: esas tablas se leen y no se escriben desde
- * este archivo. Es la garantía de que agregar una consola de consulta no puede
- * romper lo que ya funciona.
- */
-
 import type {
   DeclareFieldInput,
   DeclaredField,
@@ -32,19 +18,11 @@ import { ROOMS } from "../../domain/salas/tipos.ts";
 import type { InternalConsolePort } from "../../ports/consola-interna.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
-/** Lo que se enseña en lugar del valor de una columna enmascarada. */
 const OCULTO = "••••••";
 
-/**
- * Los campos opcionales del dominio se declaran con
- * `exactOptionalPropertyTypes`: o la propiedad está con un valor, o no está.
- * Por eso los conversores no devuelven `undefined` —el nulo se decide antes,
- * en el `...(condición ? { … } : {})` que arma el objeto—.
- */
 function isoObligatorio(valor: string | Date): string {
   return new Date(valor).toISOString();
 }
-/** `date` llega como texto por el parser de `postgres-executor`; `time` como HH:MM:SS. */
 function soloFechaObligatoria(valor: string | Date): string {
   return typeof valor === "string" ? valor.slice(0, 10) : valor.toISOString().slice(0, 10);
 }
@@ -62,15 +40,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     this.#db = db;
   }
 
-  // ---------------------------------------------------------------------------
-  // Auditoría — sesiones
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Una sesión entra si cualquiera de sus tres momentos cae en la ventana.
-   * Filtrar sólo por `creada_en` escondería la sesión que se creó hace diez
-   * días y se cerró ayer, que es justo la que se está buscando.
-   */
   async listSessionAudit(days: number): Promise<readonly SessionAuditRow[]> {
     const { rows } = await this.#db.query<{
       sesion_id: string;
@@ -125,10 +94,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     }));
   }
 
-  // ---------------------------------------------------------------------------
-  // Auditoría — reservaciones de sala
-  // ---------------------------------------------------------------------------
-
   async listRoomAudit(days: number): Promise<readonly RoomAuditRow[]> {
     const { rows } = await this.#db.query<{
       reserva_id: string;
@@ -171,10 +136,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
 
     return rows.map((r) => ({
       reservationId: r.reserva_id,
-      // El nombre visible sale de `ROOMS`, no de la base. `catalogo.sala` guarda los
-      // nombres con los que se sembró el catálogo y renombrar una sala se hace
-      // en la constante: si la auditoría leyera el de la base, la misma sala se
-      // llamaría distinto según la pantalla.
       room: nombreDeSala(r.clave_sala, r.sala),
       date: soloFecha(r.fecha) ?? "",
       startTime: soloHora(r.hora_inicio),
@@ -190,25 +151,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     }));
   }
 
-  // ---------------------------------------------------------------------------
-  // Auditoría — liberaciones y la fecha que sustituyeron
-  // ---------------------------------------------------------------------------
-
-  /**
-   * La liberación sabe qué escribió; no sabe qué había antes. Eso vive en
-   * `operacion.historial_capacitacion_cambio`, el ledger que conserva el valor previo
-   * de toda sobrescritura con actor, motivo y momento.
-   *
-   * El `LATERAL` los une por el único vínculo que existe entre los dos: mismo
-   * trabajador, mismo curso, y la fecha nueva del historial es exactamente la
-   * fecha efectiva de la liberación. Se restringe a `procedencia =
-   * 'SESSION_RELEASE'` para no confundir una sobrescritura hecha por una
-   * importación del XLSB con una hecha por una liberación, y toma la última por
-   * secuencia porque el mismo par puede haberse sobrescrito más de una vez.
-   *
-   * Sin coincidencia, los campos van vacíos: esa liberación inscribió una fecha
-   * donde no había ninguna, que es el caso normal.
-   */
   async listReleaseAudit(limit: number): Promise<readonly ReleaseAuditRow[]> {
     const { rows } = await this.#db.query<{
       liberacion_id: string;
@@ -281,9 +223,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
       batchState: r.estado_lote,
       releasedBy: r.liberado_por,
       ...(r.fecha_anterior ? { previousDate: soloFechaObligatoria(r.fecha_anterior) } : {}),
-      // El motivo sólo se enseña cuando hubo algo que sustituir: el lote lleva
-      // uno aunque no haya sobrescrito nada, y mostrarlo suelto haría pensar
-      // que sí lo hizo.
       ...(r.fecha_anterior && r.motivo_sobrescritura
         ? { overwriteReason: r.motivo_sobrescritura }
         : {}),
@@ -295,10 +234,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
         : {}),
     }));
   }
-
-  // ---------------------------------------------------------------------------
-  // Campos declarados
-  // ---------------------------------------------------------------------------
 
   async listDeclaredFields(): Promise<readonly DeclaredField[]> {
     const { rows } = await this.#db.query<{
@@ -344,12 +279,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     }));
   }
 
-  /**
-   * Alta y bitácora en una sola transacción. Si el `INSERT` en `sistema.bitacora_auditoria`
-   * falla —por un rol que el enum no admite, por ejemplo—, el campo tampoco
-   * queda: un catálogo que crece sin dejar rastro de quién lo hizo crecer es
-   * precisamente lo que este registro existe para evitar.
-   */
   async declareField(input: DeclareFieldInput, actor: string): Promise<DeclaredField> {
     const campoId = await this.#db.transaction(async (tx) => {
       const { rows } = await tx.query<{ campo_id: string }>(
@@ -387,8 +316,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
         [fieldId, actorId],
       );
 
-      // Sin renglón, o el campo no existe o ya estaba aprobado. En ninguno de
-      // los dos casos hay hecho nuevo que auditar.
       const nombre = rows[0]?.nombre_campo;
       if (nombre === undefined) return;
 
@@ -412,19 +339,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     return campo;
   }
 
-  // ---------------------------------------------------------------------------
-  // Previsualizador
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Conteos exactos, no la estimación de `reltuples`.
-   *
-   * Un conteo estimado en una consola de verificación es peor que no tenerlo:
-   * quien la abre para comprobar que una carga entró completa necesita el
-   * número, no una aproximación que el `ANALYZE` todavía no actualizó.
-   * `query_to_xml` corre el `count(*)` por tabla desde una sola sentencia, y el
-   * `%I` de `format` cita el identificador del lado del servidor.
-   */
   async listTables(): Promise<readonly TableSummary[]> {
     const { rows } = await this.#db.query<{
       tabla: string;
@@ -463,9 +377,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
   }
 
   async previewTable(table: string, limit: number, offset: number): Promise<TablePreview | null> {
-    // El nombre se resuelve contra el catálogo del servidor. Lo que no aparece
-    // aquí no se consulta, y con eso la interpolación posterior no puede
-    // referirse a nada que no exista y esté permitido.
     const { rows: catalogo } = await this.#db.query<{
       esquema: string;
       tabla: string;
@@ -498,9 +409,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
     const citar = (nombre: string): string => `"${nombre.replace(/"/gu, '""')}"`;
     const identificador = `${citar(encontrada.esquema)}.${citar(encontrada.tabla)}`;
 
-    // Cinturón sobre el tirante: la lectura corre en una transacción declarada
-    // de sólo lectura. Si un cambio futuro colara una sentencia que escribe,
-    // la aborta el servidor y no la buena voluntad de quien la escribió.
     return this.#db.transaction(async (tx) => {
       await tx.query("SET TRANSACTION READ ONLY;");
 
@@ -508,8 +416,6 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
         `SELECT count(*) AS total FROM ${identificador};`,
       );
       const { rows: datos } = await tx.query<Record<string, unknown>>(
-        // `ORDER BY 1` es arbitrario pero determinista: sin orden, dos páginas
-        // consecutivas pueden repetir y omitir renglones.
         `SELECT * FROM ${identificador} ORDER BY 1 LIMIT $1 OFFSET $2;`,
         [limit, offset],
       );
@@ -532,16 +438,10 @@ export class SupabaseInternalConsoleRepository implements InternalConsolePort {
   }
 }
 
-/**
- * Nombre visible de una sala a partir de su clave. Cae al nombre de la base
- * cuando la clave no está en el catálogo del dominio —una sala agregada
- * directo en la base seguiría apareciendo, con el nombre que tenga allí—.
- */
 function nombreDeSala(claveSala: string, nombreEnBase: string): string {
   return ROOMS.find((sala) => sala.roomId === claveSala)?.name ?? nombreEnBase;
 }
 
-/** Coincidencia exacta o por sufijo: `firma_hmac` cae por `hmac`, `curp` por sí misma. */
 function esColumnaSensible(columna: string): boolean {
   const nombre = columna.toLowerCase();
   return COLUMNAS_ENMASCARADAS.some(
@@ -549,17 +449,10 @@ function esColumnaSensible(columna: string): boolean {
   );
 }
 
-/**
- * Todo se enseña como texto. `null` se conserva distinto de la cadena vacía
- * porque en una tabla la diferencia entre «sin valor» y «vacío» es información.
- */
 function aTexto(valor: unknown): string | null {
   if (valor === null || valor === undefined) return null;
   if (valor instanceof Date) return valor.toISOString();
   if (typeof valor === "object") return JSON.stringify(valor);
-  // Lo que queda es primitivo: `pg` entrega texto, número, booleano o bigint.
-  // El `switch` no está de adorno: `String()` sobre `unknown` imprimiría
-  // `[object Object]` el día que aparezca un tipo que no se previó.
   switch (typeof valor) {
     case "string":
       return valor;
@@ -572,7 +465,6 @@ function aTexto(valor: unknown): string | null {
   }
 }
 
-/** Misma resolución que usa el resto del árbol: el actor se crea si no existe. */
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {
   const clave = identificador.trim() || "SISTEMA";
   const { rows } = await tx.query<{ actor_id: string }>(

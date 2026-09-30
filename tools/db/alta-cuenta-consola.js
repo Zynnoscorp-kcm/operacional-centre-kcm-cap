@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-/**
- * Alta de una cuenta nominal de consola en `seguridad.credencial_consola`.
- *
- * Existe porque la plataforma verifica cuentas pero no las crea: la puerta de
- * `/acceso` sólo lee el directorio. Tras el reset del piloto la tabla queda
- * vacía y, con `KCM_ENV=production`, las contraseñas planas KCM_PILOT_* ya no
- * son aceptadas, asi que sin este alta nadie puede entrar.
- *
- * La derivación es la misma que `ConsoleDirectoryService`: scrypt sobre una sal
- * de 16 bytes, 32 bytes de salida, todo en hexadecimal. Si esa funcion cambia,
- * este script cambia con ella o las cuentas dejan de validar.
- *
- * La contraseña NUNCA se pasa por argumento —quedaria en el historial del shell
- * y en la tabla de procesos—: se lee de la variable de entorno KCM_CLAVE_NUEVA.
- *
- * Uso:
- *   KCM_ADMIN_DATABASE_URL=... KCM_CLAVE_NUEVA=... \
- *     npm run db:cuenta -- <usuario> "<Nombre Visible>"
- */
 
 import { createRequire } from "node:module";
 import { randomBytes, scryptSync } from "node:crypto";

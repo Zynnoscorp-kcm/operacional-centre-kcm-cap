@@ -1,18 +1,3 @@
-/**
- * Cobertura: cuánto falta, por curso y por área.
- *
- * La bandeja dice «qué falta emitir»; esta pantalla dice **cuánto y dónde**:
- * cuántas constancias debe la planta desde el corte, cuántas ya salieron y en
- * qué áreas se acumula lo pendiente. Es la pantalla para rendir cuentas —la que
- * se abre cuando un jefe de área pregunta cómo va la suya— y por eso cada cifra
- * lleva a la bandeja ya filtrada por lo que cuenta.
- *
- * Los universos salen de contar en la base, no de sumar lo que una página
- * alcanzó a traer. La tabla por área es una tabla y no un mapa de colores: las
- * áreas son decenas, y más de siete tonos con significado no se distinguen; la
- * cifra se lee, y el medidor acompaña.
- */
-
 import type { AppConfig } from "../../../config/environment.ts";
 import type {
   Dc3AreaCoverage,
@@ -34,7 +19,6 @@ import {
 
 export interface Dc3PanelInput {
   readonly config: AppConfig;
-  /** Cuentas por curso de los cursos tomados desde el corte. */
   readonly coverage: readonly Dc3CourseCoverage[];
   readonly porArea: readonly Dc3AreaCoverage[];
   readonly emisiones: readonly Dc3EmissionRecord[];
@@ -45,7 +29,6 @@ export interface Dc3PanelInput {
 type Columna =
   "total" | "ready" | "incomplete" | "withoutDate" | "emitted" | "pending" | "beforeCutoff";
 
-/** Suma una columna de la cobertura. Son unos cuantos cursos: no hay nada que optimizar. */
 function total(coverage: readonly Dc3CourseCoverage[], campo: Columna): number {
   return coverage.reduce((suma, curso) => suma + curso[campo], 0);
 }
@@ -64,11 +47,6 @@ function renderKpi(
   </div>`;
 }
 
-/**
- * El avance de entrega de un curso: de quienes ya tienen fecha del curso,
- * cuántos tienen su constancia. Es un medidor y no tres tramos de color: mide
- * una sola razón, y lo que falta se lee en las columnas de al lado.
- */
 function medidorDeEntrega(emitidas: number, conFecha: number, rotulo: string): Html {
   return html`<progress
     class="cobertura-barra cobertura-entrega"
@@ -143,14 +121,6 @@ function renderCobertura(coverage: readonly Dc3CourseCoverage[]): Html {
   </div>`;
 }
 
-/**
- * La cobertura por área: una fila por área, una columna por curso.
- *
- * Cada celda dice cuántas le faltan por emitir y mide el avance de entrega de
- * quienes ya tienen el curso. Van primero las áreas con más pendientes, que es
- * donde está el trabajo, y cada celda con pendientes lleva a la bandeja
- * filtrada por esa área y ese curso.
- */
 function renderPorArea(
   porArea: readonly Dc3AreaCoverage[],
   coverage: readonly Dc3CourseCoverage[],

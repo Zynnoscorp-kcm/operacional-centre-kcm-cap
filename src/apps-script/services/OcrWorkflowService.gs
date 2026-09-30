@@ -1,4 +1,3 @@
-/** Orquestacion OCR; el proveedor real se conecta fuera de este contrato estable. */
 var KcmOcrWorkflowService = (function () {
   "use strict";
 

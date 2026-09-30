@@ -26,7 +26,6 @@ test("evalua estado COMPLETADO cuando la acreditacion esta vigente", () => {
     area: "CONVERSION"
   };
 
-  // Curso acreditado hace 2 meses (vigencia 12 meses + 30 dias gracia)
   const result = engine.evaluateCourseForEmployee({
     employee,
     trainingIdentifier: "kcm-course:bpm",
@@ -51,7 +50,6 @@ test("evalua estado REFORZAR cuando la acreditacion ha expirado", () => {
     area: "CONVERSION"
   };
 
-  // Curso acreditado hace 2 años (vencido)
   const result = engine.evaluateCourseForEmployee({
     employee,
     trainingIdentifier: "kcm-course:bpm",
@@ -119,7 +117,6 @@ test("evalua estado NO_APLICA cuando la regla no aplica al departamento o area",
     area: "CONTABILIDAD"
   };
 
-  // SISTEMA DE CONTROL DE MOTORES sólo aplica a GERENCIA DE MANTTO. ELECTRICO
   const result = engine.evaluateCourseForEmployee({
     employee,
     trainingIdentifier: "kcm-course:sistema-control-motores",
@@ -171,11 +168,8 @@ test("invariante de aislamiento de DATOS_INSUFICIENTES en calculo de metricas", 
   assert.equal(metrics.noAplica, 1);
   assert.equal(metrics.datosInsuficientes, 2);
 
-  // Población exigible = completados (2) + reforzar (1) + pendientes (1) + programados (1) = 5
-  // Excluye noAplica (1) y datosInsuficientes (2)
   assert.equal(metrics.poblacionExigible, 5);
 
-  // Porcentaje = 2 / 5 = 40%
   assert.equal(metrics.porcentajeCumplimiento, 40.0);
   assert.equal(metrics.publicacionAutorizada, false, "Los porcentajes nunca se publican de forma automática");
 });

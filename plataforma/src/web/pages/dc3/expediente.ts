@@ -1,16 +1,3 @@
-/**
- * El expediente DC-3 de una persona.
- *
- * Es la pantalla de ventanilla: alguien pide su constancia, o un supervisor
- * pregunta por la de uno de los suyos, y la pregunta es siempre la misma:
- * «¿qué tiene y qué le falta?». Aquí están todos sus cursos DC-3 juntos, con lo
- * que cada constancia imprimiría, lo que ya salió y quién lo emitió, y los
- * botones para emitir o reimprimir sin salir de la pantalla.
- *
- * Los cursos anteriores al corte —1 de enero de 2026— se enseñan para
- * consulta y se pueden emitir uno por uno, pero no cuentan como pendientes.
- */
-
 import { areaTematica } from "../../../domain/dc3/constancia.ts";
 import type { AppConfig } from "../../../config/environment.ts";
 import type {
@@ -42,11 +29,8 @@ import {
 export interface Dc3ExpedienteInput {
   readonly config: AppConfig;
   readonly workerNumber: string;
-  /** Un renglón por curso DC-3. Vacío si la persona no está activa. */
   readonly cursos: readonly Dc3CandidateDetail[];
-  /** Lo asentado de cada constancia de la persona, por clave. */
   readonly emisiones: ReadonlyMap<string, Dc3EmissionSummary>;
-  /** Todas sus emisiones, de la más reciente a la más vieja. */
   readonly historial: readonly Dc3EmissionRecord[];
   readonly porEmitir?: number | undefined;
   readonly acuse?: AcuseDeEmision | undefined;
@@ -55,12 +39,6 @@ export interface Dc3ExpedienteInput {
 
 type EstadoDeCurso = "emitida" | "emitida-blancos" | "lista" | "faltan" | "sin-curso" | "anterior";
 
-/**
- * Lo que le falta a una constancia sin contar la ocupación específica. Es la
- * misma regla que parte la bandeja en «listas» y «con datos por completar»: la
- * ocupación falta hoy en el padrón entero, y contarla dejaría a todo el mundo en
- * la segunda situación. Se sigue diciendo que sale en blanco; no cambia el estado.
- */
 function faltantesPropios(curso: Dc3CandidateDetail): readonly string[] {
   return curso.missing.filter((falta) => falta !== "ocupación específica");
 }
@@ -232,8 +210,6 @@ function renderCurso(curso: Dc3CandidateDetail, input: Dc3ExpedienteInput): Html
   const estado = estadoDe(curso, emision);
   const rotulo = ROTULO_DE_ESTADO[estado];
   const cola = `${encodeURIComponent(curso.workerNumber)}/${encodeURIComponent(curso.courseKey)}`;
-  // Rojo sólo cuando la constancia sale sin fecha o sin un dato de la persona;
-  // la ocupación, que falta a todos, no la vuelve una emisión distinta.
   const enBlanco = !curso.completionDate || faltantesPropios(curso).length > 0;
   const termino = terminoDe(curso);
   const area = areaTematica(curso);

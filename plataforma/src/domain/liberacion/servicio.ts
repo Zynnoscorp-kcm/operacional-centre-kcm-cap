@@ -1,24 +1,3 @@
-/**
- * Saga de liberación a la matriz (Función 5).
- *
- * Porta `KcmReleaseService.execute` conservando su forma: un journal durable y
- * autenticado que avanza por fases recuperables, revalidando el dominio antes
- * de cada efecto y dejando un marcador por efecto que hace de un reintento una
- * recuperación en lugar de una segunda escritura.
- *
- *     PENDIENTE ─► MATRIZ_APLICADA ─► DOMINIO_APLICADO ─► COMPLETADO
- *         └──────────────────────────────────────────────► CONFLICTO
- *
- * Por qué las fases y no una transacción: los efectos caen en dos almacenes
- * —la réplica de la matriz y el dominio operativo— y el acuse del XLSB llega
- * después, por el puente VBA. Una interrupción entre ambos deja el lote a
- * medias, y sólo un journal permite retomarlo exactamente donde quedó.
- *
- * Esta es la ejecución de mayor riesgo del programa: aquí es donde un defecto
- * pierde datos reales. De ahí que cada fase vuelva a comprobar lo que la fase
- * anterior ya había comprobado.
- */
-
 import { randomUUID } from "node:crypto";
 
 import type { Clock } from "../../ports/reloj.port.ts";
@@ -74,7 +53,6 @@ export interface ReleaseServiceDeps {
   readonly repository: ReleaseRepositoryPort;
   readonly gateway: MatrixGateway;
   readonly clock: Clock;
-  /** Secreto de integridad del journal. No se deriva de nada del cliente. */
   readonly secret: string;
 }
 
@@ -96,16 +74,6 @@ export class ReleaseService {
     this.#secret = deps.secret;
   }
 
-  // =========================================================================
-  // Vista previa — preflight completo sin ningún efecto
-  // =========================================================================
-
-  /**
-   * La interfaz humana muestra el código de sesión, mientras que los efectos
-   * internos usan UUID. Resuelve ambos sin enviar un código legible a una
-   * columna UUID de PostgreSQL. Reconoce el código nuevo, `KC-0001` —también
-   * tecleado sin ceros—, y el anterior, `KCM-AAMMDD-XXXXXX`.
-   */
   async resolveSessionReference(reference: string): Promise<string> {
     const value = assertIdentifier(reference, "sessionId");
     const codigo = normalizarCodigoDeSesion(value);
@@ -153,11 +121,6 @@ export class ReleaseService {
       })),
     );
 
-    // Sin motivo, cada sobrescritura es un conflicto y la atomicidad aborta a
-    // todos los demás: la pantalla quedaba en «0 registros» y el botón de
-    // liberar desactivado, sin forma de capturar el motivo que faltaba. Si lo
-    // único que falta es el motivo, se evalúa como si ya estuviera y se avisa
-    // que es obligatorio; al liberar, el servidor lo vuelve a exigir.
     let results = await this.#gateway.inspect(plan, { overwriteReason });
     const faltaSoloMotivo =
       !overwriteReason.trim() &&
@@ -204,10 +167,6 @@ export class ReleaseService {
     };
   }
 
-  // =========================================================================
-  // Liberación
-  // =========================================================================
-
   async release(input: ReleaseInput, identity: ActorIdentity): Promise<ReleaseOutcome> {
     const sessionId = assertIdentifier(input.sessionId, "sessionId");
     const requestId = assertIdentifier(input.requestId, "requestId");
@@ -215,8 +174,6 @@ export class ReleaseService {
 
     this.#assertRole(identity);
 
-    // La serialización por sesión es lo que impide que dos solicitudes
-    // simultáneas construyan dos lotes sobre las mismas asistencias.
     return this.#repo.withLock(`release:session:${sessionId}`, async () => {
       const sessionBatches = await this.#loadSessionBatches(sessionId);
 
@@ -236,9 +193,6 @@ export class ReleaseService {
           return this.#replayTerminal(batch, plan, identity);
         }
       } else {
-        // INVARIANTE: un lote no terminal sólo se reanuda con su `requestId`
-        // original. Abrir un segundo lote sobre la misma sesión duplicaría
-        // efectos sobre las mismas asistencias.
         const open = sessionBatches.filter((candidate) => !isTerminalPhase(candidate.phase));
         if (open.length > 0) {
           throw new ReleaseConflictError(
@@ -255,7 +209,6 @@ export class ReleaseService {
         }
       }
 
-      // ---- Fase PENDIENTE: aplicar a la réplica de la matriz --------------
       if (batch.phase === "PENDIENTE") {
         await this.#revalidateDomain(plan, { allowReleased: false, allowFinalized: false });
 
@@ -279,7 +232,6 @@ export class ReleaseService {
         });
       }
 
-      // ---- Fase MATRIZ_APLICADA: reflejar en el dominio operativo ---------
       if (batch.phase === "MATRIZ_APLICADA") {
         results = this.#restoreResults(batch, plan);
         await this.#revalidateDomain(plan, { allowReleased: true, allowFinalized: false });
@@ -289,7 +241,6 @@ export class ReleaseService {
         batch = await this.#patch(batch, { phase: "DOMINIO_APLICADO", status: "PENDIENTE" });
       }
 
-      // ---- Fase DOMINIO_APLICADO: cerrar la sesión ------------------------
       if (batch.phase === "DOMINIO_APLICADO") {
         results = this.#restoreResults(batch, plan);
         await this.#revalidateDomain(plan, { allowReleased: true, allowFinalized: true });
@@ -306,10 +257,6 @@ export class ReleaseService {
     });
   }
 
-  // =========================================================================
-  // Consulta del historial
-  // =========================================================================
-
   async getBatch(batchId: string): Promise<ReleaseBatch | null> {
     const batch = await this.#repo.findBatchById(assertIdentifier(batchId, "batchId"));
     if (!batch) return null;
@@ -319,10 +266,6 @@ export class ReleaseService {
   async listBatchesBySession(sessionId: string): Promise<readonly ReleaseBatch[]> {
     return this.#loadSessionBatches(assertIdentifier(sessionId, "sessionId"));
   }
-
-  // =========================================================================
-  // Internos — creación y avance del journal
-  // =========================================================================
 
   async #createBatch(
     sessionId: string,
@@ -360,7 +303,6 @@ export class ReleaseService {
       })),
     );
 
-    // Preflight completo del lote antes de cualquier efecto.
     const preflight = await this.#gateway.inspect(plan, { overwriteReason });
 
     const envelope = planEnvelope(plan);
@@ -453,11 +395,6 @@ export class ReleaseService {
     return this.#outcome(updated, results, [], false);
   }
 
-  /**
-   * Un lote terminal no vuelve a producir efectos. Si quedó completado, se
-   * comprueba que el destino y el dominio sigan sosteniéndolo y se responde lo
-   * mismo que la primera vez; si quedó en conflicto, se responde el conflicto.
-   */
   async #replayTerminal(
     batch: ReleaseBatch,
     plan: WritePlan,
@@ -485,15 +422,6 @@ export class ReleaseService {
     return this.#outcome(batch, results, [], true);
   }
 
-  // =========================================================================
-  // Internos — efectos de dominio
-  // =========================================================================
-
-  /**
-   * Marca las asistencias como liberadas y persiste un efecto por clave
-   * idempotente. Es reentrante a propósito: una reanudación vuelve a pasar por
-   * aquí y no debe insertar el efecto dos veces.
-   */
   async #applyDomainEffects(
     batch: ReleaseBatch,
     plan: WritePlan,
@@ -526,8 +454,6 @@ export class ReleaseService {
 
       const existing = await this.#repo.findEffectByIdempotencyKey(result.idempotencyKey);
       if (existing) {
-        // Ya existe. Debe pertenecer a este lote; si no, hay dos liberaciones
-        // efectivas para la misma clave y eso es un conflicto, no un no-op.
         if (
           existing.batchId !== batch.batchId ||
           existing.effectiveDate !== result.completionDate
@@ -557,8 +483,6 @@ export class ReleaseService {
         mappingVersion: result.mappingVersion,
         result: result.status,
         marker: markerFor(this.#secret, plan, context, entry),
-        // El XLSB lo escribe el cliente VBA, nunca Node. Hasta su acuse
-        // el efecto queda declarado pendiente.
         xlsbAckStatus: "PENDIENTE_ACUSE",
         createdBy: batch.createdBy,
         createdAt: nowIso,
@@ -593,9 +517,6 @@ export class ReleaseService {
   ): Promise<ReleaseBatch> {
     const attendances = await this.#repo.listAttendancesBySession(batch.sessionId);
 
-    // Se porta la regla del legado sin suavizarla: la sesión sólo cierra como
-    // total si todas sus asistencias quedaron liberadas. Una exclusión
-    // declarada la deja parcial, que es lo que de hecho ocurrió.
     const outcome: SessionReleaseOutcome =
       attendances.length > 0 && attendances.every((attendance) => attendance.released)
         ? "LIBERADA_TOTAL"
@@ -651,22 +572,10 @@ export class ReleaseService {
       reason: `${effectiveWrites} efectos`,
     });
 
-    // El plan se conserva para dejar constancia de qué se congeló.
     void plan;
     return updated;
   }
 
-  // =========================================================================
-  // Internos — revalidación
-  // =========================================================================
-
-  /**
-   * Revalida estado, autorización y elegibilidad antes de cada efecto.
-   *
-   * No basta con haberlo comprobado al congelar el lote: entre una fase y la
-   * siguiente puede pasar un reinicio, y lo que autoriza el efecto es el estado
-   * de ahora, no el de hace media hora.
-   */
   async #revalidateDomain(
     plan: WritePlan,
     options: { allowReleased: boolean; allowFinalized: boolean },
@@ -687,8 +596,6 @@ export class ReleaseService {
       );
     }
 
-    // El mapeo vigente debe seguir siendo el que se congeló: si el destino
-    // cambió de columna, escribir el plan viejo pondría la fecha en otro curso.
     const mapping = await this.#requireMapping(session.trainingId);
     if (mapping.mappingVersion !== plan.mapping.mappingVersion) {
       throw new ReleaseConflictError("El mapeo activo cambió antes de confirmar la liberación");
@@ -723,8 +630,6 @@ export class ReleaseService {
       planned.add(entry.attendanceId);
     }
 
-    // Y al revés: si apareció una asistencia elegible que el lote no congeló,
-    // aplicarlo dejaría a esa persona fuera sin que nadie lo decidiera.
     for (const attendance of attendances) {
       if (planned.has(attendance.attendanceId) || attendance.released) continue;
       const reasons = blockingReasons(attendance, session).filter(
@@ -740,10 +645,6 @@ export class ReleaseService {
     return session;
   }
 
-  // =========================================================================
-  // Internos — utilidades
-  // =========================================================================
-
   async #loadSessionBatches(sessionId: string): Promise<readonly ReleaseBatch[]> {
     const batches = await this.#repo.listBatchesBySession(sessionId);
     const seen = new Set<string>();
@@ -753,8 +654,6 @@ export class ReleaseService {
         throw new ReleaseConflictError("La sesión contiene lotes de liberación duplicados");
       }
       seen.add(batch.batchId);
-      // Verificar la firma de todos, no sólo del propio: un lote adulterado en
-      // la misma sesión invalida las decisiones que se toman leyéndolos.
       assertBatchIntegrity(this.#secret, batch);
     }
 
@@ -774,11 +673,6 @@ export class ReleaseService {
     return validateResults(plan, parsed as MatrixWriteResult[]);
   }
 
-  /**
-   * Quién de la sesión ya tiene fecha de este curso en la copia de la matriz
-   * que guarda la plataforma. Es lo que decide si liberar pedirá motivo de
-   * sobrescritura, y preliberación lo enseña antes de llegar a liberar.
-   */
   async existingDates(sessionId: string): Promise<readonly ExistingDate[]> {
     const sid = assertIdentifier(sessionId, "sessionId");
     const session = await this.#requireSession(sid);
@@ -836,7 +730,6 @@ export class ReleaseService {
     }
   }
 
-  /** Auditoría append-only, idempotente por `requestId` + entidad + acción. */
   async #audit(
     identity: ActorIdentity,
     event: {
@@ -857,9 +750,6 @@ export class ReleaseService {
     });
     if (existing) return;
 
-    // Los campos opcionales se omiten en vez de viajar como `undefined`: la
-    // auditoría sólo se agrega, y un campo escrito como indefinido queda ahí
-    // para siempre sin significar nada.
     await this.#repo.recordAudit({
       actor: identity.actor,
       role: identity.role,
@@ -897,17 +787,6 @@ export class ReleaseService {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Elegibilidad
-// ---------------------------------------------------------------------------
-
-/**
- * Separa la lista en lo que puede liberarse y lo que no, con el motivo.
- *
- * La regla es la de preliberación, sin duplicarla: `blockingReasons` es la
- * misma función que gobierna la Función 4. Copiarla aquí abriría la puerta a
- * que las dos vistas discreparan sobre quién es elegible.
- */
 export function splitEligibility(
   attendances: readonly AttendanceRecord[],
   session: SessionRecord,

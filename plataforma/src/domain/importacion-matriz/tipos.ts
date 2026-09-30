@@ -1,11 +1,3 @@
-/**
- * Tipos del dominio para la ingesta y reconciliación de la matriz XLSB.
- *
- * Fuente de autoridad:
- * - docs/MODELO_DATOS.md (hojas HC_IMPORTACIONES, HC_REGISTROS, HC_REGISTROS_HISTORIAL, HC_TRABAJADORES, HC_CURSOS)
- *   SQL para operación, reconciliación por procedencia, sobrescritura con historial).
- */
-
 import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 
 export type ImportBatchId = string & { readonly __marca: "ImportBatchId" };
@@ -13,35 +5,15 @@ export type RequestId = string & { readonly __marca: "RequestId" };
 export type TrainingId = string & { readonly __marca: "TrainingId" };
 export type CourseSourceKey = string & { readonly __marca: "CourseSourceKey" };
 
-/**
- * Alcance declarado del lote de importación.
- * Invariante: La ausencia en un extracto (sea DELTA o FULL) NO equivale a baja laboral.
- */
 export type ImportScope = "FULL" | "DELTA";
 
-/**
- * Ciclo de vida estricto del lote:
- * RECIBIDO -> PREPARADO -> VALIDADO -> APROBADO -> CONFIRMADO
- * o terminales: RECHAZADO, CONFLICTO.
- */
 export type BatchPhase =
   "RECIBIDO" | "PREPARADO" | "VALIDADO" | "APROBADO" | "CONFIRMADO" | "RECHAZADO" | "CONFLICTO";
 
-/**
- * Procedencia de la fecha de capacitación:
- * - XLSB_IMPORT: proviene de la matriz histórica (maestro).
- * - SESSION_RELEASE: proviene de la plataforma (liberación en sala/quiosco).
- */
 export type DateProvenance = "XLSB_IMPORT" | "SESSION_RELEASE";
 
-/**
- * Estado del registro HC en la réplica técnica persistente.
- */
 export type RecordStatus = "VIGENTE" | "RETIRADO";
 
-/**
- * Tipos de cambio en el ledger append-only inmutable de historial.
- */
 export type ChangeType = "ALTA" | "CORREGIDA" | "RETIRADA" | "REACTIVADA" | "SOBRESCRITA";
 
 export interface SnapshotEmployee {
@@ -65,7 +37,7 @@ export interface SnapshotCourse {
 export interface SnapshotCompletion {
   readonly employeeId: WorkerNumber;
   readonly sourceKey: string;
-  readonly completionDate: string; // YYYY-MM-DD
+  readonly completionDate: string;
 }
 
 export interface SnapshotDiagnosticsCounts {
@@ -103,7 +75,7 @@ export interface MatrixSnapshotSource {
 export interface MatrixSnapshot {
   readonly schemaVersion: "HC_SNAPSHOT_V1";
   readonly source: MatrixSnapshotSource;
-  readonly extractedAt: string; // ISO 8601
+  readonly extractedAt: string;
   readonly employees: readonly SnapshotEmployee[];
   readonly courses: readonly SnapshotCourse[];
   readonly completions: readonly SnapshotCompletion[];
@@ -153,7 +125,7 @@ export interface HcRecord {
   readonly idempotencyKey: string;
   readonly workerNumber: WorkerNumber;
   readonly trainingId: string;
-  completionDate: string; // YYYY-MM-DD o vacía si RETIRADO
+  completionDate: string;
   provenance: DateProvenance;
   status: RecordStatus;
   sessionId: string | null;
@@ -224,9 +196,7 @@ export interface WorkerCatalogEntry {
   area: string | null;
   plant: string | null;
   active: boolean;
-  /** Si el último padrón aplicado lo traía (0046). Ausente se lee como sí. */
   seenInRoster?: boolean;
-  /** Si la última matriz aplicada lo traía (0046). */
   seenInMatrix?: boolean;
   sourceHash: string | null;
   updatedAt: string;

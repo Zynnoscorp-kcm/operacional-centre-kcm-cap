@@ -1,37 +1,3 @@
-/**
- * El agente de ocupaciones, como grafo de LangGraph.
- *
- * Desde el 2026-09-29 la configuración declara un solo modelo: el papel del
- * verificador no recibe modelo, no corre, y la conciliación sólo da por
- * «sugerida» la confianza alta. El grafo conserva los dos papeles para cuando
- * se quiera una segunda opinión; con ella, un caso —puesto y centro de
- * costos— lo resuelven dos modelos **a la vez y sin verse**, cada uno en su
- * propio subgrafo, y un nodo sin modelo concilia:
- *
- *            ┌─ papel_principal:   subareas → ocupacion → validacion ─┐
- *   START ───┤                                                        ├─→ conciliacion → END
- *            └─ papel_verificador: subareas → ocupacion → validacion ─┘
- *
- * - `subareas` y `ocupacion` son los únicos nodos que hablan con un modelo.
- *   Una falla transitoria se reintenta con la política del propio nodo; agotada,
- *   el nodo anota la falla y su papel termina, sin excepción a media corrida.
- * - `validacion` no usa modelo: el código tiene que existir y estar entre las
- *   opciones mostradas. Un código fuera de la lista se pide de nuevo una vez,
- *   con el motivo, y después se da por fallido.
- * - `conciliacion` decide con reglas fijas. Si los dos papeles coinciden sin
- *   confianza baja, «sugerida»; en cualquier otra combinación, «revisar».
- *
- * Los dos papeles corren en paralelo porque juntos no caben uno tras otro en
- * los 120 s de la función publicada: medido el 2026-09-26, el principal tarda
- * ~35 s y el verificador ~60 s. Además cada caso tiene un plazo, y ningún papel
- * empieza una llamada que no alcance a terminar dentro de él: si uno no llega,
- * el otro conserva su propuesta y el caso va a «revisar».
- *
- * Cada nodo deja un paso en la traza: qué modelo contestó, cuánto tardó,
- * cuántos tokens usó y qué decidió. La traza no sale de la plataforma: no hay
- * LangSmith ni punto de control en ninguna base.
- */
-
 import {
   Annotation,
   Command,
@@ -67,21 +33,13 @@ import {
 } from "./instrucciones.ts";
 
 export interface LimitesDelAgente {
-  /** Cuántas subáreas puede proponer el primer paso. */
   readonly maxSubareas: number;
-  /** Tope de opciones que se muestran en el segundo paso; la segunda subárea se omite si lo rebasa. */
   readonly maxOpciones: number;
-  /** Cuántas veces se vuelve a pedir la ocupación cuando el código no está en la lista. */
   readonly reintentosPorCodigoInvalido: number;
-  /** Intentos por llamada ante una falla transitoria del proveedor, contando el primero. */
   readonly intentosPorLlamada: number;
-  /** Espera antes del primer reintento; se duplica en cada uno. */
   readonly esperaInicialMs: number;
-  /** Tope de pasos de cada grafo: freno contra cualquier ciclo que no debería existir. */
   readonly limiteDePasos: number;
-  /** Plazo del caso completo, por debajo del corte de la función publicada. */
   readonly tiempoMaximoMs: number;
-  /** Con menos tiempo que esto por delante, un papel ya no empieza otra llamada. */
   readonly tiempoMinimoPorLlamadaMs: number;
 }
 
@@ -89,11 +47,9 @@ export type { EstadoDeSugerencia, PasoDeTraza, PropuestaValidada } from "./comun
 
 export interface ResultadoDelAgente {
   readonly estado: EstadoDeSugerencia;
-  /** La clave que se escribiría: la del principal o, si él falló, la del verificador. */
   readonly sugerencia: PropuestaValidada | null;
   readonly principal: PropuestaValidada | null;
   readonly verificador: PropuestaValidada | null;
-  /** Por qué el caso quedó en ese estado, en una frase. */
   readonly razon: string;
   readonly traza: readonly PasoDeTraza[];
 }
@@ -101,10 +57,8 @@ export interface ResultadoDelAgente {
 export interface DependenciasDelAgente {
   readonly catalogo: CatalogoDeOcupaciones;
   readonly principal: ModeloDeLenguajePort;
-  /** Sin verificador, sólo la confianza alta del principal llega a «sugerida». */
   readonly verificador?: ModeloDeLenguajePort;
   readonly limites: LimitesDelAgente;
-  /** Milisegundos actuales; inyectable para que la traza sea determinista en pruebas. */
   readonly reloj?: () => number;
 }
 
@@ -112,14 +66,11 @@ type Rol = "principal" | "verificador";
 
 interface EstadoDeRol {
   readonly subareas: readonly string[];
-  /** Subáreas propuestas que no se mostraron por el tope de opciones. */
   readonly omitidas: readonly string[];
   readonly respuesta: RespuestaDeOcupacion | null;
   readonly propuesta: PropuestaValidada | null;
-  /** Motivo del reintento pendiente; vacío si no hay que volver a preguntar. */
   readonly aviso: string;
   readonly reintentos: number;
-  /** Por qué este papel no dejó propuesta; vacío mientras no haya fallado. */
   readonly falla: string;
 }
 
@@ -137,16 +88,13 @@ const reemplazar = <T>(_anterior: T, nuevo: T): T => nuevo;
 const acumular = (anterior: PasoDeTraza[], nuevos: PasoDeTraza[]): PasoDeTraza[] =>
   anterior.concat(nuevos);
 
-/** Lo que recorre el subgrafo de un papel. */
 const EstadoDelPapel = Annotation.Root({
   caso: Annotation<CasoDeOcupacion>(),
-  /** Momento, en ms, en que vence el plazo del caso. */
   vence: Annotation<number>(),
   papel: Annotation<EstadoDeRol>({ reducer: reemplazar, default: () => ROL_VACIO }),
   traza: Annotation<PasoDeTraza[]>({ reducer: acumular, default: () => [] }),
 });
 
-/** Lo que recorre el grafo del caso. */
 const EstadoDelCaso = Annotation.Root({
   caso: Annotation<CasoDeOcupacion>(),
   vence: Annotation<number>(),
@@ -170,7 +118,6 @@ function descripcionDeFalla(error: unknown): string {
   return "falla inesperada del agente";
 }
 
-/** Las piezas del subgrafo de un papel; separadas para poder nombrar su tipo compilado. */
 interface NodosDelPapel {
   readonly subareas: (estado: Papel) => Promise<ActualizacionDePapel>;
   readonly ocupacion: (estado: Papel) => Promise<ActualizacionDePapel>;
@@ -179,8 +126,6 @@ interface NodosDelPapel {
 }
 
 function construirSubgrafo(nodos: NodosDelPapel, limites: LimitesDelAgente) {
-  // El manejador de error es un nodo aparte y no hereda las aristas del que
-  // falló: sin destino explícito, el papel se quedaría ahí. Se va al final.
   const conModelo = (nodo: string) => ({
     retryPolicy: {
       maxAttempts: limites.intentosPorLlamada,
@@ -218,18 +163,15 @@ interface NodosDelCaso {
 }
 
 function construirGrafo(nodos: NodosDelCaso) {
-  return (
-    new StateGraph(EstadoDelCaso)
-      .addNode("papel_principal", nodos.principal)
-      .addNode("papel_verificador", nodos.verificador)
-      .addNode("conciliacion", nodos.conciliacion)
-      // Los dos papeles salen del inicio a la vez; la conciliación espera a ambos.
-      .addEdge(START, "papel_principal")
-      .addEdge(START, "papel_verificador")
-      .addEdge(["papel_principal", "papel_verificador"], "conciliacion")
-      .addEdge("conciliacion", END)
-      .compile()
-  );
+  return new StateGraph(EstadoDelCaso)
+    .addNode("papel_principal", nodos.principal)
+    .addNode("papel_verificador", nodos.verificador)
+    .addNode("conciliacion", nodos.conciliacion)
+    .addEdge(START, "papel_principal")
+    .addEdge(START, "papel_verificador")
+    .addEdge(["papel_principal", "papel_verificador"], "conciliacion")
+    .addEdge("conciliacion", END)
+    .compile();
 }
 
 type Grafo = ReturnType<typeof construirGrafo>;
@@ -240,7 +182,6 @@ export class AgenteDeOcupaciones {
   readonly #grafo: Grafo;
   readonly #subgrafos: Readonly<Record<Rol, Subgrafo>>;
 
-  /** Los nodos que deja en la traza cada papel, en orden, y el de conciliación. */
   static readonly NODOS = [
     "principal_subareas",
     "principal_ocupacion",
@@ -279,7 +220,6 @@ export class AgenteDeOcupaciones {
         { caso, vence: this.#reloj() + limites.tiempoMaximoMs },
         {
           recursionLimit: limites.limiteDePasos,
-          // Último freno: los papeles ya respetan el plazo por su cuenta.
           signal: AbortSignal.timeout(limites.tiempoMaximoMs + 10_000),
         },
       );
@@ -305,7 +245,6 @@ export class AgenteDeOcupaciones {
     return rol === "principal" ? this.#deps.principal : this.#deps.verificador;
   }
 
-  /** Corre el subgrafo de un papel y devuelve sólo lo nuevo: su estado y sus pasos. */
   async #papel(rol: Rol, estado: Caso): Promise<ActualizacionDeCaso> {
     if (!this.#modelo(rol)) return {};
     const final = await this.#subgrafos[rol].invoke(
@@ -337,10 +276,6 @@ export class AgenteDeOcupaciones {
     };
   }
 
-  /**
-   * Lo que le queda al caso para una llamada, o `null` si ya no alcanza para
-   * empezarla. Así un papel lento no se come el plazo del otro.
-   */
   #tiempoParaLlamar(estado: Papel): number | null {
     const restante = estado.vence - this.#reloj();
     return restante < this.#deps.limites.tiempoMinimoPorLlamadaMs ? null : restante;
@@ -449,7 +384,6 @@ export class AgenteDeOcupaciones {
     };
   }
 
-  /** Tras una falla agotada, el nodo anota por qué y el papel termina. */
   #alFallar(rol: Rol, nodo: string) {
     return (estado: Papel, falla: { readonly error: Error }): Command => {
       const motivo = descripcionDeFalla(falla.error);

@@ -1,17 +1,3 @@
-/**
- * Pruebas de integración HTTP de Preliberación (Función 4).
- *
- * Cubren lo que sólo se ve al final del camino: que la pantalla se rinda con el
- * padrón, que los formularios lleguen al dominio y vuelvan por redirección, y
- * que el PDF salga por HTTP con su tipo y su nombre.
- *
- * Importa que estas pruebas usen formularios y no JSON: la política de contenido
- * de la plataforma prohíbe scripts, así que el formulario es el único camino real
- * de la pantalla, y probar sólo el JSON dejaría sin cubrir el que usa la gente.
- *
- * Ninguna identidad es real.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryPreReleaseRepository } from "../../src/adapters/memoria/preliberacion.ts";
@@ -103,10 +89,6 @@ describe("Rutas HTTP de Preliberación", () => {
     return { app, repo: preReleaseRepository };
   }
 
-  // -----------------------------------------------------------------------
-  // Pantallas
-  // -----------------------------------------------------------------------
-
   it("GET /preliberacion lista las sesiones revisables con las cabeceras de seguridad", async () => {
     const { app } = await createTestApp();
     const res = await app.inject({ method: "GET", url: "/preliberacion" });
@@ -192,10 +174,6 @@ describe("Rutas HTTP de Preliberación", () => {
 
     assert.equal(res.statusCode, 404);
   });
-
-  // -----------------------------------------------------------------------
-  // Formularios
-  // -----------------------------------------------------------------------
 
   it("POST /api/pre-release/save acepta el formulario del padrón y redirige de vuelta", async () => {
     const { app, repo } = await createTestApp();
@@ -362,10 +340,6 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.equal(repetida.statusCode, 409);
   });
 
-  // -----------------------------------------------------------------------
-  // Transiciones
-  // -----------------------------------------------------------------------
-
   it("POST /api/pre-release/enter exige revisión guardada antes de cambiar de etapa", async () => {
     const { app, repo } = await createTestApp();
     const res = await app.inject({
@@ -379,20 +353,11 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.equal((await repo.getSessionById("ses-001"))?.status, "CERRADA");
   });
 
-  /**
-   * El atajo de la sesión limpia.
-   *
-   * Su seguridad no está en que la pantalla no dibuje el botón —una sesión puede
-   * ensuciarse entre que se pinta y se pulsa, y un `POST` se puede repetir desde
-   * el historial— sino en que el servidor vuelva a mirar los hallazgos antes de
-   * liberar. Eso es lo que se fija aquí.
-   */
   it("el atajo de liberar se niega en cuanto hay un hallazgo", async () => {
     const { app, repo } = await createTestApp({
       sessions: [makeSession({ authorized: true })],
     });
 
-    // Un examen reprobado es un hallazgo derivado: la revisión no queda limpia.
     await app.inject({
       method: "POST",
       url: "/api/pre-release/save",
@@ -421,13 +386,10 @@ describe("Rutas HTTP de Preliberación", () => {
     });
 
     assert.equal(atajo.statusCode, 400);
-    // Y lo que importa: la sesión no se movió ni un paso.
     assert.equal((await repo.getSessionById("ses-001"))?.status, "PRELIBERACION");
   });
 
   it("una sesión ya liberada vuelve a la bandeja con el acuse, no a un 409", async () => {
-    // Así caía el atajo de liberar: tras liberar redirigía al banco de la sesión,
-    // que ya no es revisable, y la persona veía «Error 409».
     const { app } = await createTestApp({
       sessions: [makeSession({ authorized: true, status: "LIBERADA_TOTAL" })],
     });
@@ -460,7 +422,6 @@ describe("Rutas HTTP de Preliberación", () => {
       }).toString(),
     });
     assert.equal(guardar.statusCode, 200);
-    // Guardar no mueve la etapa: eso es una confirmación aparte.
     assert.equal((await repo.getSessionById("ses-001"))?.status, "CERRADA");
 
     const entrar = await app.inject({
@@ -491,10 +452,6 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.equal((await repo.getSessionById("ses-001"))?.status, "PRELIBERACION");
   });
 
-  // -----------------------------------------------------------------------
-  // Reporte
-  // -----------------------------------------------------------------------
-
   it("GET /preliberacion/:id/reporte devuelve el PDF de vista previa sin archivar nada", async () => {
     const { app, repo } = await createTestApp();
     const res = await app.inject({ method: "GET", url: "/preliberacion/ses-001/reporte" });
@@ -520,7 +477,6 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.equal(archivar.statusCode, 200);
     const resumen = archivar.json<{ evidenceId: string; archived: boolean; content?: unknown }>();
     assert.equal(resumen.archived, true);
-    // El JSON no arrastra los bytes: se piden por la evidencia.
     assert.equal(resumen.content, undefined);
 
     const busqueda = await app.inject({ method: "GET", url: "/api/pre-release/report/ses-001" });
@@ -562,10 +518,6 @@ describe("Rutas HTTP de Preliberación", () => {
     assert.ok(res.body.includes("Preliberacion-KCM-260803-ABC123"));
   });
 
-  // -----------------------------------------------------------------------
-  // Privacidad
-  // -----------------------------------------------------------------------
-
   it("la bandeja no expone identidades: sólo encabezados de sesión", async () => {
     const { app } = await createTestApp();
     const res = await app.inject({ method: "GET", url: "/preliberacion" });
@@ -585,10 +537,6 @@ describe("Rutas HTTP de Preliberación", () => {
       assert.equal(res.headers["cache-control"], "no-store", url);
     }
   });
-
-  // -----------------------------------------------------------------------
-  // Lo que el revisor ve antes de guardar
-  // -----------------------------------------------------------------------
 
   describe("el banco de trabajo recién abierto", () => {
     it("marca las filas como pendientes, no como excluidas", async () => {
@@ -630,10 +578,6 @@ describe("Rutas HTTP de Preliberación", () => {
       assert.match(res.body, /\/api\/pre-release\/enter/u);
     });
 
-    /**
-     * Un motivo real manda sobre lo provisional: quien está excluido se ve
-     * excluido aunque su examen siga en el valor por omisión.
-     */
     it("una fila con motivo de bloqueo sí se ve excluida", async () => {
       const { app } = await createTestApp({
         sessions: [makeSession({ authorized: true })],
@@ -648,16 +592,7 @@ describe("Rutas HTTP de Preliberación", () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Transiciones rechazadas
-  // -----------------------------------------------------------------------
-
   describe("una transición que el dominio rechaza", () => {
-    /**
-     * El orden lo impone el servidor —guardar, entrar, pasar— y antes el rechazo
-     * salía como página de error en JSON: el revisor perdía el padrón y el texto
-     * que le decía qué le faltaba quedaba enterrado en un cuerpo crudo.
-     */
     it("desde la pantalla vuelve al banco con el motivo escrito", async () => {
       const { app } = await createTestApp();
       const res = await app.inject({
@@ -738,14 +673,9 @@ describe("Rutas HTTP de Preliberación", () => {
     });
 
     assert.equal(res.statusCode, 303);
-    // A la validación de esa misma sesión, no a la lista general.
     assert.match(String(res.headers.location), /^\/liberacion\?sessionId=ses-001&aviso=/u);
     await app.close();
   });
-
-  // -----------------------------------------------------------------------
-  // El camino completo
-  // -----------------------------------------------------------------------
 
   it("guardar, entrar y pasar a liberación deja la sesión en la bandeja", async () => {
     const { app } = await createTestApp({

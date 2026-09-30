@@ -1,36 +1,3 @@
-/**
- * Clasificación por lotes, como grafo de LangGraph.
- *
- * Es lo que corre detrás del botón «Clasificar faltantes». Los mismos dos
- * pasos y las mismas reglas que un caso suelto, pero con varios casos por
- * petición: el plan gratuito da 50 peticiones al día y así 50 trabajadores
- * caben en unas quince.
- *
- *   START → planificacion ─┬─ Send(tanda) × n ─→ tanda ─→ planificacion …
- *                          ├─ sin trabajo pendiente ─→ conciliacion → END
- *                          └─ sin tiempo para otra tanda ─→ END
- *
- * - `planificacion` no usa modelo. Mira qué le falta a cada papel y reparte el
- *   trabajo en tandas con `Send`: primero las subáreas, de 20 casos en 20;
- *   después las ocupaciones, en grupos de hasta 4 casos que comparten
- *   subáreas, para que cada petición compare pocas opciones y pocos casos.
- *   Los dos papeles —principal y verificador— trabajan en paralelo y cada uno
- *   arma sus propias tandas: el verificador recorre los casos en orden inverso,
- *   para que sus lotes no se parezcan a los del principal y un error de
- *   contexto no se repita en las dos opiniones.
- * - `tanda` hace una petición y valida caso por caso. Un caso que falta en la
- *   respuesta, o con un código que no estaba entre las opciones, vuelve a la
- *   fila con el motivo, hasta un tope de intentos. Una falla del proveedor no
- *   gasta los intentos de los casos: cuenta como falla seguida del papel, y tras
- *   varias seguidas el papel se da por caído.
- * - `conciliacion` aplica a cada caso las mismas reglas que un caso suelto.
- *
- * Un paso del grafo cabe en una petición de la plataforma publicada: cuando no
- * queda tiempo para otra tanda, el grafo termina y devuelve el estado. Excel lo
- * vuelve a mandar y el grafo sigue donde se quedó. El estado sólo lleva puestos,
- * centros de costos y lo decidido; se vuelve a validar cada vez que regresa.
- */
-
 import { Annotation, END, Send, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 
@@ -63,32 +30,17 @@ import {
 import { leerCaso } from "./servicio.ts";
 
 export interface LimitesDelLote {
-  /**
-   * Casos que entran a una corrida. Lo que no cabe se queda para otra: el plan
-   * deja esas celdas vacías y el siguiente las vuelve a encontrar.
-   */
   readonly casosPorCorrida: number;
   readonly casosPorTandaDeSubarea: number;
   readonly casosPorTandaDeOcupacion: number;
-  /** Tandas que cada papel puede tener en vuelo a la vez. */
   readonly tandasEnParaleloPorPapel: number;
   readonly maxSubareas: number;
   readonly maxOpciones: number;
-  /** Veces que se pregunta un mismo caso en un mismo paso antes de darlo por fallido. */
   readonly intentosPorCaso: number;
-  /** Fallas seguidas del proveedor tras las que un papel se da por caído. */
   readonly fallasSeguidasPorPapel: number;
-  /**
-   * Tandas fallidas en que puede estar un caso antes de darse por fallido. Sin
-   * este tope, una petición que siempre falla se repetiría paso tras paso
-   * mientras otras tandas del papel sí contestan.
-   */
   readonly tandasFallidasPorCaso: number;
-  /** Espera tras una falla del proveedor; se duplica con cada falla seguida. */
   readonly esperaTrasFallaMs: number;
-  /** Tiempo de un paso del grafo: por debajo del corte de la función publicada. */
   readonly tiempoPorPasoMs: number;
-  /** Con menos tiempo que esto por delante no se empieza otra tanda. */
   readonly tiempoMinimoPorTandaMs: number;
   readonly limiteDePasos: number;
 }
@@ -101,13 +53,10 @@ export interface PapelEnLote {
   readonly propuestas: Readonly<Record<string, PropuestaValidada>>;
   readonly intentosDeSubarea: Readonly<Record<string, number>>;
   readonly intentosDeOcupacion: Readonly<Record<string, number>>;
-  /** Por qué no sirvió la última respuesta de un caso; se le dice al modelo al volver a preguntar. */
   readonly avisos: Readonly<Record<string, string>>;
   readonly fallas: Readonly<Record<string, string>>;
-  /** En cuántas tandas fallidas estuvo cada caso; con cada una, su siguiente tanda es de la mitad. */
   readonly tandasFallidas: Readonly<Record<string, number>>;
   readonly fallasSeguidas: number;
-  /** Si el papel dejó de preguntar, por qué; vacío mientras siga. */
   readonly caido: string;
 }
 
@@ -128,11 +77,9 @@ export interface ResultadoDeCaso extends Conciliacion {
 export interface AvanceDelLote {
   readonly estado: EstadoDelLote;
   readonly terminado: boolean;
-  /** Sólo al terminar: un resultado por caso, en el orden de los casos. */
   readonly resultados: readonly ResultadoDeCaso[] | null;
 }
 
-/** Lo que una tanda cambia de un papel. Los mapas se suman; nunca se borra lo decidido. */
 interface CambioDePapel {
   readonly subareas?: Readonly<Record<string, readonly string[]>>;
   readonly propuestas?: Readonly<Record<string, PropuestaValidada>>;
@@ -141,7 +88,6 @@ interface CambioDePapel {
   readonly avisos?: Readonly<Record<string, string>>;
   readonly fallas?: Readonly<Record<string, string>>;
   readonly tandasFallidas?: Readonly<Record<string, number>>;
-  /** Valor absoluto: sólo lo trae el estado que regresa de Excel. */
   readonly fallasSeguidas?: number;
   readonly exito?: boolean;
   readonly fallaDelProveedor?: boolean;
@@ -184,7 +130,6 @@ const reemplazar = <T>(_anterior: T, nuevo: T): T => nuevo;
 
 const EstadoDelGrafo = Annotation.Root({
   casos: Annotation<readonly CasoEnLote[]>(),
-  /** Momento, en ms, en que vence este paso. */
   vence: Annotation<number>(),
   principal: Annotation<PapelEnLote, CambioDePapel>({
     reducer: fusionar,
@@ -202,19 +147,14 @@ const EstadoDelGrafo = Annotation.Root({
   resultados: Annotation<ResultadoDeCaso[] | null>({ reducer: reemplazar, default: () => null }),
 });
 
-/** Lo que recibe una tanda por `Send`: sólo su parte del trabajo. */
 const EntradaDeTanda = Annotation.Root({
   rol: Annotation<Rol>(),
   tipo: Annotation<"subarea" | "ocupacion">(),
   casos: Annotation<readonly CasoEnLote[]>(),
-  /** Para la ocupación: las subáreas que comparten los casos de la tanda. */
   subareas: Annotation<readonly string[]>(),
   avisos: Annotation<Readonly<Record<string, string>>>(),
-  /** Intentos que ya lleva cada caso en este paso. */
   intentos: Annotation<Readonly<Record<string, number>>>(),
-  /** Tandas fallidas de cada caso. */
   fallidas: Annotation<Readonly<Record<string, number>>>(),
-  /** Fallas seguidas del papel al armar la tanda: de ahí sale la espera si vuelve a fallar. */
   fallasSeguidas: Annotation<number>(),
   vence: Annotation<number>(),
 });
@@ -222,8 +162,6 @@ const EntradaDeTanda = Annotation.Root({
 type Grafo = typeof EstadoDelGrafo.State;
 type Actualizacion = typeof EstadoDelGrafo.Update;
 type Tanda = typeof EntradaDeTanda.State;
-
-// ----------------------------------------------------- el estado que viaja
 
 const PropuestaGuardada = z.object({
   codigo: z.string(),
@@ -270,12 +208,6 @@ const EstadoGuardado = z.object({
 
 const ID_DE_CASO = /^C\d{3,5}$/u;
 
-/**
- * Lo que se le dice al modelo al volver a preguntarle un caso. Es un juego
- * cerrado de frases: el estado regresa de Excel, y cualquier otro texto que
- * trajera terminaría en el prompt. El código inválido va a la razón del caso,
- * no al modelo.
- */
 const AVISO_FALTANTE = "faltó en la respuesta";
 const AVISO_FUERA_DE_LISTA = "el código elegido no está en la lista de opciones";
 const AVISOS_VALIDOS: ReadonlySet<string> = new Set(["", AVISO_FALTANTE, AVISO_FUERA_DE_LISTA]);
@@ -285,15 +217,12 @@ export interface DependenciasDelLote {
   readonly principal: ModeloDeLenguajePort;
   readonly verificador?: ModeloDeLenguajePort;
   readonly limites: LimitesDelLote;
-  /** Versión y huella del agente: un estado hecho con otra configuración no se continúa. */
   readonly version: string;
   readonly huella: string;
   readonly reloj?: () => number;
-  /** Cómo se espera tras una falla; las pruebas la sustituyen para no esperar de verdad. */
   readonly esperar?: (milisegundos: number) => Promise<void>;
 }
 
-/** Las piezas del grafo; separadas para poder nombrar el tipo del grafo compilado. */
 interface NodosDelLote {
   readonly tanda: (tanda: Tanda) => Promise<Actualizacion>;
   readonly repartir: (estado: Grafo) => Send[] | "conciliacion" | typeof END;
@@ -332,7 +261,6 @@ export class ClasificadorPorLotes {
     });
   }
 
-  /** El estado inicial de un lote. */
   iniciar(casos: readonly CasoEnLote[]): EstadoDelLote {
     this.#revisarCasos(casos);
     return {
@@ -346,10 +274,6 @@ export class ClasificadorPorLotes {
     };
   }
 
-  /**
-   * Lee el estado que regresa de Excel. Se vuelve a validar entero: su forma,
-   * la versión del agente y cada caso por la misma puerta que un caso suelto.
-   */
   leer(texto: string): EstadoDelLote {
     let crudo: unknown;
     try {
@@ -369,10 +293,6 @@ export class ClasificadorPorLotes {
       );
     }
     const invalido = (mensaje: string) => new DomainError("LOTE_INVALIDO", mensaje);
-    // Lo decidido también regresa de Excel: cada clave tiene que existir en el
-    // catálogo, y lo que el catálogo dice de ella se vuelve a tomar de él.
-    // Subáreas y avisos llegan al prompt tal cual, así que sólo valen claves del
-    // catálogo y las frases del juego cerrado.
     const revisar = (papel: typeof estado.principal): PapelEnLote => {
       const subareas = Object.fromEntries(
         Object.entries(papel.subareas).map(([id, lista]) => {
@@ -433,7 +353,6 @@ export class ClasificadorPorLotes {
     };
   }
 
-  /** Avanza hasta terminar o hasta que no quede tiempo para otra tanda. */
   async avanzar(estado: EstadoDelLote): Promise<AvanceDelLote> {
     const { limites } = this.#deps;
     const final = await this.#grafo.invoke(
@@ -461,7 +380,6 @@ export class ClasificadorPorLotes {
     };
   }
 
-  /** Cuántos casos y con qué identificadores: el tope de la corrida y sin repetidos. */
   #revisarCasos(casos: readonly { readonly id: string }[]): void {
     if (casos.length > this.#deps.limites.casosPorCorrida) {
       throw new DomainError(
@@ -494,12 +412,10 @@ export class ClasificadorPorLotes {
     return "";
   }
 
-  /** Las tandas que le tocan a un papel ahora, o ninguna si ya terminó. */
   #trabajoDe(rol: Rol, estado: Grafo): Tanda[] {
     const { limites } = this.#deps;
     if (!this.#modelo(rol) || this.#papelCaido(estado, rol)) return [];
     const papel = estado[rol];
-    // El verificador recorre los casos al revés: sus lotes no repiten los del principal.
     const casos = rol === "principal" ? [...estado.casos] : [...estado.casos].reverse();
     const vivos = casos.filter((caso) => !papel.fallas[caso.id]);
     const base = {
@@ -510,15 +426,12 @@ export class ClasificadorPorLotes {
       fallasSeguidas: papel.fallasSeguidas,
     };
 
-    // Primero la subárea de todos; luego la ocupación, agrupada por subáreas.
     const sinSubarea = vivos.filter((caso) => !papel.subareas[caso.id]);
     const tipo = sinSubarea.length > 0 ? "subarea" : "ocupacion";
     const pendientes =
       tipo === "subarea" ? sinSubarea : vivos.filter((caso) => !papel.propuestas[caso.id]);
     const tope =
       tipo === "subarea" ? limites.casosPorTandaDeSubarea : limites.casosPorTandaDeOcupacion;
-    // Un caso que ya estuvo en una tanda fallida vuelve en una de la mitad, junto
-    // a los de su mismo nivel: una petición más chica cabe y se corta menos.
     const grupos = new Map<
       string,
       { casos: CasoEnLote[]; subareas: readonly string[]; tamano: number }
@@ -579,7 +492,6 @@ export class ClasificadorPorLotes {
     };
   }
 
-  /** Un caso que no sirvió: suma un intento y, al llegar al tope, queda fallido. */
   #reintentar(
     id: string,
     motivo: string,
@@ -612,14 +524,11 @@ export class ClasificadorPorLotes {
     } catch (error) {
       if (!(error instanceof FallaDeModelo)) throw error;
       const nota = `falló con ${String(tanda.casos.length)} casos: ${error.message}`;
-      // Una llave mala o una petición rechazada no mejoran repitiéndolas.
       const definitiva = !error.seReintenta && error.motivo !== "DEMASIADO_GRANDE";
       if (definitiva) return conPapel({ caido: error.message }, this.#paso(nodo, inicio, nota));
 
       const { limites } = this.#deps;
-      // Un 413 es de esta petición, no del proveedor: no acerca al papel a caerse.
       const delProveedor = error.motivo !== "DEMASIADO_GRANDE";
-      // Si con esta falla el papel se cae, la razón de sus casos es la del papel.
       const seCae = delProveedor && tanda.fallasSeguidas + 1 >= limites.fallasSeguidasPorPapel;
       const tandasFallidas: Record<string, number> = {};
       const fallas: Record<string, string> = {};
@@ -638,12 +547,6 @@ export class ClasificadorPorLotes {
     }
   }
 
-  /**
-   * Tras una falla del proveedor la tanda espera antes de devolver el turno, y
-   * cada falla seguida duplica la espera: un parpadeo de unos segundos ya no
-   * suma tres fallas en menos de uno. Nunca espera tanto que ya no quepa otra
-   * tanda en el paso.
-   */
   async #esperarTrasFalla(tanda: Tanda, error: FallaDeModelo): Promise<void> {
     const { limites } = this.#deps;
     const sugerida = error.esperaMs ?? limites.esperaTrasFallaMs * 2 ** tanda.fallasSeguidas;
@@ -685,7 +588,6 @@ export class ClasificadorPorLotes {
         );
     }
     const resueltos = Object.keys(subareas).length;
-    // Con su subárea, el caso pasa a la ocupación sin arrastrar las tandas fallidas.
     const tandasFallidas = Object.fromEntries(Object.keys(subareas).map((id) => [id, 0]));
     return conPapel(
       { subareas, intentosDeSubarea: intentos, fallas, tandasFallidas, exito: true },

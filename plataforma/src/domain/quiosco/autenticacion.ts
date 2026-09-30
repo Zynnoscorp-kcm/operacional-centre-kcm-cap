@@ -1,9 +1,3 @@
-/**
- * Servicio de autenticación y autorización del Quiosco (Función 1).
- * Implementa la segunda contraseña: alcances separados para registrarse vs abrir sesión,
- * con auditoría y secretos independientes .
- */
-
 import { createHmac, randomBytes } from "node:crypto";
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
@@ -11,7 +5,6 @@ import { igualEnTiempoConstante } from "../../server/sesion-consola.ts";
 import { KioskAuthError, RateLimitExceededError } from "./errores.ts";
 import type { ActorIdentity, SecretScope } from "./tipos.ts";
 
-/** Cuerpo de la concesión de `/api/kiosk/unlock`, tal como lo firma `signGrant`. */
 export interface KioskGrantPayload {
   readonly role?: string | undefined;
   readonly expiresAt?: string | undefined;
@@ -32,18 +25,7 @@ export interface KioskAuthDeps {
   readonly clock: Clock;
   readonly tokenSecret: string;
   readonly maxPinAttempts?: number;
-  /**
-   * Contraseñas de la corrida piloto, por alcance. Donde hay una declarada
-   * manda ella y el secreto de la base no se consulta: dos fuentes válidas a
-   * la vez darían dos contraseñas correctas y ninguna forma de saber cuál se
-   * usó. La configuración las prohíbe en producción.
-   */
   readonly pilotSecrets?: Partial<Record<SecretScope, string>>;
-  /**
-   * Acceso abierto de prueba. Cualquier PIN se acepta —incluido el vacío— y la
-   * bitácora lo registra igual, con el motivo diciendo que la compuerta estaba
-   * abierta. La configuración lo prohíbe en producción.
-   */
   readonly openAccess?: boolean;
 }
 
@@ -65,7 +47,6 @@ export class KioskAuthService {
     this.openAccess = deps.openAccess ?? false;
   }
 
-  /** Verifica contra la contraseña de piloto si la hay; si no, contra la base. */
   private async verifySecret(scope: SecretScope, candidate: string): Promise<boolean> {
     if (this.openAccess) return true;
     const piloto = this.pilotSecrets[scope];
@@ -74,8 +55,6 @@ export class KioskAuthService {
   }
 
   private checkRateLimit(key: string, limit: number, windowMs: number): void {
-    // Con el acceso abierto no hay PIN que adivinar, y el límite sólo estorbaría
-    // a quien está recorriendo la plataforma de prueba.
     if (this.openAccess) return;
     const now = this.clock.now().getTime();
     const entry = this.rateLimits.get(key);
@@ -93,9 +72,6 @@ export class KioskAuthService {
     this.rateLimits.delete(key);
   }
 
-  /**
-   * Valida la primera contraseña: PIN del Quiosco para registro de participantes (Secret 1).
-   */
   async unlockKiosk(
     pin: string,
     stationLabel?: string,
@@ -142,9 +118,6 @@ export class KioskAuthService {
     return { grant, expiresAt };
   }
 
-  /**
-   * Valida la segunda contraseña: PIN de apertura / lanzamiento de sesión en sala (Secret 2).
-   */
   async verifySessionLaunchSecret(
     pin: string,
     sessionId?: string,
@@ -190,9 +163,6 @@ export class KioskAuthService {
     return true;
   }
 
-  /**
-   * Emite un token HMAC firmado para la estación del quiosco ligado a una sesión específica.
-   */
   createKioskToken(
     sessionId: string,
     stationLabel?: string,
@@ -215,9 +185,6 @@ export class KioskAuthService {
     return { token, expiresAt };
   }
 
-  /**
-   * Verifica la validez y firma del token del quiosco.
-   */
   verifyKioskToken(token: string, expectedSessionId?: string): KioskTokenPayload {
     if (!token || typeof token !== "string" || !token.includes(".")) {
       throw new KioskAuthError("Token de quiosco malformado");
@@ -265,21 +232,6 @@ export class KioskAuthService {
     return `${b64}.${sig}`;
   }
 
-  /**
-   * Verifica la concesión que emite `/api/kiosk/unlock`.
-   *
-   * Se escribió con la misma forma que `verifyKioskToken`, que era la correcta,
-   * después de que esta gemela acumulara tres defectos que se tapaban entre sí:
-   *
-   * 1. La comprobación de vencimiento vivía dentro del `try`, así que su
-   *    propio `throw` lo atrapaba el `catch` de abajo y una concesión vencida se
-   *    reportaba como «ilegible». Quien depurara por qué el quiosco no abre leía
-   *    la causa equivocada.
-   * 2. Sin guarda `isNaN`. `Date.parse(undefined)` da `NaN` y `NaN < ahora`
-   *    es falso, de modo que una concesión sin `expiresAt` no vencía nunca.
-   * 3. Comparación de firma con `!==`, cuando el archivo ya importa
-   *    `igualEnTiempoConstante` y lo usa unas líneas más arriba.
-   */
   verifyGrant(grant: string): { role: string; stationLabel?: string | undefined } {
     if (!grant || typeof grant !== "string" || !grant.includes(".")) {
       throw new KioskAuthError("Concesión de quiosco inválida o ausente");

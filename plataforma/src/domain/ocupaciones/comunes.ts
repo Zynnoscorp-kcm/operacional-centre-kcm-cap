@@ -1,11 +1,3 @@
-/**
- * Lo que comparten el agente de un caso y el agente por lotes: las opciones que
- * se muestran, cómo se valida lo que el modelo eligió y cómo se concilian dos
- * opiniones. Vive aquí para que las dos formas de clasificar decidan con las
- * mismas reglas: una sugerencia no puede depender de si el caso llegó solo o en
- * un lote.
- */
-
 import type { CatalogoDeOcupaciones, Ocupacion } from "./catalogo.ts";
 import type { BloqueDeOpciones, Confianza, RespuestaDeOcupacion } from "./instrucciones.ts";
 
@@ -30,35 +22,22 @@ export interface PasoDeTraza {
   readonly nota: string;
 }
 
-/**
- * - `sugerida`: principal y verificador eligieron el mismo código sin confianza baja.
- * - `revisar`: hay propuesta, pero alguien tiene que mirarla.
- * - `sin_respuesta`: ningún modelo dejó una propuesta válida.
- */
 export type EstadoDeSugerencia = "sugerida" | "revisar" | "sin_respuesta";
 
 export interface Conciliacion {
   readonly estado: EstadoDeSugerencia;
-  /** La clave que se escribiría: la del principal o, si él falló, la del verificador. */
   readonly sugerencia: PropuestaValidada | null;
   readonly principal: PropuestaValidada | null;
   readonly verificador: PropuestaValidada | null;
-  /** Por qué el caso quedó en ese estado, en una frase. */
   readonly razon: string;
 }
 
 const RANGO_DE_CONFIANZA: Readonly<Record<Confianza, number>> = { alta: 2, media: 1, baja: 0 };
 
-/** Un código tal como lo escribió el modelo, sin espacios ni guiones de adorno. */
 export function codigoLimpio(codigo: string): string {
   return codigo.replace(/[\s-]+/gu, "");
 }
 
-/**
- * Las opciones del paso de ocupación. La primera subárea entra completa; las
- * siguientes sólo si caben en el tope, para que el modelo compare pocas a la
- * vez y la llamada no crezca sin freno.
- */
 export function armarBloques(
   catalogo: CatalogoDeOcupaciones,
   subareas: readonly string[],
@@ -83,14 +62,12 @@ export function armarBloques(
   return { bloques, omitidas };
 }
 
-/** Los códigos que se le mostraron al modelo: fuera de ellos, ninguna respuesta vale. */
 export function codigosMostrados(bloques: readonly BloqueDeOpciones[]): ReadonlySet<string> {
   return new Set(
     bloques.flatMap((bloque) => bloque.ocupaciones.map((ocupacion) => ocupacion.codigo)),
   );
 }
 
-/** Las subáreas que dijo el modelo, sin repetidas, sólo las del catálogo y con tope. */
 export function subareasValidas(
   catalogo: CatalogoDeOcupaciones,
   propuestas: readonly string[],
@@ -113,7 +90,6 @@ export function propuestaDesde(
       : undefined;
   return {
     codigo: ocupacion.codigo,
-    // La descripción sale del catálogo, nunca del texto del modelo.
     descripcion: ocupacion.descripcion,
     consecutivo: ocupacion.consecutivo,
     subarea: ocupacion.subarea,
@@ -124,11 +100,6 @@ export function propuestaDesde(
   };
 }
 
-/**
- * Las reglas fijas de la conciliación. «Sugerida» exige dos opiniones
- * independientes que coinciden sin confianza baja; sin verificador configurado,
- * basta la confianza alta del principal. Todo lo demás va a «revisar».
- */
 export function conciliarPropuestas(entrada: {
   readonly principal: PropuestaValidada | null;
   readonly verificador: PropuestaValidada | null;

@@ -17,17 +17,6 @@ function bearer(request: FastifyRequest): string {
   return value.startsWith("Bearer ") ? value.slice(7) : "";
 }
 
-/**
- * Tope del puente en la nube: por debajo de los 4.5 MB en que corta el
- * alojamiento, para que un envío demasiado grande se rechace con explicación y
- * no a media lectura.
- *
- * Medido el 2026-09-24 con la matriz real (1 684 trabajadores, 27 cursos): el
- * barrido completo viaja en ~2.0 MB ya codificado y el padrón semanal en
- * ~0.7 MB. Lo que pase de ~3 MB, Excel lo manda solo en partes
- * (`UPLOAD_PART_V1`) y la plataforma las junta: este tope ya no limita el
- * tamaño de un envío, sólo el de cada petición.
- */
 const TOPE_DEL_PUENTE_EN_LA_NUBE = 4_194_304;
 
 export function registerExcelRoutes(
@@ -35,28 +24,14 @@ export function registerExcelRoutes(
   deps: {
     readonly config: AppConfig;
     readonly service: ExcelIntegrationService;
-    /**
-     * Estado que la pantalla enseña arriba. Es opcional para que una prueba
-     * pueda construir el servidor sin repositorio de acuses; sin él los
-     * contadores salen en cero en lugar de romper la pantalla.
-     */
     readonly estado?: () => Promise<{
       readonly pendientesDeExcel: number;
       readonly fechasEscritas: number;
     }>;
-    /** Sesión de consola. La conserva el guardia; aquí sólo se declara. */
     readonly sessions?: ConsoleSessionCodec;
     readonly clock?: Clock;
   },
 ): void {
-  /**
-   * Origen público de la petición.
-   *
-   * Detrás de un túnel el proceso escucha en claro sobre loopback pero el
-   * cliente llegó por TLS. Sin mirar `x-forwarded-proto`, la página dictaba un
-   * `ENDPOINT` con `http://` que el módulo VBA rechaza. La cabecera sólo decide
-   * el texto que se muestra; no relaja ninguna comprobación.
-   */
   const origenDe = (request: FastifyRequest): string => {
     const host = text(request.headers.host) || `${deps.config.host}:${String(deps.config.port)}`;
     const reenviado = text(request.headers["x-forwarded-proto"]).split(",")[0]?.trim();
@@ -69,7 +44,6 @@ export function registerExcelRoutes(
     return `${protocolo}://${host}`;
   };
 
-  /** La pantalla completa. La comparten el `GET` y la emisión del código. */
   const pantalla = async (
     request: FastifyRequest,
     extra: Partial<DatosDeExcel> = {},
@@ -139,13 +113,7 @@ export function registerExcelRoutes(
   app.post(
     "/api/v1/vba-bridge",
     {
-      // Veinticuatro mebibytes en el equipo del departamento; cuatro en la
-      // nube. Todas las acciones pasan en los dos papeles: lo que decide es el
-      // tamaño, no el nombre de la acción.
       bodyLimit: deps.config.role === "nube" ? TOPE_DEL_PUENTE_EN_LA_NUBE : 25_165_824,
-      // El cliente VBA lee `clave=valor`, no JSON: un envío que excede el tope
-      // se contesta en su idioma. Sólo le pasa a un libro con módulos
-      // anteriores al envío en partes, y eso es lo que se le dice.
       errorHandler: (error, _request, reply) => {
         if (error.statusCode !== 413) throw error;
         void reply

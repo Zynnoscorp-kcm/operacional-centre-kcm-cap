@@ -1,17 +1,3 @@
-/**
- * Adaptador de repositorio de matriz para PostgreSQL / Supabase.
- *
- * Mapea las entidades y operaciones de lote al esquema `kcm.*`:
- * - `matriz.importacion`
- * - `organizacion.trabajador`
- * - `catalogo.capacitacion`
- * - `catalogo.capacitacion_alias`
- * - `operacion.historial_capacitacion`
- * - `operacion.historial_capacitacion_cambio`
- * - `matriz.capacitacion_desconocida`
- * - `matriz.trabajador_desconocido`
- */
-
 import { parseWorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   BatchPhase,
@@ -399,10 +385,8 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
 
   async applyBatchAtomic(batch: ImportBatch, ops: AtomicBatchOperations): Promise<void> {
     await this.db.transaction(async (tx) => {
-      // 1. Guardar o actualizar lote
       await this.saveBatch(batch);
 
-      // 2. Upsert trabajadores
       for (const w of ops.workersToUpsert) {
         await tx.query(
           `INSERT INTO organizacion.trabajador (
@@ -428,7 +412,6 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
-      // 3. Upsert cursos
       for (const c of ops.coursesToUpsert) {
         await tx.query(
           `INSERT INTO catalogo.capacitacion (
@@ -453,7 +436,6 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
-      // 4. Actualizar registros existentes
       for (const r of ops.recordsToUpdate) {
         await tx.query(
           `UPDATE operacion.historial_capacitacion SET
@@ -467,7 +449,6 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
-      // 5. Insertar nuevos registros
       for (const r of ops.recordsToInsert) {
         await tx.query(
           `INSERT INTO operacion.historial_capacitacion (
@@ -499,7 +480,6 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
-      // 6. Insertar historial append-only
       for (const h of ops.historyEntriesToInsert) {
         await tx.query(
           `INSERT INTO operacion.historial_capacitacion_cambio (
@@ -531,8 +511,6 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
-      // 7. Quién estuvo en esta matriz, y la baja de quien no está ni aquí ni
-      //    en el último padrón. Dos sentencias para toda la planta.
       if (ops.workersSeen) {
         await tx.query(
           `UPDATE organizacion.trabajador
@@ -582,16 +560,6 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
   }
 }
 
-/**
- * Actor durable a partir de su identificador de texto.
- *
- * Las columnas de auditoría del esquema son `uuid NOT NULL REFERENCES seguridad.actor`, mientras que
- * el dominio maneja al responsable por su identificador legible — `VBA_CLIENT_KCM-MAC-01` para
- * el puente de Excel. Pasar ese texto directo a la columna hacía que Postgres rechazara el lote
- * completo, ya recibido y validado, con "invalid input syntax for type uuid". Se crea si no
- * existe, igual que en el resto del árbol: un lote sin responsable no se puede auditar, y
- * negarse a guardarlo por eso deja el dato fuera de la plataforma sin arreglar nada.
- */
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {
   const clave = identificador.trim() || "SISTEMA";
   const { rows } = await tx.query<{ actor_id: string }>(

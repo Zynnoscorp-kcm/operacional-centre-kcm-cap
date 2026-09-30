@@ -1,14 +1,3 @@
-/**
- * Barrido del padrón semanal: columnas detectadas, el puente y las rutas.
- *
- * La regla vigilada es la misma que en el barrido de matriz —leer no
- * escribe— y hay una segunda propia de esta ruta: el archivo viaja tal cual y
- * lo interpreta el extractor del servidor, no la macro. Por eso las pruebas
- * construyen un XLSX de verdad y lo mandan por el puente en lugar de simular
- * filas ya normalizadas: si la macro empezara a interpretar el libro, esto
- * dejaría de comprobar lo que dice comprobar.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -56,8 +45,6 @@ class RelojFalso implements Clock {
   }
 }
 
-// --------------------------------------------------------- el libro sintético
-
 function xmlSeguro(valor: string): string {
   return valor.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -85,10 +72,6 @@ interface FilaDeArchivo {
   readonly cno?: string;
 }
 
-/**
- * Una hoja de activos. `conCno` decide si existe la columna opcional, que es lo
- * que permite comprobar que un libro sin ella se lee igual y lo dice.
- */
 function hojaDeActivos(
   filas: readonly FilaDeArchivo[],
   conCno: boolean,
@@ -124,9 +107,7 @@ function hojaDeActivos(
 function libroDePadron(input: {
   readonly snd: readonly FilaDeArchivo[];
   readonly emp: readonly FilaDeArchivo[];
-  /** La columna del CNO existe en `SND ACTIVOS` pero no en `EMP ACTIVOS`. */
   readonly cnoSoloEnSnd?: boolean;
-  /** Con qué rótulo llega la columna de la clave de ocupación. */
   readonly encabezadoDeOcupacion?: string;
 }): Buffer {
   const hojas = ["SND ACTIVOS", "EMP ACTIVOS"];
@@ -198,8 +179,6 @@ const PADRON = libroDePadron({
   ],
   cnoSoloEnSnd: true,
 });
-
-// ------------------------------------------------------------------ el doble
 
 class RepositorioFalso implements RosterRepositoryPort {
   escrituras = 0;
@@ -295,8 +274,6 @@ function servicio(reloj = new RelojFalso(), repositorio = baseCargada()) {
   };
 }
 
-// ------------------------------------------------------- columnas detectadas
-
 describe("Barrido de padrón · columnas detectadas", () => {
   it("dice qué encabezado se leyó como cada campo, hoja por hoja", async () => {
     const { service } = servicio();
@@ -311,16 +288,12 @@ describe("Barrido de padrón · columnas detectadas", () => {
     const porCampo = new Map(snd?.columns.map((c) => [c.field, c]));
     assert.equal(porCampo.get("employeeId")?.header, "NUMERO");
     assert.equal(porCampo.get("employeeId")?.columnName, "A");
-    // El rótulo del libro no es el nombre del campo, y por eso se enseña: quien
-    // busca «fecha de alta» en la hoja encuentra `FEC ALTA`.
     assert.equal(porCampo.get("hireDate")?.header, "FEC ALTA");
     assert.equal(porCampo.get("hireDate")?.columnName, "G");
     assert.equal(porCampo.get("curp")?.header, "C.U.R.P.");
     assert.equal(porCampo.get("cnoKey")?.present, true);
     assert.equal(porCampo.get("cnoKey")?.columnName, "H");
 
-    // La segunda hoja no trae la columna opcional: se nombra ausente en lugar
-    // de quedar en silencio, que es lo que hacía que pareciera un error.
     const emp = plan.hojas[1];
     const cnoEnEmp = emp?.columns.find((c) => c.field === "cnoKey");
     assert.equal(cnoEnEmp?.present, false);
@@ -352,7 +325,6 @@ describe("Barrido de padrón · columnas detectadas", () => {
 
     assert.equal(plan.cuadre.traeColumnaCno, true);
     assert.equal(plan.origen.tipo, "CONSOLA");
-    // Leer no escribe: la revisión existe y el repositorio sigue intacto.
     assert.equal(repositorio.escrituras, 0);
   });
 
@@ -360,19 +332,11 @@ describe("Barrido de padrón · columnas detectadas", () => {
     const { service } = servicio();
     const plan = await service.previsualizar(PADRON, "sem 33 CAP.xlsx");
 
-    // 00001 y 00002 traen claves distintas; el tercero no trae columna. Bajo la
-    // regla anterior —consolidar por puesto— esto habría escrito cero.
     assert.equal(plan.cuadre.cnoPorEscribir, 2);
     assert.equal(plan.cuadre.cnoQueCoinciden, 0);
     assert.equal(plan.cuadre.cnoEnConflicto, 0);
   });
 
-  /**
-   * El rótulo declarado el 2026-08-13 es «Clave de ocupación», provisional. Se
-   * prueba con acento y en minúsculas, tal como se escribe en la hoja: la
-   * comparación es sobre el rótulo ya normalizado, y esta prueba es lo que fija
-   * que esa normalización siga cubriendo el caso real y no sólo el de manual.
-   */
   it("acepta «Clave de ocupación» tal como se escribe en la hoja", async () => {
     const { service } = servicio();
     const plan = await service.previsualizar(
@@ -397,7 +361,6 @@ describe("Barrido de padrón · columnas detectadas", () => {
     assert.equal(plan.cuadre.cnoPorEscribir, 1);
     const columna = plan.hojas[0]?.columns.find((c) => c.field === "cnoKey");
     assert.equal(columna?.present, true);
-    // Se enseña el rótulo tal como está en el libro, no el alias normalizado.
     assert.equal(columna?.header, "Clave de ocupación");
   });
 
@@ -426,8 +389,6 @@ describe("Barrido de padrón · columnas detectadas", () => {
   });
 });
 
-// ------------------------------------------------------- la revisión viva
-
 describe("Barrido de padrón · revisión", () => {
   it("leer el archivo deja la revisión a la vista y descartarla la borra", async () => {
     const { service } = servicio();
@@ -442,8 +403,6 @@ describe("Barrido de padrón · revisión", () => {
     assert.equal(service.ultimoPlan(), undefined);
   });
 });
-
-// -------------------------------------------------------------- el puente
 
 describe("Barrido de padrón · ROSTER_SCAN_V1", () => {
   const instante = "2026-08-12T12:00:00.000Z";
@@ -574,8 +533,6 @@ describe("Barrido de padrón · ROSTER_SCAN_V1", () => {
   });
 });
 
-// ------------------------------------------------------------- la pantalla
-
 describe("Barrido de padrón · pantalla", () => {
   it("enseña las columnas plegadas y quién cambió de puesto, con nombre", async () => {
     const { service } = servicio();
@@ -596,7 +553,6 @@ describe("Barrido de padrón · pantalla", () => {
       html,
       /<del>[^<]*<\/del>\s*<span class="diff-flecha"[^>]*>→<\/span>\s*<ins>SUPERVISOR<\/ins>/u,
     );
-    // Desde el 2026-09-25 la revisión nombra a la persona. Sigue detrás de sesión.
     assert.match(html, /PERSONA SINTETICA/u);
   });
 
@@ -607,8 +563,6 @@ describe("Barrido de padrón · pantalla", () => {
     assert.doesNotMatch(html, /Solicitar barrido|Cancelar encargo/u);
   });
 });
-
-// --------------------------------------------------------------- las rutas
 
 describe("Barrido de padrón · rutas", () => {
   async function servidor() {

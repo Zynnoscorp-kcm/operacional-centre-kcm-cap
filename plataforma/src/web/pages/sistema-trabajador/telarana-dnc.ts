@@ -1,31 +1,9 @@
-/**
- * La telaraña de la ficha: la persona contra su área, curso por curso.
- *
- * Un eje por curso exigible. La línea azul es la persona —el borde es el curso
- * acreditado y vigente; el centro, el que nunca ha llevado— y la punteada es la
- * proporción de su área que tiene cada curso vigente. Así se lee de un vistazo
- * dónde va por delante y dónde se quedó atrás, que es la pregunta de la ficha.
- *
- * El rótulo de cada eje lleva el color del estado de la persona en ese curso
- * —rojo pendiente, ámbar por reforzar, azul programado, gris acreditado—, que
- * es lo que pide acción. El detalle completo está en la lista de cursos de la
- * misma ficha, que es la alternativa en texto de este dibujo.
- *
- * SVG en línea y compuesto en el servidor: la política declara
- * `default-src 'none'` y ninguna biblioteca de gráficas podría cargarse. Cada
- * vértice lleva un `<title>`, que el navegador muestra como globo.
- */
-
 import type {
   AreaCourseCompletion,
   WorkerCourseEvaluation,
 } from "../../../domain/sistema-trabajador/tipos.ts";
 import { html, rawHtml, type Html } from "../../kit/html.ts";
 
-/**
- * Cuánto cuenta cada estado, de 0 a 1. La escala distingue «lo tuvo y se le
- * venció» de «nunca lo llevó», que se atienden distinto.
- */
 const AVANCE_POR_ESTADO: Readonly<Record<string, number>> = {
   COMPLETADO: 1,
   PROGRAMADO: 0.6,
@@ -47,19 +25,15 @@ const ALTO = 400;
 const CENTRO_X = ANCHO / 2;
 const CENTRO_Y = ALTO / 2;
 const RADIO = 122;
-/** Distancia del rótulo al borde de la telaraña, y lo que se aleja si choca. */
 const SEPARACION = 14;
 const EMPUJE = 13;
 const INTENTOS = 4;
-/** Medidas aproximadas del rótulo, en unidades del lienzo. */
 const ANCHO_POR_LETRA = 7.1;
 const ALTO_DE_ROTULO = 13;
 const ANILLOS = [0.25, 0.5, 0.75, 1];
-/** Con menos de tres ejes no hay figura: la lista de cursos ya lo dice. */
 const EJES_MINIMOS = 3;
 const LARGO_DE_ROTULO = 17;
 
-/** Palabras largas que se abrevian en el rótulo; el nombre completo va en el globo. */
 const ABREVIATURAS: Readonly<Record<string, string>> = {
   MANTENIMIENTO: "MTTO.",
   CONCEPTOS: "CONC.",
@@ -79,7 +53,6 @@ interface Eje {
   readonly rotulo: string;
   readonly estado: string;
   readonly avance: number;
-  /** La proporción del área con el curso vigente, y la misma cifra dicha en texto. */
   readonly area: number | undefined;
   readonly areaEnPalabras: string;
   readonly angulo: number;
@@ -95,7 +68,6 @@ interface Caja {
 export interface TelaranaDnc {
   readonly evaluaciones: readonly WorkerCourseEvaluation[];
   readonly area?: readonly AreaCourseCompletion[] | undefined;
-  /** Cómo se llama a la persona en la leyenda: nombre y primer apellido. */
   readonly persona: string;
 }
 
@@ -119,7 +91,6 @@ export function renderRadarDnc(entrada: TelaranaDnc): Html | "" {
       areaEnPalabras: area
         ? ` · en su área, ${String(area.completed)} de ${String(area.applicable)} lo tienen vigente`
         : "",
-      // Se arranca arriba y se gira en el sentido de las manecillas.
       angulo: (indice / aplicables.length) * 2 * Math.PI - Math.PI / 2,
     };
   });
@@ -173,7 +144,6 @@ export function renderRadarDnc(entrada: TelaranaDnc): Html | "" {
   </figure>`;
 }
 
-/** Nombre y primer apellido, para la leyenda. */
 export function nombreCorto(nombre: string): string {
   return nombre.trim().split(/\s+/u).slice(0, 2).join(" ");
 }
@@ -197,11 +167,6 @@ function punto(angulo: number, proporcion: number, radio = RADIO): readonly [num
   ];
 }
 
-/**
- * Los puntos de un polígono. Van como atributo `points`, que es una lista de
- * números y no marcado, así que se marca en crudo tras componerlo con valores
- * que sólo pueden ser números.
- */
 function puntos(ejes: readonly Eje[], proporcion: (eje: Eje) => number): Html {
   return rawHtml(
     ejes
@@ -220,12 +185,6 @@ function renderVertice(eje: Eje): Html {
   </circle>`;
 }
 
-/**
- * Los rótulos, sin encimarse. Con dieciocho cursos, dos vecinos quedan a veinte
- * grados; arriba y abajo, donde los rótulos se acomodan uno al lado del otro,
- * eso no alcanza para un texto de cien unidades. Cada rótulo se coloca junto a
- * su eje y, si choca con uno ya colocado, se aleja del centro hasta que cabe.
- */
 function renderRotulos(ejes: readonly Eje[]): Html {
   const colocadas: Caja[] = [];
   return html`${ejes.map((eje) => {
@@ -262,8 +221,6 @@ function renderRotulos(ejes: readonly Eje[]): Html {
 function cajaDe(angulo: number, radio: number, ancho: number, ancla: string, seno: number): Caja {
   const [x, y] = punto(angulo, 1, radio);
   const izquierda = ancla === "start" ? x : ancla === "end" ? x - ancho : x - ancho / 2;
-  // Arriba, el rótulo se apoya sobre su punto; abajo, cuelga de él; a los lados,
-  // se centra en la altura del eje.
   const arriba = seno < -0.2 ? y - ALTO_DE_ROTULO : seno > 0.2 ? y : y - ALTO_DE_ROTULO / 2;
   return { x: izquierda, y: arriba, ancho, alto: ALTO_DE_ROTULO };
 }

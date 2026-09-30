@@ -1,40 +1,13 @@
-/*
- * Guion del quiosco de sala.
- *
- * Conserva sin retocar el
- * trazo: el alternado de secciones, el sacudón del campo con error y el acuse
- * con auto-reinicio a los 3.5 s quedan tal cual.
- *
- * Lo único que cambia es el transporte. Allá `call()` hablaba con
- * `google.script.run`; aquí habla con las rutas REST que ya existen en
- * `plataforma/src/routes/quiosco.ts`, y devuelve el mismo sobre `{ ok, data }` que el
- * resto del guion espera, para no tener que tocar ni una línea de la vista.
- *
- * El fondo de haces salió de aquí a `haces.js` cuando `/acceso` pasó a usar el
- * mismo fondo. La pantalla carga los dos guiones, en ese orden, y el shader
- * GLSL sigue viviendo en un archivo aparte del marcado: escrito con plantillas
- * de plantilla, un acento grave mal escapado se ve como una pantalla negra.
- */
 (function () {
   "use strict";
 
   var token = "";
-  // Vinculo y ficha en espera de que la sala confirme que es su sesion. No se
-  // promueven a `token` hasta que alguien lo diga: mientras vivan aqui, ninguna
-  // pantalla de registro puede abrirse con ellos.
   var tokenPorConfirmar = "";
   var sesionPorConfirmar = null;
   var autoResetTimer = null;
   var kioskGrant = "";
   var catalogLoaded = false;
 
-  /*
-   * El PIN con el que se desbloqueó el equipo. La ruta de apertura de sesión de
-   * esta plataforma pide la contraseña de apertura, no el pase del desbloqueo,
-   * y el original no tiene un segundo campo donde pedirla; se reenvía el mismo
-   * que ya se tecleó y, si el despliegue usa contraseñas distintas, el servidor
-   * responde su propio mensaje y cae en el renglón de aviso del lanzador.
-   */
   var kioskPin = "";
 
   function getElement(id) {
@@ -47,7 +20,6 @@
     var searchParams = new URLSearchParams(window.location.search);
     var tokens = searchParams.getAll("kioskToken");
     if (tokens.length) return tokens[0];
-    // La ruta `/quiosco` de esta plataforma nombra el parámetro `token`.
     return searchParams.get("token") || "";
   }
 
@@ -59,23 +31,12 @@
     } catch (e) {}
   }
 
-  /*
-   * El transporte. Cada acción del quiosco se resuelve contra la
-   * ruta REST equivalente y se devuelve envuelta en `{ ok, data }`, que es lo
-   * que el resto del guion espera recibir.
-   */
   var ENDPOINTS = {
     kioskBootstrap: { method: "GET", path: "/api/kiosk/bootstrap" },
     kioskRegister: { method: "POST", path: "/api/kiosk/register" },
     kioskUnlock: { method: "POST", path: "/api/kiosk/unlock" },
     kioskLaunchSession: { method: "POST", path: "/api/kiosk/launch" },
     kioskCloseSession: { method: "POST", path: "/api/kiosk/close" },
-    /*
-     * Canjear el codigo de sesion. Sin esta entrada, `call()` rechazaba con
-     * "aun no esta disponible en este equipo" sin llegar a la red: despues de
-     * teclear el PIN, el numero de sesion no llevaba a ninguna parte. La ruta
-     * exige la concesion del desbloqueo, que viaja en `grant`.
-     */
     kioskRedeemAccessCode: { method: "POST", path: "/api/kiosk/token" },
   };
 
@@ -123,7 +84,6 @@
     });
   }
 
-  /* Un fallo de configuracion llega sanitizado como mensaje generico: se traduce a la accion que lo resuelve. */
   function unlockFailureMessage(error) {
     var message = String((error && error.message) || "");
     if (!message) return "No fue posible validar el PIN.";
@@ -133,27 +93,12 @@
     return message;
   }
 
-  /**
-   * Latido que impide que el alojamiento suspenda el proceso a media sesión.
-   *
-   * El quiosco no refresca solo a propósito —recargar perdería lo capturado—,
-   * así que entre un registro y el siguiente pueden pasar veinte minutos sin
-   * una sola petición. Un servicio que se suspende por inactividad se duerme
-   * ahí, y el trabajador que llega tarde paga el arranque en frío completo.
-   *
-   * Late sólo mientras la pantalla de registro está visible: es la única en la
-   * que hay una sesión viva esperando gente. `/healthz` no toca la base ni
-   * escribe bitácora, y cinco minutos quedan holgados frente a los quince de
-   * inactividad que tolera el alojamiento.
-   */
   var LATIDO_MS = 5 * 60 * 1000;
   var latidoId = null;
 
   function ajustarLatido(activo) {
     if (activo && latidoId === null) {
       latidoId = setInterval(function () {
-        // Un latido perdido no es un error: la siguiente petición real
-        // despierta el servicio igual. Se ignora en silencio.
         fetch("/healthz", { method: "GET", cache: "no-store" }).catch(function () {});
       }, LATIDO_MS);
     } else if (!activo && latidoId !== null) {
@@ -288,14 +233,6 @@
     }
   }
 
-  /**
-   * Recibe el vinculo emitido por el codigo y no empieza a registrar: pinta
-   * la ficha de la sesion y espera un acto explicito.
-   *
-   * El vinculo ya esta emitido cuando llegamos aqui, y no importa: vincular no
-   * registra a nadie. Si quien capacita dice que no es su sesion, se descarta y
-   * se vuelve al codigo sin haber tocado ninguna asistencia.
-   */
   function startWithSession(data) {
     if (!data || !data.token) {
       showLauncherMessage("No se recibió el vínculo seguro de la sesión.", true);
@@ -304,8 +241,6 @@
     tokenPorConfirmar = String(data.token);
     sesionPorConfirmar = data.session || null;
 
-    // Sin ficha no hay nada que confirmar y obligar a confirmar a ciegas seria
-    // peor que no preguntar: se sigue de largo como antes.
     if (!sesionPorConfirmar) {
       token = tokenPorConfirmar;
       tokenPorConfirmar = "";
@@ -318,13 +253,10 @@
     showSection("confirm");
   }
 
-  /** Fecha ISO y hora a algo que se lee en una sala. */
   function textoDeCuando(fechaIso, hora) {
     var partes = String(fechaIso || "").split("-");
     var texto = fechaIso || "Sin fecha";
     if (partes.length === 3) {
-      // Se arma en local y no con `new Date(iso)`, que interpreta la cadena
-      // como UTC y en México la corre un dia hacia atras.
       var fecha = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
       if (!isNaN(fecha.getTime())) {
         texto = fecha.toLocaleDateString("es-MX", {
@@ -351,9 +283,6 @@
     if (sala) sala.textContent = sesion.room || "Sin sala asignada";
     if (codigo) codigo.textContent = sesion.sessionCode || codigoDeRespaldo || "";
 
-    // Una sesion que no esta abierta se vincula igual, pero no va a aceptar
-    // registros. Decirlo aqui evita que la sala lo descubra con el primer
-    // trabajador delante.
     if (aviso) {
       if (sesion.status && sesion.status !== "ABIERTA") {
         aviso.textContent =
@@ -499,8 +428,6 @@
     }
     if (confirmBack) {
       confirmBack.addEventListener("click", function () {
-        // El vinculo se tira: no se registro nada con el y volver al codigo debe
-        // dejar el quiosco como estaba antes de teclearlo.
         tokenPorConfirmar = "";
         sesionPorConfirmar = null;
         var campo = getElement("kiosk-access-code");
@@ -602,7 +529,6 @@
       codeForm.addEventListener("submit", function (e) {
         e.preventDefault();
         var value = codeInput ? codeInput.value.trim() : "";
-        // «KC1» ya es un código: el servidor lo completa a KC-0001.
         var cleanLen = value.replace(/[^A-Za-z0-9]/g, "").length;
         if (cleanLen < 3 || cleanLen > 25) {
           if (codeInput) codeInput.classList.add("input-error");
@@ -617,8 +543,6 @@
         call("kioskRedeemAccessCode", {
           grant: kioskGrant,
           accessCode: value,
-          // La ruta de esta plataforma nombra `sessionCode` lo que el quiosco
-          // La pantalla anterior lo llamaba codigo de acceso; se envian los dos nombres.
           sessionCode: value,
           stationLabel: getElement("kiosk-station") ? getElement("kiosk-station").value.trim() : "",
         })

@@ -24,6 +24,5 @@ const worker = createOcrWorker({
 const server = createOcrHttpServer(worker);
 
 server.listen(port, "0.0.0.0", () => {
-  // No se registran encabezados, cuerpos, hashes, IDs ni resultados OCR.
   process.stdout.write(`OCR worker listo en puerto ${port}\n`);
 });

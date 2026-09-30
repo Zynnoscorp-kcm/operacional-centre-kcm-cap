@@ -100,10 +100,6 @@ function materialFields(record) {
   });
 }
 
-/**
- * Almacen binario local para pruebas. Los bytes permanecen en una coleccion
- * privada; los metodos de consulta normales entregan unicamente metadatos.
- */
 export class InMemoryEvidenceStore {
   #byIdempotencyKey = new Map();
   #byEvidenceId = new Map();
@@ -114,10 +110,6 @@ export class InMemoryEvidenceStore {
     return this.#byEvidenceId.size;
   }
 
-  /**
-   * Gancho determinista de pruebas para demostrar rollback tras escrituras
-   * parciales. El fallo se consume una sola vez, por lo que el lote es reintentable.
-   */
   failNextCommitAfter(writeCount, error = new Error("Fallo sintetico del EvidenceStore")) {
     if (!Number.isInteger(writeCount) || writeCount < 0) {
       throw new TypeError("writeCount debe ser un entero no negativo");
@@ -153,10 +145,6 @@ export class InMemoryEvidenceStore {
     return Object.freeze(records.sort((left, right) => left.evidenceId.localeCompare(right.evidenceId)));
   }
 
-  /**
-   * Lectura privilegiada para adaptadores y pruebas locales. Nunca se incluye en
-   * la respuesta del productor y siempre devuelve una copia defensiva.
-   */
   readBytes(evidenceId) {
     const record = this.#byEvidenceId.get(String(evidenceId));
     return record ? Buffer.from(record.bytes) : null;

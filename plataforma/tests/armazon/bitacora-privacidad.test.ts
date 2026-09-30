@@ -6,7 +6,6 @@ import { loadConfig } from "../../src/config/environment.ts";
 import { scrubPersonalData, scrubUnknown } from "../../src/observability/logging.ts";
 import { buildServer } from "../../src/server/build-server.ts";
 
-/** Identidades inventadas. Ninguna fuente real entra a una prueba. */
 const NUMERO_SINTETICO = "01234";
 const CURP_SINTETICA = "XAXX010101HDFXXX01";
 const CORREO_SINTETICO = "persona.inventada@ejemplo.test";
@@ -54,9 +53,6 @@ describe("saneamiento de estructuras", () => {
   });
 
   it("no reconstruye un objeto con prototipo propio, que perdería sus getters", () => {
-    // La petición de Fastify expone `url` como descriptor del prototipo. Copiarla
-    // con Object.entries la vacía, y el saneamiento acabaría destruyendo la ruta
-    // en vez de limpiarla.
     class ConGetter {
       get url(): string {
         return "/t/01234";
@@ -64,8 +60,6 @@ describe("saneamiento de estructuras", () => {
     }
     const original = new ConGetter();
     const saneado = scrubUnknown({ req: original }) as Record<string, unknown>;
-    // `assert.equal` de node:test estrecha el tipo, así que la línea siguiente
-    // ya lee el getter sin aserción.
     assert.equal(saneado["req"], original, "debió pasar la instancia intacta");
     assert.equal(saneado["req"].url, "/t/01234");
   });

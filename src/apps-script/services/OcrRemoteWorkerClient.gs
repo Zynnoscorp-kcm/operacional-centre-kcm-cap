@@ -1,10 +1,3 @@
-/**
- * Cliente servidor para un worker OCR REST desacoplado de proveedor.
- *
- * El navegador nunca recibe la configuracion ni el secreto. El cuerpo firmado
- * contiene el documento completo, que puede incluir datos personales visibles,
- * geometria y reglas; no agrega padron ni metadatos estructurados del trabajador.
- */
 var KcmOcrRemoteWorkerClient = (function () {
   "use strict";
 
@@ -557,8 +550,6 @@ var KcmOcrRemoteWorkerClient = (function () {
           }
           var response;
           try {
-            // UrlFetchApp no ofrece timeout por solicitud; el deadline limita
-            // reintentos y valida el tiempo total al recuperar el control.
             response = transport.fetch(config.endpoint, {
               method: "post",
               contentType: "application/json",

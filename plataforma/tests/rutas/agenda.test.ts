@@ -1,14 +1,3 @@
-/**
- * Agenda pública de salas: que la pantalla ofrezca todo lo que el servidor exige.
- *
- * Esta pantalla puede quedar inservible sin fallar: la base exige identificar
- * a quien reserva (`reserva_solicitante_identificado`). La agenda ya no pide
- * nómina, así que el nombre cumple ese dato y la reservación no debe morir.
- *
- * Estas pruebas fijan la regla que faltaba: lo que el servidor pide, la
- * pantalla lo dibuja. Por eso comprueban el formulario y el POST juntos.
- */
-
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
@@ -84,7 +73,6 @@ describe("Agenda pública de salas", () => {
     });
 
     assert.match(respuesta.body, /cinco dígitos/u);
-    // Lo capturado no se pierde: el motivo y el nombre siguen en el formulario.
     assert.match(respuesta.body, /SOLICITANTE SINTETICO/u);
     assert.match(respuesta.body, /CAPACITACION SINTETICA/u);
   });
@@ -134,18 +122,6 @@ describe("Agenda pública de salas", () => {
   });
 });
 
-/**
- * Selección de rango por dos toques.
- *
- * Antes un toque proponía una hora fija y reservar hora y media obligaba a
- * corregir el campo a mano. Estas pruebas fijan las tres reglas del rango: el
- * primer toque ancla, el segundo cierra incluyendo ambos bloques, y ninguno
- * puede saltarse una reservación ajena, que es la que de verdad importa
- * porque el traslape lo rechaza la base y el usuario sólo vería un error.
- *
- * Se leen los `href` porque esta pantalla no tiene JavaScript: la política
- * declara `default-src 'none'` y todo el estado de la selección viaja en la URL.
- */
 describe("agenda pública · selección de rango", () => {
   interface Bloque {
     readonly clases: string;
@@ -155,8 +131,6 @@ describe("agenda pública · selección de rango", () => {
 
   function bloques(pagina: string): Map<string, Bloque> {
     const mapa = new Map<string, Bloque>();
-    // El `href` debe traer `sala=`: sin eso, el enlace de «Saltar a
-    // disponibilidad» casa con la parte perezosa y se come el primer bloque.
     const patron = /<a\s+class="([^"]*)"\s+href="([^"]*sala=[^"]*)"[\s\S]*?>\s*(\d\d:\d\d)<\/a/g;
     let hallazgo: RegExpExecArray | null;
     while ((hallazgo = patron.exec(pagina)) !== null) {
@@ -178,7 +152,6 @@ describe("agenda pública · selección de rango", () => {
     return bloques(respuesta.body);
   }
 
-  // Una fecha futura fija: los bloques pasados no son enlaces y no sirven aquí.
   const FECHA = "2026-08-20";
 
   it("sin selección, un toque ancla el bloque de treinta minutos", async () => {
@@ -191,7 +164,6 @@ describe("agenda pública · selección de rango", () => {
 
   it("el segundo toque cierra el rango e incluye ambos bloques", async () => {
     const mapa = await pintar(`fecha=${FECHA}&sala=VOGUE&inicio=08:00&fin=08:30`);
-    // Tocar 08:00 y luego 10:00 reserva de 08:00 a 10:30.
     assert.deepEqual(
       { inicio: mapa.get("VOGUE 10:00")?.inicio, fin: mapa.get("VOGUE 10:00")?.fin },
       { inicio: "08:00", fin: "10:30" },
@@ -225,13 +197,6 @@ describe("agenda pública · selección de rango", () => {
     assert.equal(mapa.get("VOGUE 08:00")?.clases.includes("ancla"), true);
   });
 
-  /*
-   * Esta es la regla que de verdad importa. Sin ella, tocar 08:00 y luego 10:00
-   * con una reservación ajena de 09:00 a 09:30 en medio produciría un rango que
-   * la pasa por encima; la base lo rechazaría por traslape y quien reserva sólo
-   * vería un error sin entender qué hizo mal. Se comprueba contra el renderizado
-   * directo porque montar la ocupación exige sembrarla, no pedirla.
-   */
   it("un rango no puede saltarse una reservación ajena", () => {
     const pagina = renderAgendaPage({
       fecha: FECHA,
@@ -251,17 +216,14 @@ describe("agenda pública · selección de rango", () => {
     });
     const mapa = bloques(pagina);
 
-    // Del otro lado de lo ocupado, el toque vuelve a anclar en vez de cerrar.
     assert.deepEqual(
       { inicio: mapa.get("VOGUE 10:00")?.inicio, fin: mapa.get("VOGUE 10:00")?.fin },
       { inicio: "10:00", fin: "10:30" },
     );
-    // De este lado sigue cerrando con normalidad.
     assert.deepEqual(
       { inicio: mapa.get("VOGUE 08:30")?.inicio, fin: mapa.get("VOGUE 08:30")?.fin },
       { inicio: "08:00", fin: "09:00" },
     );
-    // Y el bloque ocupado nunca es un enlace.
     assert.equal(mapa.has("VOGUE 09:00"), false);
   });
 });

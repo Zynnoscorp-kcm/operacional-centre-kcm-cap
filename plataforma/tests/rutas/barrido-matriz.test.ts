@@ -1,13 +1,3 @@
-/**
- * Barrido de la matriz: la revisión, el puente y las rutas.
- *
- * Lo que se vigila aquí es la regla que hace segura la pantalla: barrer no
- * escribe. Todo lo demás —los conteos, la clasificación de columnas, la
- * revisión de un solo uso, la sesión obligatoria— existe para sostener esa
- * regla, y el conteo que la revisión anuncia tiene que ser el que la aplicación
- * produce: si divergen, la pantalla estaría mintiendo justo donde se decide.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -47,7 +37,6 @@ const ENTORNO = {
   KCM_PILOT_CONSOLE_PASSWORD: "0000",
 } as const;
 
-/** Reloj movible: la caducidad de la orden y de la revisión se prueban con él. */
 class RelojFalso implements Clock {
   #ahora: Date;
   constructor(inicio = "2026-08-12T12:00:00.000Z") {
@@ -63,8 +52,6 @@ class RelojFalso implements Clock {
     this.#ahora = new Date(this.#ahora.getTime() + minutos * 60_000);
   }
 }
-
-// ------------------------------------------------------------- constructores
 
 function empleado(id: string, extra: Partial<SnapshotEmployee> = {}): SnapshotEmployee {
   return {
@@ -139,7 +126,6 @@ const INDUCCION = "INDUCCION A LA EMPRESA";
 const SEGURIDAD = "SEGURIDAD INDUSTRIAL";
 const ALTURAS = "TRABAJO EN ALTURAS";
 
-/** La matriz que la base ya conoce: tres trabajadores y dos columnas. */
 const ANTERIOR = matriz({
   empleados: [empleado("00001"), empleado("00002"), empleado("00003")],
   cursos: [curso(INDUCCION, "K"), curso(SEGURIDAD, "L")],
@@ -153,11 +139,6 @@ const ANTERIOR = matriz({
   sha: "a",
 });
 
-/**
- * La matriz recién barrida. Cambia una cosa de cada clase que la pantalla
- * promete detectar: un trabajador nuevo, uno que ya no viene, un cambio de
- * puesto y de área, una columna nueva, una fecha corregida y una retirada.
- */
 const BARRIDA = matriz({
   empleados: [
     empleado("00001"),
@@ -174,7 +155,6 @@ const BARRIDA = matriz({
   sha: "b",
 });
 
-/** Deja la base como la dejaría una carga real de `ANTERIOR`. */
 async function baseCargada(): Promise<MemoryMatrixRepository> {
   const repositorio = new MemoryMatrixRepository();
   await new MatrixImportService(repositorio).importSnapshot({
@@ -185,13 +165,6 @@ async function baseCargada(): Promise<MemoryMatrixRepository> {
   return repositorio;
 }
 
-// ------------------------------------------------------------------ el doble
-
-/**
- * Repositorio de matriz con estado puesto a mano. Se usa donde hace falta un
- * registro que ninguna carga produce —una fecha liberada por la plataforma— y
- * para contar si el barrido escribió: `aplicaciones` debe seguir en cero.
- */
 class MatrizFalsa implements MatrixRepositoryPort {
   aplicaciones = 0;
   readonly trabajadores: WorkerCatalogEntry[];
@@ -247,8 +220,6 @@ class MatrizFalsa implements MatrixRepositoryPort {
   }
 }
 
-// ------------------------------------------------------------- la revisión
-
 describe("Barrido de matriz · revisión", () => {
   it("clasifica cada columna contra SQL y nombra la que trae un curso nuevo", async () => {
     const repositorio = await baseCargada();
@@ -266,8 +237,6 @@ describe("Barrido de matriz · revisión", () => {
     assert.equal(porNombre.get(SEGURIDAD)?.estado, "COINCIDE");
     assert.equal(porNombre.get(ALTURAS)?.estado, "NUEVA");
 
-    // La letra y el conteo de fechas de cada columna salen del propio barrido:
-    // son lo que permite ir a la hoja a mirar sin buscar la columna a ojo.
     assert.equal(porNombre.get(ALTURAS)?.columna, "M");
     assert.equal(porNombre.get(INDUCCION)?.fechas, 2);
     assert.equal(porNombre.get(SEGURIDAD)?.fechas, 0);
@@ -326,9 +295,6 @@ describe("Barrido de matriz · revisión", () => {
 
     assert.equal(informe.cuadre.fechasNuevas, 1);
     assert.equal(informe.cuadre.fechasCorregidas, 1);
-    // La de 00002 en SEGURIDAD: el trabajador viene y la columna también, pero
-    // la celda quedó vacía. La de 00003 no se retira, porque el trabajador no
-    // viene en el barrido y ausencia no es baja.
     assert.equal(informe.cuadre.fechasRetiradas, 1);
     assert.equal(informe.cuadre.conflictos, 0);
     assert.equal(informe.bloqueado, false);
@@ -339,7 +305,6 @@ describe("Barrido de matriz · revisión", () => {
     assert.equal(resultado.conteos.correctedCount, informe.cuadre.fechasCorregidas);
     assert.equal(resultado.conteos.retiredCount, informe.cuadre.fechasRetiradas);
 
-    // Y quedó escrito de verdad: el trabajador nuevo y el curso nuevo existen.
     const estado = repositorio.getState();
     assert.ok(estado.workers.some((fila) => fila.workerNumber === "00004"));
     assert.ok(estado.courses.some((fila) => fila.sourceName === ALTURAS));
@@ -489,8 +454,6 @@ describe("Barrido de matriz · revisión", () => {
   });
 });
 
-// -------------------------------------------------------------- el puente
-
 describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
   const instante = "2026-08-12T12:00:00.000Z";
 
@@ -534,7 +497,6 @@ describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
     });
   }
 
-  /** Los pares `clave=valor` de una respuesta del protocolo. */
   function campos(respuesta: string): Record<string, string> {
     const [, estado, ...pares] = respuesta.split("\n");
     const salida: Record<string, string> = { estado: estado ?? "" };
@@ -596,8 +558,6 @@ describe("Barrido de matriz · MATRIX_SCAN_V1", () => {
   });
 });
 
-// --------------------------------------------------------------- la pantalla
-
 describe("Barrido de matriz · pantalla", () => {
   it("enseña los cambios con nombre y los cursos plegados", async () => {
     const repositorio = await baseCargada();
@@ -616,8 +576,6 @@ describe("Barrido de matriz · pantalla", () => {
     assert.match(html, /class="panel-cambios"/u);
     assert.match(html, /Aplicar los cambios/u);
     assert.match(html, /Revisión sin aplicar/u);
-    // Desde el 2026-09-25 la revisión nombra a la persona: nómina, nombre y
-    // adscripción, para leer el cambio sin ir al libro. Sigue detrás de sesión.
     assert.match(html, /00002/u);
     assert.match(html, /TRABAJADOR SINTETICO/u);
   });
@@ -678,8 +636,6 @@ describe("Barrido de matriz · pantalla", () => {
   });
 });
 
-// ----------------------------------------------------------------- las rutas
-
 describe("Barrido de matriz · rutas", () => {
   async function servidor(conBase = true) {
     return buildServer({
@@ -721,9 +677,6 @@ describe("Barrido de matriz · rutas", () => {
     assert.match(inicial.body, /Actualización completa/u);
     assert.doesNotMatch(inicial.body, /Solicitar barrido|Cancelar encargo/u);
 
-    // Las dos rutas del encargo se retiraron con el botón. Se comprueba que no
-    // quedaron respondiendo: una ruta viva sin quién la invoque es la forma en
-    // que una función retirada vuelve por la puerta de atrás.
     for (const url of ["/matriz/barrido", "/matriz/cancelar"]) {
       const res = await app.inject({ method: "POST", url, headers: { cookie } });
       assert.equal(res.statusCode, 404);
@@ -774,7 +727,6 @@ describe("Barrido de matriz · varias instancias", () => {
     const resultado = await aplica.aplicar(informe.barridoId, "Maricela0000");
     assert.equal(resultado.informe.barridoId, informe.barridoId);
 
-    // La que lo recibió se entera de que ya no hay nada que ofrecer.
     await recibe.sincronizar();
     assert.equal(recibe.ultimoBarrido(), undefined);
     await assert.rejects(recibe.aplicar(informe.barridoId, "Pablo0000"), /ya no está disponible/u);

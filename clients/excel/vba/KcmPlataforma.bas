@@ -2,70 +2,10 @@ Attribute VB_Name = "KcmPlataforma"
 Option Explicit
 Option Private Module
 
-' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
-' en Herramientas > Macros, donde solo quedan las que se usan a mano.
-
-' EL PUERTO DE PLATAFORMA. Aqui vive todo lo que Windows y macOS no hacen igual,
-' y en ningun otro modulo del cliente hay una sola directiva `#If Mac`. El
-' analisis estatico lo comprueba: `npm run lint:vba` falla si aparece una fuera
-' de aqui.
-'
-' La regla que gobierna el diseno es el tamano de esta superficie. Cuanto menos
-' dependa de la plataforma, mas dice la prueba hecha en la Mac sobre lo que
-' ocurrira en Windows, porque el compilador de cada sistema compila solo su
-' rama: un error escrito dentro de `#If Mac` no se manifiesta en Windows ni al
-' compilar, y al reves tampoco. Todo lo demas del cliente --el contrato, el
-' preflight, la busqueda por nomina, la escritura con historial, el rollback, la
-' idempotencia, las codificaciones-- corre por el mismo codigo en los dos.
-'
-' Cinco funciones cruzan la frontera:
-'
-'   1. Enviar un POST                KcmTransportePost
-'   2. Calcular SHA-256 de un archivo KcmFileSha256
-'   3. Sortear un identificador      KcmNewGuidHex
-'   4. Fechar en UTC                 KcmUtcIsoNow
-'   5. Guardar y leer la credencial  KcmCredencialGuardar / KcmCredencialLeer
-'
-' Y dos servicios que solo macOS necesita: conceder acceso a un archivo fuera de
-' la caja de arena de Excel, y ejecutar un programa del sistema.
-'
-' POR QUE CADA SISTEMA USA UN TRANSPORTE DISTINTO. En Windows se conserva WinHTTP
-' a proposito: las politicas corporativas bloquean con frecuencia que Office cree
-' procesos hijo, y ahi un `curl` por shell fallaria sin alternativa. En macOS no
-' existe WinHTTP --ni `WinHttp.WinHttpRequest`, ni `MSXML2.XMLHTTP`, ni ningun COM
-' de Windows-- y la via sancionada por Microsoft para salir de la caja de arena es
-' `AppleScriptTask`. Cada plataforma usa el transporte que su politica permite.
-'
-' LAS DOS VIAS DE macOS. La principal es `AppleScriptTask`, que ejecuta un guion
-' instalado en `~/Library/Application Scripts/com.microsoft.Excel/`; corre FUERA
-' de la caja de arena, de modo que `curl` alcanza la red y `shasum` puede leer una
-' matriz que viva en cualquier carpeta. Si ese guion no esta instalado se recurre
-' a `popen` de `libSystem`, que no exige instalar nada pero hereda la caja de
-' arena de Excel. Las dos ejecutan exactamente el mismo vector de argumentos y
-' ninguna de las dos arma una linea de shell concatenando texto: `AppleScriptTask`
-' cita cada argumento con `quoted form of` y la otra con comillas simples, de modo
-' que una ruta con espacios o un endpoint con caracteres raros no pueden inyectar
-' nada. La autoprueba dice cual de las dos esta en uso.
-'
-' EL CUERPO VIAJA POR ARCHIVO. El snapshot de la matriz pesa megabytes y ninguna
-' linea de comandos admite un argumento asi. `curl` lo lee con `--data-binary` de
-' un archivo temporal y escribe la respuesta en otro; los dos viven en el
-' temporal del contenedor de Excel, que las dos vias saben leer, y se borran al
-' terminar hasta cuando el envio falla.
-
-' Nombre del guion que el cliente busca en la carpeta de guiones de Excel.
 Private Const KCM_MAC_GUION As String = "KcmPuente.applescript"
-' Cuenta con la que la credencial se guarda en el llavero de macOS. El servicio
-' es KCM_TOKEN_ENV, el mismo nombre que la variable de usuario de Windows, para
-' que las dos plataformas nombren el secreto igual en los mensajes.
 Private Const KCM_MAC_CUENTA As String = "KCM_PUENTE_VBA"
-' Techo del archivo que el puente acepta subir. El padron semanal pesa medio
-' mega; el margen existe para que nadie lo ajuste al hueso, y esta muy por
-' debajo del limite del servidor incluso despues del crecimiento de base64.
 Private Const KCM_MAX_UPLOAD_BYTES As Long = 8388608
 
-' Estado por sesion. 0 = sin averiguar, 1 = AppleScriptTask disponible,
-' 2 = ausente y se usa popen.
 Private mTareaDisponible As Long
 Private mDesfaseMinutos As Long
 Private mDesfaseMedidoEn As Date
@@ -74,8 +14,6 @@ Private mAleatorioUsado As Long
 Private mContador As Long
 Private mSemillaPuesta As Boolean
 Private mConcedidas As KcmDiccionario
-
-' ===================================================================== macOS
 
 #If Mac Then
 
@@ -97,11 +35,6 @@ Private mConcedidas As KcmDiccionario
             ByVal elementos As Long, ByVal flujo As Long) As Long
     #End If
 
-''' Ejecuta un programa y devuelve su salida. `argv` son los argumentos
-''' separados por tabulador, nunca una linea de shell ya armada: asi ninguna
-''' ruta con espacios ni ningun valor de configuracion puede inyectar un
-''' comando. Devuelve False si el programa termino con codigo distinto de cero,
-''' y entonces `salida` trae lo que dijo.
 Private Function KcmMacCorrer(ByVal argv As String, ByRef salida As String) As Boolean
     Dim piezas As Variant
     Dim indice As Long
@@ -109,9 +42,6 @@ Private Function KcmMacCorrer(ByVal argv As String, ByRef salida As String) As B
     Dim codigo As Long
 
     salida = ""
-    ' Se intenta la via sancionada mientras no conste que falta el guion. Si el
-    ' guion esta y el comando fallo, el fallo es del comando y no hay por que
-    ' repetirlo por la otra via: repetirlo solo duplicaria el efecto.
     If mTareaDisponible <> 2 Then
         If KcmMacTarea(argv, salida) Then
             KcmMacCorrer = True
@@ -132,9 +62,6 @@ Private Function KcmMacCorrer(ByVal argv As String, ByRef salida As String) As B
     KcmMacCorrer = (codigo = 0)
 End Function
 
-''' Via principal: el guion instalado en la carpeta de guiones de Excel. Corre
-''' fuera de la caja de arena, que es lo que permite alcanzar la red y leer una
-''' matriz guardada en cualquier carpeta del equipo.
 Private Function KcmMacTarea(ByVal argv As String, ByRef salida As String) As Boolean
     Dim crudo As String
 
@@ -151,21 +78,10 @@ Private Function KcmMacTarea(ByVal argv As String, ByRef salida As String) As Bo
     Exit Function
 
 SinGuion:
-    ' El guion no esta instalado, o el sistema no dejo invocarlo. Se anota para
-    ' no volver a intentarlo en esta sesion y se cae a `popen`.
     mTareaDisponible = 2
     salida = "el guion " & KCM_MAC_GUION & " no respondio: " & Err.Description
 End Function
 
-''' Via de respaldo: `popen` de `libSystem`. No exige instalar nada, pero el
-''' proceso hijo hereda la caja de arena de Excel.
-'''
-''' Tiene ademas un limite que la via principal no tiene: `ByVal ... As String` en
-''' una declaracion externa entrega el texto en la pagina de codigos del sistema,
-''' no en Unicode, asi que una ruta con acentos puede llegar deformada. En la
-''' practica no estorba, porque las rutas que este modulo construye son
-''' hexadecimales y el endpoint es ASCII; y cuando la ruta ajena si trae acentos,
-''' la huella cae sola a la via de la copia, cuyo destino tambien es ASCII.
 Private Function KcmMacPopen(ByVal orden As String, ByRef codigo As Long) As String
     #If VBA7 Then
         Dim flujo As LongPtr
@@ -185,20 +101,14 @@ Private Function KcmMacPopen(ByVal orden As String, ByRef codigo As Long) As Str
         leidos = KcmFread(trozo, 1, Len(trozo) - 1, flujo)
         If leidos > 0 Then salida = salida & Left$(trozo, CLng(leidos))
     Loop While leidos > 0
-    ' `pclose` devuelve el estado de espera de POSIX: el codigo de salida son sus
-    ' ocho bits altos.
     codigo = KcmPclose(flujo) \ 256
     KcmMacPopen = salida
 End Function
 
-''' Un argumento entrecomillado para el shell. Las comillas simples protegen
-''' todo salvo la comilla simple misma, que se cierra, se escapa y se reabre.
 Private Function KcmCitarShell(ByVal valor As String) As String
     KcmCitarShell = "'" & Replace$(valor, "'", "'\''") & "'"
 End Function
 
-''' POST por `curl`. El cuerpo entra por archivo y la respuesta sale por archivo:
-''' el snapshot de la matriz pesa megabytes y no cabe en una linea de comandos.
 Private Function KcmPostMac(ByVal endpoint As String, ByVal cuerpo As String, _
     ByRef estado As Long, ByRef respuesta As String, ByRef fallo As String) As Boolean
     Dim marca As String
@@ -230,9 +140,6 @@ Private Function KcmPostMac(ByVal endpoint As String, ByVal cuerpo As String, _
         KcmBorrarArchivo rutaRespuesta
         Exit Function
     End If
-    ' No se pide `--fail`: un 4xx o 5xx tambien trae cuerpo del protocolo, y el
-    ' cliente decide con el estado si reintenta. `--write-out` deja el codigo en
-    ' la ultima linea de la salida estandar.
     estado = CLng(Val(KcmUltimaLinea(salida)))
     respuesta = KcmLeerTexto(rutaRespuesta)
     KcmBorrarArchivo rutaCuerpo
@@ -261,9 +168,6 @@ Private Function KcmUltimaLinea(ByVal texto As String) As String
     Next indice
 End Function
 
-''' Escribe una cadena como UTF-8 sin marca de orden de bytes, y comprueba el
-''' tamano resultante: si el archivo no mide lo que se codifico, algo se
-''' interpuso y conviene saberlo aqui y no en el servidor.
 Private Sub KcmEscribirTexto(ByVal ruta As String, ByVal contenido As String)
     Dim bytes() As Byte
     Dim usados As Long
@@ -304,11 +208,6 @@ Private Function KcmLeerTexto(ByVal ruta As String) As String
     KcmLeerTexto = KcmUtf8Texto(bytes, tamano)
 End Function
 
-''' Diferencia entre la hora local y UTC, en minutos. Se consulta una vez y se
-''' conserva diez minutos: preguntarla en cada intento costaria un proceso mas
-''' por peticion, y volver a preguntarla de vez en cuando evita que un cambio de
-''' horario de verano deje al cliente fuera de la ventana de cinco minutos que
-''' el servidor acepta.
 Private Function KcmDesfaseUtcMinutos() As Long
     Dim salida As String
     Dim signo As Long
@@ -345,9 +244,6 @@ Private Function KcmUtcMac() As String
         "." & Format$(milesimas, "000") & "Z"
 End Function
 
-''' Identificadores aleatorios de macOS. Se piden 512 bytes de `/dev/urandom` de
-''' una vez y se reparten de treinta y dos en treinta y dos: un proceso por cada
-''' identificador habria costado dos procesos mas en cada peticion del puente.
 Private Function KcmGuidMac() As String
     Dim salida As String
     Dim limpio As String
@@ -375,10 +271,6 @@ Private Function KcmGuidMac() As String
     mAleatorioUsado = mAleatorioUsado + 32
 End Function
 
-''' Ultimo recurso cuando no hay forma de ejecutar nada. No pretende ser
-''' criptografico: basta con que dos peticiones del mismo equipo no repitan el
-''' nonce dentro de la ventana de diez minutos del servidor, y el contador de
-''' sesion lo garantiza por si solo.
 Private Function KcmGuidDeRespaldo() As String
     Dim salida As String
     Dim indice As Long
@@ -396,14 +288,6 @@ Private Function KcmGuidDeRespaldo() As String
     KcmGuidDeRespaldo = LCase$(Left$(salida, 32))
 End Function
 
-''' Huella por `shasum`, que macOS trae de fabrica.
-'''
-''' Si el guion no esta instalado, `curl` y `shasum` corren dentro de la caja de
-''' arena de Excel y no pueden leer un archivo que viva fuera del contenedor.
-''' Excel si puede --la matriz se eligio desde aqui y el sistema concedio el
-''' acceso--, asi que en ese caso se copia al temporal del contenedor y se calcula
-''' la huella de la copia. Es el mismo archivo byte por byte y la huella es la
-''' misma; lo unico que cuesta es una copia.
 Private Function KcmSha256Mac(ByVal filePath As String) As String
     Dim salida As String
     Dim huella As String
@@ -448,8 +332,6 @@ End Function
 
 #Else
 
-' =================================================================== Windows
-
 Private Type KcmSystemTime
     Year As Integer
     Month As Integer
@@ -468,17 +350,11 @@ Private Type KcmGuidValue
     Data4(0 To 7) As Byte
 End Type
 
-' La huella se calcula con la API criptografica de Windows, no lanzando PowerShell: las politicas
-' corporativas bloquean con frecuencia la creacion de procesos hijo desde Office, y ahi un
-' `WScript.Shell.Exec` falla sin alternativa. Estas llamadas nativas son las mismas que ya usan
-' `GetSystemTime` y `CoCreateGuid`, van dentro del proceso de Excel y ademas son mas rapidas.
 Private Const KCM_PROV_RSA_AES As Long = 24
 Private Const KCM_CRYPT_VERIFYCONTEXT As Long = &HF0000000
 Private Const KCM_CALG_SHA_256 As Long = &H800C
 Private Const KCM_HP_HASHVAL As Long = 2
 Private Const KCM_HASH_CHUNK As Long = 1048576
-' Con nombre de proveedor nulo, Windows puede entregar el proveedor AES antiguo, que no expone
-' SHA-256 y hace fallar `CryptCreateHash`. Por eso se nombran los proveedores explicitamente.
 Private Const KCM_PROV_AES_NAME As String = _
     "Microsoft Enhanced RSA and AES Cryptographic Provider"
 Private Const KCM_PROV_AES_NAME_XP As String = _
@@ -579,9 +455,6 @@ Private Function KcmUtcWindows() As String
         Format$(valor.Milliseconds, "000") & "Z"
 End Function
 
-''' Identidad aleatoria via `CoCreateGuid`. No se usa `Scriptlet.TypeLib`: depende de `scrobj.dll`,
-''' que las politicas corporativas bloquean con frecuencia, y devuelve la cadena con un terminador
-''' nulo que contaminaria el identificador enviado al servidor.
 Private Function KcmGuidWindows() As String
     Dim valor As KcmGuidValue
     Dim salida As String
@@ -597,11 +470,6 @@ Private Function KcmGuidWindows() As String
     KcmGuidWindows = LCase$(salida)
 End Function
 
-''' Huella por CNG (`bcrypt.dll`), la API vigente de Windows. Se intenta primero porque no depende
-''' de los proveedores heredados de CryptoAPI: hay equipos cuyo proveedor no expone SHA-256 y
-''' devuelven NTE_BAD_ALGID en `CryptCreateHash` aunque el contexto se haya adquirido. Devuelve la
-''' cadena vacia si CNG no esta disponible, y entonces `KcmSha256Windows` cae a la ruta heredada en
-''' lugar de fallar: las dos escriben el mismo digest.
 Private Function KcmSha256Cng(ByVal filePath As String, ByRef detalle As String) As String
     #If VBA7 Then
         Dim hAlg As LongPtr
@@ -621,13 +489,11 @@ Private Function KcmSha256Cng(ByVal filePath As String, ByRef detalle As String)
 
     algId = "SHA256"
     On Error GoTo CngError
-    ' `StrPtr` sobre una variable, no sobre un literal: el puntero de un temporal no es fiable.
     status = BCryptOpenAlgorithmProvider(hAlg, StrPtr(algId), 0, 0)
     If status <> 0 Then
         detalle = detalle & " (CNG no abrio el algoritmo, estado " & CStr(status) & ")"
         Exit Function
     End If
-    ' Con `pbHashObject` nulo el propio proveedor reserva y libera la memoria del objeto.
     status = BCryptCreateHash(hAlg, hHash, 0, 0, 0, 0, 0)
     If status <> 0 Then
         detalle = detalle & " (CNG no creo el hash, estado " & CStr(status) & ")"
@@ -636,8 +502,6 @@ Private Function KcmSha256Cng(ByVal filePath As String, ByRef detalle As String)
     End If
 
     fileNumber = FreeFile
-    ' `Shared` es obligatorio: sin el, `Open` pide bloqueo exclusivo y falla sobre un archivo que
-    ' Excel ya tenga abierto, que es justo el caso de la matriz recien guardada.
     Open filePath For Binary Access Read Shared As #fileNumber
     fileSize = LOF(fileNumber)
     position = 1
@@ -679,10 +543,6 @@ CngError:
     On Error GoTo 0
 End Function
 
-''' SHA-256 del archivo con la API criptografica de Windows. El archivo se lee por bloques de un
-''' megabyte, de modo que una matriz de decenas de megabytes nunca se carga entera en memoria.
-''' No se lanza ningun proceso externo: `WScript.Shell.Exec` esta bloqueado por politica en los
-''' equipos corporativos que impiden a Office crear procesos hijo.
 Private Function KcmSha256Windows(ByVal filePath As String) As String
     #If VBA7 Then
         Dim hProv As LongPtr
@@ -707,7 +567,6 @@ Private Function KcmSha256Windows(ByVal filePath As String) As String
     Dim salida As String
     Dim failure As String
 
-    ' CNG primero; CryptoAPI queda como respaldo para equipos donde `bcrypt.dll` no responda.
     salida = KcmSha256Cng(filePath, detalle)
     If Len(salida) = 64 Then
         KcmSha256Windows = salida
@@ -716,23 +575,16 @@ Private Function KcmSha256Windows(ByVal filePath As String) As String
     salida = ""
 
     On Error GoTo HashError
-    ' Cadena de proveedores: nombrado, variante antigua y por omision. `CryptCreateHash` es la
-    ' prueba real de que el proveedor expone SHA-256; obtener el contexto no lo garantiza.
     For intento = 1 To 3
         Select Case intento
             Case 1: provName = KCM_PROV_AES_NAME
             Case 2: provName = KCM_PROV_AES_NAME_XP
             Case Else: provName = ""
         End Select
-        ' `StrPtr` sobre una variable, no sobre la constante: el puntero de un temporal no es fiable.
         If Len(provName) > 0 Then nombre = StrPtr(provName) Else nombre = 0
         hProv = 0
         hHash = 0
         If CryptAcquireContext(hProv, 0, nombre, KCM_PROV_RSA_AES, KCM_CRYPT_VERIFYCONTEXT) = 0 Then
-            ' `Err.LastDllError` se lee en la instruccion inmediatamente posterior a la llamada:
-            ' cualquier otra llamada `Declare` intermedia lo sobrescribe. VBA no admite declarar
-            ' `GetLastError`, porque el motor puede invocar APIs propias entre la llamada fallida y
-            ' la lectura, y entonces el codigo devuelto no corresponde al fallo observado.
             codigo = Err.LastDllError
             detalle = detalle & " (" & CStr(intento) & " sin proveedor, error " & CStr(codigo) & ")"
         Else
@@ -749,9 +601,6 @@ Private Function KcmSha256Windows(ByVal filePath As String) As String
     End If
 
     fileNumber = FreeFile
-    ' `Shared` es obligatorio: sin el, `Open` pide bloqueo exclusivo y falla con permiso denegado
-    ' sobre cualquier archivo que Excel ya tenga abierto, que es justo el caso de la matriz recien
-    ' guardada y del propio libro controlador.
     Open filePath For Binary Access Read Shared As #fileNumber
     fileSize = LOF(fileNumber)
     position = 1
@@ -789,7 +638,6 @@ Private Function KcmSha256Windows(ByVal filePath As String) As String
 HashError:
     If Len(failure) = 0 Then failure = Err.Description
     On Error Resume Next
-    ' El archivo puede haber quedado abierto si el fallo ocurrio durante la lectura.
     If fileNumber <> 0 Then Close #fileNumber
     If hHash <> 0 Then CryptDestroyHash hHash
     If hProv <> 0 Then CryptReleaseContext hProv, 0
@@ -801,13 +649,6 @@ End Function
 
 #End If
 
-' ============================================== entradas comunes del puerto
-
-''' La carpeta personal de quien tiene la sesion abierta.
-'''
-''' En macOS, dentro de la caja de arena, HOME apunta al contenedor de Excel
-''' (~/Library/Containers/com.microsoft.Excel/Data): lo que va antes de
-''' /Library/Containers/ es la carpeta del usuario.
 Private Function KcmCarpetaPersonal() As String
     Dim casa As String
     #If Mac Then
@@ -821,15 +662,6 @@ Private Function KcmCarpetaPersonal() As String
     KcmCarpetaPersonal = casa
 End Function
 
-''' La carpeta con los modulos nuevos del cliente: KCM-VBA-CRLF en el escritorio.
-'''
-''' En macOS se prefiere la copia dentro del contenedor compartido de Office
-''' (~/Library/Group Containers/UBF8T346G9.Office/KCM-VBA-CRLF): Excel lee ahi sin
-''' pedir permiso, y el cuadro de permisos del escritorio solo dejaba conceder un
-''' archivo a la vez. Si no esta ni ahi ni en el escritorio, se elige cualquier
-''' modulo de la carpeta que los traiga. Fuera del contenedor se concede ademas el
-''' permiso de leerla, que el editor de VBA necesita; el sistema lo pide una vez y
-''' lo recuerda. Cadena vacia si se cancela.
 Public Function KcmCarpetaDeModulos() As String
     Dim carpeta As String
     Dim elegido As String
@@ -862,7 +694,6 @@ Public Function KcmCarpetaDeModulos() As String
     KcmCarpetaDeModulos = carpeta
 End Function
 
-''' Los modulos .bas y .cls de `carpeta`, con su ruta completa.
 Public Function KcmArchivosDeModulos(ByVal carpeta As String) As Collection
     Dim archivos As Collection
     Dim nombre As String
@@ -871,7 +702,6 @@ Public Function KcmArchivosDeModulos(ByVal carpeta As String) As Collection
     #If Mac Then
         Dim salida As String
         Dim renglon As Variant
-        ' Se lista fuera de la caja de arena: en macOS, Dir no admite comodines.
         If KcmMacCorrer("/bin/ls" & vbTab & "-1" & vbTab & carpeta, salida) Then
             For Each renglon In Split(Replace(salida, vbCr, vbLf), vbLf)
                 nombre = Trim$(CStr(renglon))
@@ -895,16 +725,11 @@ Public Function KcmArchivosDeModulos(ByVal carpeta As String) As Collection
     Set KcmArchivosDeModulos = archivos
 End Function
 
-''' Pide de una vez permiso para leer todos los `archivos` y devuelve el primero
-''' que siga sin poder leerse; cadena vacia si se leen todos. En macOS el sistema
-''' muestra un solo cuadro con la lista; en Windows no hay nada que pedir.
 Public Function KcmConcederAccesoArchivos(ByVal archivos As Collection) As String
     Dim archivo As Variant
     Dim atributos As Long
 
     If archivos.Count = 0 Then Exit Function
-    ' Si todos se leen ya -la carpeta del contenedor de Office-, no se abre
-    ' ningun cuadro de permisos.
     If Len(KcmPrimerIlegible(archivos)) = 0 Then Exit Function
     #If Mac Then
         Dim rutas() As Variant
@@ -933,7 +758,6 @@ Public Function KcmConcederAccesoArchivos(ByVal archivos As Collection) As Strin
     Next archivo
 End Function
 
-''' El primero de `archivos` que no se deja leer; cadena vacia si se leen todos.
 Private Function KcmPrimerIlegible(ByVal archivos As Collection) As String
     Dim archivo As Variant
     Dim atributos As Long
@@ -963,7 +787,6 @@ Private Function KcmCarpetaExiste(ByVal carpeta As String) As Boolean
     #End If
 End Function
 
-
 Public Function KcmSistemaOperativo() As String
     #If Mac Then
         KcmSistemaOperativo = "macOS"
@@ -978,12 +801,6 @@ Public Function KcmEsMac() As Boolean
     #End If
 End Function
 
-''' Sistema, version de Excel y arquitectura del interprete, en una linea.
-'''
-''' La arquitectura importa mas de lo que parece: las declaraciones de API tienen
-''' dos formas segun el interprete sea de 32 o de 64 bits, y confundirlas produce
-''' un cierre de Excel sin mensaje. Que la autoprueba lo diga permite reconocer
-''' de inmediato un equipo distinto al que se probo.
 Public Function KcmEntorno() As String
     Dim arquitectura As String
     arquitectura = "VBA6 de 32 bits"
@@ -996,7 +813,6 @@ Public Function KcmEntorno() As String
     KcmEntorno = KcmSistemaOperativo() & ", Excel " & Application.Version & ", " & arquitectura
 End Function
 
-''' Nombre de la via de transporte en uso, para la autoprueba y el diagnostico.
 Public Function KcmTransporteNombre() As String
     #If Mac Then
         If mTareaDisponible = 1 Then
@@ -1011,9 +827,6 @@ Public Function KcmTransporteNombre() As String
     #End If
 End Function
 
-''' Carpeta temporal escribible, terminada en separador. En macOS es la del
-''' contenedor de Excel, que es la unica que la caja de arena permite y que el
-''' guion tambien sabe leer desde fuera.
 Public Function KcmCarpetaTemporal() As String
     Dim carpeta As String
     #If Mac Then
@@ -1040,10 +853,6 @@ Public Sub KcmBorrarArchivo(ByVal ruta As String)
     On Error GoTo 0
 End Sub
 
-''' Envio HTTP del puente. Devuelve True cuando hubo respuesta del servidor, sea
-''' cual sea su codigo, y deja el estado y el cuerpo; devuelve False solo cuando
-''' el transporte no llego a hablar con nadie, y entonces `fallo` lo explica.
-''' Quien decide si reintentar es KcmHttpPost, no este puerto.
 Public Function KcmTransportePost(ByVal endpoint As String, ByVal cuerpo As String, _
     ByRef estado As Long, ByRef respuesta As String, ByRef fallo As String) As Boolean
     estado = 0
@@ -1056,9 +865,6 @@ Public Function KcmTransportePost(ByVal endpoint As String, ByVal cuerpo As Stri
     #End If
 End Function
 
-''' Marca de tiempo UTC en el formato que el servidor acepta. La ventana que
-''' admite son cinco minutos, de modo que un reloj mal puesto se manifiesta como
-''' credencial vencida y conviene que la autoprueba lo muestre.
 Public Function KcmUtcIsoNow() As String
     #If Mac Then
         KcmUtcIsoNow = KcmUtcMac()
@@ -1067,8 +873,6 @@ Public Function KcmUtcIsoNow() As String
     #End If
 End Function
 
-''' Treinta y dos digitos hexadecimales aleatorios. Sirven de `requestId` y de
-''' nonce; el servidor rechaza un nonce repetido dentro de diez minutos.
 Public Function KcmNewGuidHex() As String
     #If Mac Then
         KcmNewGuidHex = KcmGuidMac()
@@ -1077,19 +881,6 @@ Public Function KcmNewGuidHex() As String
     #End If
 End Function
 
-''' Concede a Excel acceso a un archivo fuera de su caja de arena.
-'''
-''' En Windows no existe la restriccion y la llamada no hace nada. En macOS,
-''' Excel solo puede leer lo que el usuario eligio o lo que se le concedio antes;
-''' `GrantAccessToMultipleFiles` abre el cuadro del sistema y la concesion
-''' persiste. Se comprueba primero si la ruta ya se deja leer, porque pedir un
-''' permiso que ya se tiene abriria un cuadro de dialogo sin motivo.
-'''
-''' `persistir` omite esa comprobacion. Se usa justo despues del cuadro de Abrir,
-''' donde el archivo ya es legible para esta sesion pero la concesion aun no
-''' esta anotada: sin pedirla ahi, la ruta dejaria de leerse la proxima vez que
-''' se abra Excel. Con el archivo ya accesible el sistema no muestra nada, de
-''' modo que la peticion no le cuesta nada a quien instala.
 Public Sub KcmConcederAcceso(ByVal ruta As String, Optional ByVal persistir As Boolean = False)
     #If Mac Then
         Dim atributos As Long
@@ -1109,26 +900,12 @@ Public Sub KcmConcederAcceso(ByVal ruta As String, Optional ByVal persistir As B
             End If
             Err.Clear
         End If
-        ' Con la ruta se pide la carpeta personal completa (Escritorio, Documentos,
-        ' Descargas, OneDrive) y /Volumes, donde macOS monta las carpetas
-        ' compartidas de la red. El sistema pregunta una vez y lo recuerda: despues
-        ' cualquier matriz o padron local o de red se abre sin volver a pedir nada.
         concedido = GrantAccessToMultipleFiles(Array(ruta, KcmCarpetaPersonal(), "/Volumes"))
         Err.Clear
         On Error GoTo 0
     #End If
 End Sub
 
-''' Pide acceso a las carpetas del equipo y devuelve las que siguen sin leerse,
-''' una por renglon; cadena vacia si se leen todas.
-'''
-''' En macOS Excel vive en una caja de arena: se pide de una vez la raiz del
-''' disco, la carpeta personal y /Volumes (carpetas compartidas montadas), mas
-''' las rutas configuradas. El sistema pregunta una sola vez y lo recuerda; al
-''' tocar Escritorio, Documentos y Descargas pregunta ademas por cada una, y
-''' conviene que sea aqui y no a media corrida. En Windows no hay caja de arena:
-''' lo que decide son los permisos de la carpeta, que Excel no puede darse a si
-''' mismo, asi que solo se comprueba y se informa.
 Public Function KcmConcederPermisosEquipo(ByVal rutaMatriz As String, ByVal rutaPadron As String) As String
     Dim casa As String
     Dim carpetas As Variant
@@ -1166,8 +943,6 @@ Public Function KcmConcederPermisosEquipo(ByVal rutaMatriz As String, ByVal ruta
     KcmConcederPermisosEquipo = pendientes
 End Function
 
-''' Borra la credencial de este equipo del llavero de macOS o de la variable de
-''' usuario de Windows. No falla si no habia ninguna.
 Public Sub KcmCredencialBorrar()
     #If Mac Then
         Dim salida As String
@@ -1181,12 +956,6 @@ Public Sub KcmCredencialBorrar()
     #End If
 End Sub
 
-''' Describe por que una ruta no es un archivo local legible; cadena vacia si si lo es.
-''' No se usa `Dir$` para esta comprobacion: omite los archivos ocultos y de sistema, comparte
-''' estado global con cualquier enumeracion en curso y no distingue una carpeta de un archivo.
-''' Sobre todo, `Workbook.FullName` devuelve una direccion web cuando el libro vive en OneDrive o
-''' SharePoint; ninguna lectura local es posible entonces y conviene nombrar esa causa, porque
-''' "el archivo no existe" manda a buscar un problema de ruta que no existe.
 Public Function KcmLocalFileProblem(ByVal filePath As String) As String
     Dim atributos As Long
 
@@ -1203,9 +972,6 @@ Public Function KcmLocalFileProblem(ByVal filePath As String) As String
     On Error Resume Next
     atributos = GetAttr(filePath)
     #If Mac Then
-        ' La caja de arena de Excel no ve Descargas ni Escritorio sin permiso, y el
-        ' permiso se pide una sola vez por sesion. El guion corre fuera de ella:
-        ' si ahi el archivo existe, la ruta es buena y Excel pedira acceso al abrirlo.
         If Err.Number <> 0 Then
             Dim salida As String
             Err.Clear
@@ -1226,7 +992,6 @@ Public Function KcmLocalFileProblem(ByVal filePath As String) As String
     If (atributos And vbDirectory) <> 0 Then KcmLocalFileProblem = "la ruta es una carpeta"
 End Function
 
-''' Existencia sin abrir el archivo, para las comprobaciones de pantalla.
 Public Function KcmRutaExiste(ByVal ruta As String) As Boolean
     KcmRutaExiste = (Len(ruta) > 0 And Len(KcmLocalFileProblem(ruta)) = 0)
 End Function
@@ -1244,15 +1009,6 @@ Public Function KcmFileSha256(ByVal filePath As String) As String
     #End If
 End Function
 
-''' Contenido de un archivo local en base64 estandar, con relleno.
-'''
-''' Es lo que permite que el padron semanal viaje tal cual: el servidor lo lee
-''' con el mismo extractor que usa la subida manual y la linea de comandos, en
-''' vez de recibir filas que esta macro hubiera interpretado por su cuenta. Una
-''' segunda interpretacion del libro seria una segunda forma de equivocarse.
-'''
-''' No se recodifica a base64 web-safe porque el resultado viaja dentro de un
-''' JSON, no en la URL; el sobre completo si se codifica web-safe al enviarse.
 Public Function KcmFileBase64(ByVal filePath As String) As String
     Dim bytes() As Byte
     Dim numero As Integer
@@ -1260,7 +1016,6 @@ Public Function KcmFileBase64(ByVal filePath As String) As String
 
     KcmConcederAcceso filePath
     numero = FreeFile
-    ' `Shared` por lo mismo que en la huella: el archivo puede estar abierto.
     Open filePath For Binary Access Read Shared As #numero
     tamano = LOF(numero)
     If tamano <= 0 Then
@@ -1279,8 +1034,6 @@ Public Function KcmFileBase64(ByVal filePath As String) As String
     KcmFileBase64 = KcmBytesBase64(bytes, tamano)
 End Function
 
-''' Donde vive la credencial en este sistema. Se usa en los mensajes, para que la
-''' instruccion que lee el operador corresponda a su equipo.
 Public Function KcmCredencialDonde() As String
     #If Mac Then
         KcmCredencialDonde = "el llavero de macOS, servicio " & KCM_TOKEN_ENV
@@ -1289,8 +1042,6 @@ Public Function KcmCredencialDonde() As String
     #End If
 End Function
 
-''' La credencial guardada, o cadena vacia. Nunca se registra ni se muestra: los
-''' paneles informan solo su longitud.
 Public Function KcmCredencialLeer() As String
     Dim valor As String
 
@@ -1313,13 +1064,6 @@ Public Function KcmCredencialLeer() As String
     KcmCredencialLeer = Trim$(valor)
 End Function
 
-''' Guarda la credencial fuera del libro.
-'''
-''' En Windows va a la coleccion de variables del usuario, que lee y escribe el
-''' registro en vivo: queda disponible en el acto y no hace falta cerrar Excel,
-''' que es lo que exigia el `setx` del procedimiento anterior. En macOS va al
-''' llavero, que es donde el sistema guarda secretos. Ninguno de los dos la
-''' escribe en el libro.
 Public Sub KcmCredencialGuardar(ByVal secreto As String)
     #If Mac Then
         Dim salida As String
@@ -1336,23 +1080,10 @@ Public Sub KcmCredencialGuardar(ByVal secreto As String)
     #End If
 End Sub
 
-''' Cuadro de Abrir del sistema. Devuelve la ruta elegida, o la cadena vacia si
-''' se cancelo.
-'''
-''' El filtro de archivos es lo unico que separa a los dos sistemas, y separarlo
-''' no fue una preferencia. Excel para Mac rechaza la cadena de filtros de
-''' Windows: en cuanto se le pasa `FileFilter` con los pares
-''' "descripcion,patron", `GetOpenFilename` falla con "Method 'GetOpenFilename'
-''' of object '_Application' failed" y el asistente se detiene en su ultimo paso.
-''' Alli el filtro se declara con codigos de tipo de cuatro letras, y para `.xlsb`
-''' no hay ninguno. Asi que en macOS el cuadro se abre sin filtro y la extension
-''' la comprueba quien llama, que en este cliente ya lo hacia de todos modos.
 Public Function KcmElegirArchivo(ByVal titulo As String, Optional ByVal filtro As String = "") As String
     Dim elegido As Variant
 
     #If Mac Then
-        ' `Title` es opcional en la version de macOS y no todas las compilaciones
-        ' lo aceptan; si estorba, el cuadro se abre sin titulo antes que no abrirse.
         On Error Resume Next
         elegido = Application.GetOpenFilename(, , titulo)
         If Err.Number <> 0 Then

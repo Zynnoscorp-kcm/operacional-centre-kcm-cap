@@ -1,8 +1,3 @@
-/**
- * Repositorio en memoria para Quiosco, Sesiones y Auditoría.
- * Permite ejecutar pruebas completas sin dependencias externas ni credenciales reales.
- */
-
 import type { WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   AuditEventRecord,
@@ -30,12 +25,6 @@ export interface MemoryKioskSessionState {
   readonly trainings?: readonly TrainingCatalogItem[];
   readonly activeWorkers?: readonly WorkerNumber[];
   readonly secrets?: Readonly<Record<SecretScope, string>>;
-  /**
-   * Reloj de la corrida. Sin él la ventana de sesiones operativas se calculaba
-   * con la hora de la máquina aunque la prueba hubiera inyectado un reloj fijo:
-   * una prueba escrita con fecha fija empezaba a fallar sola catorce días
-   * después de escrita, y el fallo no decía eso.
-   */
   readonly clock?: Clock;
 }
 
@@ -72,7 +61,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     if (initialState?.trainings) {
       for (const t of initialState.trainings) this.trainings.set(t.trainingId, { ...t });
     } else {
-      // Cursos sintéticos por omisión
       this.trainings.set("CAP-SINT-001", {
         trainingId: "CAP-SINT-001",
         name: "BUENAS PRÁCTICAS DE MANUFACTURA",
@@ -99,9 +87,7 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     }
   }
 
-  // --- Sesiones ---
   async createSession(session: SessionRecord): Promise<SessionRecord> {
-    // La misma unicidad que la base: dos sesiones no comparten código.
     for (const existente of this.sessions.values()) {
       if (existente.sessionCode === session.sessionCode) throw new SessionCodeTakenError();
     }
@@ -155,13 +141,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     return predicate ? all.filter(predicate) : all;
   }
 
-  /**
-   * Mismo criterio que la consulta del adaptador de Postgres: los estados vivos
-   * siempre, y `BORRADOR` y `LIBERADA_TOTAL` sólo mientras sigan siendo
-   * recientes. `BORRADOR` faltaba aquí, y una sesión nace precisamente ahí: la
-   * pantalla la creaba, redirigía y la lista se veía idéntica, así que su botón
-   * «Abrir» no llegaba a dibujarse y no había forma de operarla.
-   */
   async listOperativeSessions(options?: {
     cutoffDate?: string;
   }): Promise<readonly OperativeSessionSummary[]> {
@@ -204,7 +183,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     );
   }
 
-  // --- Asistencias ---
   async createAttendance(attendance: AttendanceRecord): Promise<AttendanceRecord> {
     const copy = { ...attendance };
     this.attendances.set(attendance.attendanceId, copy);
@@ -239,7 +217,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     return count;
   }
 
-  // --- Journal Quiosco ---
   async createJournal(journal: KioskRegistrationJournal): Promise<KioskRegistrationJournal> {
     const copy = { ...journal };
     this.journals.set(journal.registrationId, copy);
@@ -292,7 +269,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     return list;
   }
 
-  // --- Auditoría ---
   async recordAudit(
     event: Omit<AuditEventRecord, "eventId" | "occurredAt">,
   ): Promise<AuditEventRecord> {
@@ -324,12 +300,10 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     });
   }
 
-  // --- Padrón ---
   async isWorkerActive(workerNumber: WorkerNumber): Promise<boolean> {
     return this.activeWorkers.has(String(workerNumber));
   }
 
-  // --- Catálogo ---
   async listActiveTrainings(): Promise<readonly TrainingCatalogItem[]> {
     return Array.from(this.trainings.values()).filter((t) => t.active);
   }
@@ -339,7 +313,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     return t ? { ...t } : null;
   }
 
-  // --- Secretos ---
   async verifySecret(scope: SecretScope, candidate: string): Promise<boolean> {
     const expected = this.secrets.get(scope);
     return expected !== undefined && expected === candidate;
@@ -349,7 +322,6 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     this.secrets.set(scope, value);
   }
 
-  // --- Concesiones ---
   async createConcession(concession: ConcessionRecord): Promise<ConcessionRecord> {
     const copy = { ...concession };
     this.concessions.set(concession.concessionId, copy);
@@ -374,9 +346,7 @@ export class MemoryKioskSessionRepository implements KioskSessionRepositoryPort 
     return updated;
   }
 
-  // --- Bloqueo atómico ---
   async withLock<T>(_key: string, fn: () => Promise<T>): Promise<T> {
-    // Implementación asíncrona segura de exclusión mutua
     return fn();
   }
 }

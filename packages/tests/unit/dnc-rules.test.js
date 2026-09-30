@@ -43,7 +43,6 @@ test("total de reglas compiladas en v1.0.0 es 141 (128 de calidad + 13 tecnicas)
 test("registro de reglas encuentra reglas por departamento y area", () => {
   const registry = new DncRuleRegistry();
 
-  // Departamento HIGIENICOS recibe los cursos de calidad aplicables a HIGIENICOS
   const higienicosRules = registry.getApplicableRulesForEmployee({
     department: "HIGIENICOS",
     area: ""
@@ -52,7 +51,6 @@ test("registro de reglas encuentra reglas por departamento y area", () => {
   assert.ok(higienicosRules.some((r) => r.canonicalCourseName === "BUENAS PRACTICAS DE MANUFACTURA"));
   assert.ok(higienicosRules.some((r) => r.canonicalCourseName === "INSPECCION EN LINEA"));
 
-  // Area GERENCIA DE MANTTO. ELECTRICO recibe los 13 cursos tecnicos + los de su departamento
   const electricoRules = registry.getApplicableRulesForEmployee({
     department: "GERENCIA DE MANTTO.",
     area: "GERENCIA DE MANTTO. ELECTRICO"
@@ -81,7 +79,6 @@ test("findMatchingRule resuelve la regla correspondiente a un curso especifico",
   assert.ok(ruleMotores);
   assert.equal(ruleMotores.level, DNC_RULE_LEVELS.AREA);
 
-  // Si no aplica, devuelve null
   const ruleNoAplica = registry.findMatchingRule({
     trainingId: "kcm-course:sistema-control-motores",
     department: "GERENCIA ADMINISTRATIVA",

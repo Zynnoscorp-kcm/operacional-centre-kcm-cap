@@ -1,11 +1,3 @@
-// Constancia DC-3 en PDF. La plantilla oficial es una hoja de calculo: al imprimirla arrastra la
-// cuadricula, los renglones descuadrados y el reverso con los dos catalogos del Catalogo Nacional de
-// Ocupaciones, que son material de consulta y no parte del documento que se entrega al trabajador.
-//
-// Por eso el PDF no se convierte desde la hoja: se compone. Las leyendas oficiales —titulo,
-// encabezados de seccion, etiquetas, protesta de decir verdad, pies de firma e instrucciones— se
-// leen del archivo oficial celda por celda, de modo que siguen siendo las suyas y un cambio en la
-// plantilla se detecta; lo unico que cambia es la maquetacion.
 import { XlsxWorkbook } from "../xlsx-reader.js";
 import { LEYENDAS_DC3 } from "./leyendas-oficiales.js";
 import { buildPdf, measureText, PdfPage, wrapText } from "./pdf-writer.js";
@@ -13,12 +5,7 @@ import { buildPdf, measureText, PdfPage, wrapText } from "./pdf-writer.js";
 const PAGE = Object.freeze({ width: 612, height: 792, margin: 44 });
 const CONTENT_WIDTH = PAGE.width - PAGE.margin * 2;
 const RULE = Object.freeze({ gray: 0.45, width: 0.6 });
-// La banda de logotipos arranca dentro del margen superior. Con este alto rebasa los 44
-// puntos del margen, asi que el contenido empieza debajo de la banda en vez de en el margen:
-// asi el membrete se ve y el formato aprovecha mejor la hoja, sin que nada se encime.
 const LOGO = Object.freeze({ y: 8, alto: 62, anchoMaximo: 240, separacion: 12 });
-// Las tres barras de seccion van en negro solido con el texto en blanco, como en el formato oficial.
-// El gris claro anterior se veia lavado al imprimir en laser y no separaba las secciones.
 const BAR_FILL = 0;
 const BAR_TEXT_GRAY = 1;
 const LABEL_SIZE = 7;
@@ -26,8 +13,6 @@ const VALUE_SIZE = 10.5;
 const BOX_HEIGHT = 20;
 const BAR_HEIGHT = 15;
 
-// Celdas de la plantilla oficial que contienen texto fijo. El anverso termina en la fila 67: todo lo
-// que sigue es el reverso de consulta y queda deliberadamente fuera del documento final.
 const LEGEND_CELLS = Object.freeze({
   title: "G8",
   workerSection: "E10",
@@ -80,11 +65,6 @@ function cellText(sheet, reference) {
   return String(cell.value).replace(/\s+/g, " ").trim();
 }
 
-/**
- * Lee del archivo oficial las leyendas y los datos del patron. Si la plantilla dejara de declarar
- * una leyenda obligatoria el proceso se detiene: preferible no emitir a emitir una constancia con
- * una seccion muda.
- */
 export function extractDc3Legends(templateBuffer) {
   if (!Buffer.isBuffer(templateBuffer)) throw new TypeError("La plantilla debe ser un Buffer XLSX");
   const workbook = new XlsxWorkbook(templateBuffer);
@@ -110,11 +90,6 @@ function sectionBar(page, y, text) {
   return y + BAR_HEIGHT;
 }
 
-// Campo con etiqueta arriba y recuadro abajo. El valor se reduce hasta caber en vez de desbordarse
-// sobre el campo vecino, que es justamente el efecto que arruina la impresion de la hoja de calculo.
-//
-// `field` nombra el recuadro para que, cuando llegue vacio y el documento se pida editable, se le
-// pueda escribir encima en el visor en lugar de a mano sobre el papel.
 function labeledBox(page, { x, y, width, label, value, height = BOX_HEIGHT, size = VALUE_SIZE, align = "left", field, editable = false }) {
   page.text(label, { x, y, size: LABEL_SIZE, gray: 0.25 });
   const top = y + LABEL_SIZE + 2.4;
@@ -136,11 +111,6 @@ function labeledBox(page, { x, y, width, label, value, height = BOX_HEIGHT, size
   return top + height;
 }
 
-/**
- * Convierte un recuadro ya trazado en uno escribible. Solo se llama sobre los que salen vacios: un
- * dato que si se capturo no debe poder alterarse desde el visor, y la constancia completa sigue
- * siendo un PDF plano.
- */
 function writableBox(page, { x, y, width, height, field, label }) {
   page.formField({
     name: field,
@@ -179,8 +149,6 @@ function dateBlocks(page, { x, y, label, iso, blockWidth }) {
   return cursor;
 }
 
-// El nombre va debajo de la raya y el espacio de arriba queda libre: quien firma necesita ese hueco,
-// y en la hoja de calculo el nombre impreso caia justo donde se firma.
 function signatureBlock(page, { x, y, width, caption, name, footer }) {
   page.line(x + 4, y + 30, x + width - 4, y + 30, { gray: 0.2 });
   page.text(name, { x, y: y + 33, size: 8.6, width, align: "center" });
@@ -203,15 +171,6 @@ function blank(value) {
   return value === null || value === undefined || String(value).trim() === "";
 }
 
-/**
- * `allowBlank` invierte la regla por omision: en lugar de detener la emision, deja el campo vacio y
- * el recuadro se imprime en blanco, listo para llenarse a mano. Se pidio explicitamente para poder
- * entregar el formato mientras el area tematica y el agente capacitador siguen sin capturarse.
- *
- * No es el modo por omision y no debe serlo: una constancia incompleta es valida como formato, no
- * como constancia. Quien la emite asi lo declara, el ledger la marca `partial` y una emision
- * posterior con los datos completos la reemplaza.
- */
 function assertPrintable(data, allowBlank = false) {
   if (!allowBlank) {
     for (const field of PRINTABLE_FIELDS) {
@@ -223,8 +182,6 @@ function assertPrintable(data, allowBlank = false) {
 
   const curp = String(data?.curp ?? "").toUpperCase().replace(/[^A-Z0-9Ñ]/g, "");
   if (!allowBlank && curp.length !== 18) throw new Error("La CURP debe contener 18 caracteres");
-  // Con campos en blanco permitidos, una CURP de longitud distinta a 18 se recorta a los 18
-  // recuadros del formato en lugar de desbordarlos; lo que falte queda vacio.
   const printableCurp = allowBlank ? curp.slice(0, 18) : curp;
 
   const dates = {};
@@ -235,30 +192,15 @@ function assertPrintable(data, allowBlank = false) {
       continue;
     }
     if (!allowBlank) throw new Error(`La fecha ${field} del DC-3 debe usar YYYY-MM-DD`);
-    // Una fecha ilegible se imprime como recuadros vacios: escribirla a medias en las casillas de
-    // ano, mes y dia produciria una fecha falsa que nadie podria distinguir de una capturada.
     dates[field] = "";
   }
 
-  // `Number(undefined)` es NaN y llegaria al recuadro como el texto "NaN".
   const duration = Number(data?.durationHours);
   const durationHours = Number.isFinite(duration) && duration > 0 ? duration : "";
 
   return { ...data, curp: printableCurp, ...dates, durationHours };
 }
 
-/**
- * La constancia como pagina, sin cerrar el archivo.
- *
- * Existe para poder juntar varias constancias en un solo PDF —una tanda que se imprime de una vez—
- * sin componer cada una dos veces. `renderDc3Pdf` la envuelve en un archivo de una pagina y produce
- * exactamente los mismos bytes que antes de separarlas: el ledger del lote reconoce una constancia
- * por su huella, y una constancia que cambiara de bytes por un arreglo interno seria otra.
- *
- * `prefijoDeCampos` distingue los recuadros escribibles de cada pagina. En un PDF, dos campos con el
- * mismo nombre son el mismo campo: sin el prefijo, escribir la ocupacion en la primera constancia de
- * una tanda la escribiria en todas.
- */
 export function componerPaginaDc3({
   legends,
   data: rawData,
@@ -272,15 +214,9 @@ export function componerPaginaDc3({
   const left = PAGE.margin;
   const campo = (nombre) => `${prefijoDeCampos}${nombre}`;
 
-  // Los logotipos van arriba de todo, y el contenido arranca debajo de la banda que
-  // ocupan. El bloque entero baja igual para todos: se desplaza en conjunto, no se
-  // reacomoda por dentro, asi que la maqueta que costo trabajo dejar como esta queda
-  // intacta. Si no hay imagenes, el contenido empieza en el margen de siempre.
   const finDeLosLogotipos = dibujarLogotipos(page, left, logos);
   let y = Math.max(PAGE.margin, finDeLosLogotipos + LOGO.separacion);
 
-  // Encabezado. La nota de la plantilla que explica que ahi puede ir un logotipo es una instruccion
-  // de llenado, no parte de la constancia: en el documento final ese espacio simplemente no existe.
   const kicker = /^(FORMATO\s+DC-3)\b[\s.:-]*(.*)$/i.exec(legends.title);
   const heading = kicker ? kicker[2].trim() : legends.title;
   if (kicker) {
@@ -349,8 +285,6 @@ export function componerPaginaDc3({
   }) + 14;
 
   y = sectionBar(page, y, legends.programSection) + 8;
-  // El nombre del curso es el unico campo que puede ocupar dos renglones: los cursos de LOTO llevan
-  // el nombre largo completo que exige la norma.
   page.text(legends.courseLabel, { x: left, y, size: LABEL_SIZE, gray: 0.25 });
   const courseTop = y + LABEL_SIZE + 2.6;
   const courseText = String(data.courseName).trim();
@@ -434,22 +368,14 @@ export function componerPaginaDc3({
 
   page.line(left, y, left + CONTENT_WIDTH, y, { gray: 0.6 });
   y += 7;
-  // El bloque de INSTRUCCIONES del formato oficial es guia de llenado para quien captura,
-  // no contenido de la constancia entregada: se omite a proposito. Las leyendas siguen en
-  // el catalogo por si alguna vez hace falta imprimir el formato en blanco.
   page.text(legends.formId, { x: left, y, size: 7.4, bold: true, width: CONTENT_WIDTH, align: "right", gray: 0.35 });
   if (y + 14 > PAGE.height - PAGE.margin) {
-    // Un desbordamiento silencioso dejaria texto legal fuera de la hoja: preferible no emitir.
     throw new Error("El contenido del DC-3 no cabe en una pagina");
   }
 
   return {
     page,
     title: `${legends.formId} ${data.workerName}`,
-    // La fecha del PDF es su propiedad de creacion, no un recuadro impreso. Normalmente es la del
-    // cierre del curso; cuando la constancia se emite sin fecha —el formato en blanco para llenarse
-    // a mano— se usa el dia de la emision, que es lo unico cierto que hay. Fallar aqui dejaria sin
-    // documento a quien pidio justamente el formato vacio.
     date: ISO_DATE.test(String(data.endDate ?? "")) ? data.endDate : hoyIso()
   };
 }
@@ -459,18 +385,10 @@ export function renderDc3Pdf(opciones) {
   return buildPdf({ pages: [page], title, date, producer: "KCM Cap DC3" });
 }
 
-/**
- * Constancia lista para imprimir. Las leyendas salen de `leyendas-oficiales.js`, no de ningun
- * archivo: emitir un DC-3 no depende de que la hoja oficial este en el disco.
- *
- * `extractDc3Legends` sigue exportada, pero solo para la prueba que compara lo horneado contra esa
- * hoja cuando alguien la tiene a mano.
- */
 export function generateDc3Document(data, { allowBlank = false, editable = false, logos } = {}) {
   return renderDc3Pdf({ legends: LEYENDAS_DC3, data, allowBlank, editable, logos });
 }
 
-/** La misma constancia como pagina suelta, para juntarla con otras en un solo archivo. */
 export function componerConstanciaDc3(
   data,
   { allowBlank = false, editable = false, logos, prefijoDeCampos = "" } = {}
@@ -478,23 +396,6 @@ export function componerConstanciaDc3(
   return componerPaginaDc3({ legends: LEYENDAS_DC3, data, allowBlank, editable, logos, prefijoDeCampos });
 }
 
-/**
- * Banda de logotipos del margen superior.
- *
- * El de la empresa va siempre pegado al margen derecho. El del sindicato, cuando
- * la constancia es de personal sindicalizado, va al extremo contrario: pegado al
- * margen izquierdo. Quedan en las esquinas opuestas del encabezado, que es como
- * se acostumbra cuando dos organizaciones firman el mismo documento.
- *
- * Cada uno conserva su proporcion y se ajusta al alto de la banda; si a ese alto
- * sale demasiado ancho, manda el ancho maximo y sobra alto. Se apoyan los dos en
- * la misma linea de abajo: colgados del borde superior, dos logotipos de
- * proporciones distintas se ven descuadrados.
- *
- * Devuelve el borde inferior de la banda para que quien llama sepa desde donde
- * seguir. Sin logotipos devuelve cero, y entonces el contenido empieza en el
- * margen de siempre.
- */
 function dibujarLogotipos(page, left, logos) {
   if (!logos) return 0;
   if (!logos.company && !logos.union) return 0;

@@ -1,26 +1,3 @@
-/*
- * Hoja de la consola central.
- *
- * Un tablero claro: fondo gris azulado, tarjetas blancas de esquina muy
- * redonda, sombra baja y difusa, y el azul de la empresa reservado para lo que
- * significa algo —la sección en la que se está, la acción que ejecuta y el
- * estado de un dato—. La referencia de diseño es un tablero de salud: píldoras
- * de navegación, una tarjeta destacada en azul lleno, cifras grandes y mucho
- * aire entre bloques.
- *
- * Del Sistema CAPTA se conserva la densidad, que es lo que esta consola
- * necesita y aquella referencia no tiene: rótulos diminutos en versalitas,
- * cifras en monoespaciada y filas apretadas en tablas de ocho y nueve columnas.
- *
- * Restricciones que dan forma a todo lo demás: no hay build de front, no hay
- * JSX y la política de contenido declara `style-src 'self'`, así que nada puede
- * ir en un atributo `style` ni depender de un script. Todo el trazo vive en
- * clases, y los iconos son `<svg>` en línea escritos a mano, no un paquete.
- *
- * El color no se decide aquí: sale de `tokens.css`. Esta hoja sólo declara
- * forma, ritmo y estado.
- */
-
 *,
 *::before,
 *::after {
@@ -40,19 +17,6 @@ body {
   font-optical-sizing: auto;
   line-height: 1.55;
 }
-
-/*
- * Aquí había un `-webkit-font-smoothing: antialiased` con su pareja de Firefox.
- *
- * Se retiraron, y es el cambio que más se nota de todos los de tipografía. En
- * macOS ese par apaga el suavizado por subpíxel y dibuja cada trazo con menos
- * tinta: la letra adelgaza aproximadamente medio peso en toda la consola, y lo
- * hace justo donde peor cae —el texto chico y gris, que ya parte con poco—. Es
- * un retoque que se ve bien en una maqueta grande y en negro sobre blanco, y
- * mal en una pantalla de planta a un metro. Sin ellos, el sistema dibuja el
- * texto como dibuja el del resto del equipo, que es la referencia que tiene
- * quien lo lee.
- */
 
 a {
   color: var(--kcm-brand);
@@ -85,40 +49,6 @@ a:hover {
   border-radius: var(--kcm-radius-sm);
 }
 
-/* ==========================================================================
-   El recorrido entre pantallas
-   --------------------------------------------------------------------------
-   La consola es multipágina: cada sección es un documento servido entero. Hasta
-   ahora eso se veía como se ve una recarga —blanco, salto, página nueva— y ese
-   parpadeo era lo que hacía que once secciones parecieran once programas.
-
-   `@view-transition` lo resuelve sin una línea de JavaScript, que es la única
-   forma de resolverlo aquí: la política declara `default-src 'none'` y la
-   consola no carga guiones. El navegador fotografía la página que se va, la que
-   llega, y anima entre las dos.
-
-   Lo que se anima no es «la página»: son las piezas con nombre. El lateral, la
-   barra de título y la tira de sub-pestañas llevan el **mismo** nombre en los dos
-   documentos, así que el navegador entiende que son el mismo objeto y los deja
-   quietos. Sólo viaja el contenido. La consola deja de recargarse y pasa a
-   comportarse como lo que siempre fue: una sola aplicación.
-
-   La píldora azul es el detalle que enseña el mecanismo. Sólo hay una con
-   `aria-current` por documento, así que el navegador la trata como el mismo
-   objeto en las dos páginas y la **desliza** desde la sección que se deja hasta
-   la que se abre. Nadie tiene que buscar dónde quedó: la vio llegar.
-
-   Los nombres van juntos aquí y no repartidos por sus componentes a propósito.
-   Un `view-transition-name` repetido en un documento cancela la transición
-   entera, en silencio, así que la lista completa tiene que poder leerse de una
-   vez para comprobar que no hay dos iguales. De ahí los selectores de hijo
-   directo: hay una segunda tira de `.subpestanas` dentro de la ficha DC-3 —la
-   del plan del candidato— y sin acotar a `.lienzo >` habría dos con el mismo
-   nombre en esa pantalla.
-
-   Un navegador que no lo entienda navega como hoy. No hay nada que degradar.
-   ========================================================================== */
-
 @view-transition {
   navigation: auto;
 }
@@ -147,17 +77,6 @@ a:hover {
   view-transition-name: kcm-pestana-activa;
 }
 
-/*
- * La puerta entrega la escena a la consola.
- *
- * Detrás de las hojas del acceso hay una silueta: cuatro rectángulos grises con
- * la geometría del armazón. Existía para que la puerta tuviera algo que
- * descubrir, pero al entrar se perdía —la silueta desaparecía y la consola real
- * aparecía de golpe en su sitio—. Con los mismos nombres que usa la consola, el
- * navegador entiende que el rectángulo del lateral **es** el lateral, y lo
- * transforma en él. La silueta deja de ser un telón y pasa a ser el primer
- * cuadro de la consola.
- */
 .puerta-fondo-lateral {
   view-transition-name: kcm-rail;
 }
@@ -170,12 +89,6 @@ a:hover {
   view-transition-name: kcm-lienzo;
 }
 
-/*
- * El contenido entra desde abajo y sale hacia arriba: seis píxeles, que es
- * bastante para que se lea como un movimiento y poco para que nadie lo espere.
- * Lo que sale dura menos que lo que entra —140 contra 320— porque al ojo le
- * estorba más ver irse lo viejo que llegar lo nuevo.
- */
 ::view-transition-group(kcm-lienzo) {
   animation-duration: var(--kcm-mov-vista);
 }
@@ -202,7 +115,6 @@ a:hover {
   }
 }
 
-/* El armazón no parpadea: cambia de rótulo. La barra y la píldora sólo funden. */
 ::view-transition-group(kcm-barra),
 ::view-transition-group(kcm-pestanas),
 ::view-transition-group(kcm-rail),
@@ -212,25 +124,6 @@ a:hover {
   animation-timing-function: var(--kcm-curva);
 }
 
-/*
- * Lo que se pliega.
- *
- * Los bloques plegables de la consola —los casos de Sincronía, el tablero de
- * entregas de Liberación, el detalle de una carga del historial— aparecían de
- * golpe: la página daba un salto de doscientos píxeles y había que buscar dónde
- * había quedado la línea que se estaba leyendo. Desplegándose, el ojo sigue el
- * borde de abajo y no pierde el sitio.
- *
- * El `@supports` no es precaución de más. La altura sólo se puede animar hasta
- * `auto` si el navegador entiende `interpolate-size`, y sin esa condición un
- * navegador que no lo entienda se quedaría con el `block-size: 0` de la regla
- * base: el bloque no se abriría nunca. Con la condición, o se anima o se abre
- * de golpe como hoy.
- *
- * `overflow-x` se queda en `visible` a propósito: dentro de estos bloques hay
- * tablas anchas que llevan su propio desplazamiento horizontal, y recortarlas
- * por los dos ejes les quitaría las columnas de la derecha.
- */
 @supports (interpolate-size: allow-keywords) {
   :root {
     interpolate-size: allow-keywords;
@@ -253,20 +146,6 @@ a:hover {
   }
 }
 
-/* ==========================================================================
-   El armazón: menú lateral y lienzo
-   --------------------------------------------------------------------------
-   Dos columnas sobre un fondo gris azulado: el **lateral**, angosto y fijo, y
-   el **lienzo**, que se queda con todo lo que sobra. Dentro del lienzo van tres
-   piezas apiladas —barra de título, tira de sub-pestañas y contenido—, cada una
-   como tarjeta blanca de esquina redonda.
-
-   El lateral se queda en 244 px porque las tablas de esta consola tienen ocho y
-   nueve columnas y son ellas las que se quedaban sin sitio. Por debajo de
-   1080 px deja de ser columna y pasa a ser una tira horizontal desplazable, así
-   que ese ancho no estorba en pantallas chicas.
-   ========================================================================== */
-
 .consola {
   display: grid;
   min-height: 100vh;
@@ -276,15 +155,6 @@ a:hover {
   background: var(--kcm-canvas);
 }
 
-/*
- * La consola sin menú lateral.
- *
- * Sin esta clase, quitar el menú no quitaba su columna: la rejilla seguía
- * declarando 244 px y el lienzo entero —barra, tarjetas y todo— se dibujaba
- * dentro de esa franja, con cada renglón partido en tres. Es lo que se veía al
- * apagar. Una sola columna, y el lienzo acotado y centrado, porque una pantalla
- * de una sola tarjeta estirada a lo ancho de un monitor no se lee mejor.
- */
 .consola-sola {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -294,11 +164,6 @@ a:hover {
   margin-inline: auto;
 }
 
-/*
- * `align-self: start` es lo que hace que `sticky` funcione: sin él la rejilla
- * estira el elemento hasta la altura de la fila y ya no le queda recorrido
- * dentro del cual pegarse.
- */
 .lateral {
   position: sticky;
   top: 14px;
@@ -358,9 +223,6 @@ a:hover {
   overflow-y: auto;
 }
 
-/* La interletra baja de 0.16em a 0.12em porque el rótulo creció: separar tanto
- * las letras de un texto de nueve píxeles era lo que lo mantenía unido de lejos;
- * a once, el mismo valor lo desarma en letras sueltas. */
 .lateral-grupo {
   margin: 0.9rem 0 0.3rem;
   padding: 0 0.6rem;
@@ -396,11 +258,6 @@ a:hover {
   color: var(--kcm-ink);
 }
 
-/*
- * La entrada activa es una píldora azul llena. No lleva marcador aparte: el
- * relleno completo, el peso del texto y el contraste invertido son tres señales
- * y ninguna depende sólo del tono.
- */
 .lateral-enlace[aria-current="page"] {
   background: var(--kcm-gradient-brand);
   color: #ffffff;
@@ -423,7 +280,6 @@ a:hover {
   white-space: nowrap;
 }
 
-/* Las pantallas de sala, ancladas al fondo del lateral y separadas por una línea. */
 .lateral-pie {
   display: flex;
   margin-top: auto;
@@ -436,10 +292,6 @@ a:hover {
 .lateral-pie .lateral-grupo {
   margin-top: 0;
 }
-
-/* ==========================================================================
-   El lienzo: barra de título, sub-pestañas y contenido
-   ========================================================================== */
 
 .lienzo {
   display: flex;
@@ -473,8 +325,6 @@ a:hover {
   line-height: 1.15;
 }
 
-/* El renglón que dice de qué va la pantalla. Es lo segundo que se lee al
- * llegar, así que se trata como texto de apoyo y no como letra menuda. */
 .barra-lede {
   margin: 0.15rem 0 0;
   color: var(--kcm-secundario);
@@ -514,11 +364,6 @@ a:hover {
   color: var(--kcm-brand);
 }
 
-/*
- * La tira de sub-pestañas. Es el mismo gesto que la píldora del lateral, en
- * horizontal: las vistas hermanas de una sección viven aquí y no en el menú,
- * que es lo que dejó el lateral en once entradas en vez de veinte.
- */
 .subpestanas {
   display: flex;
   padding: 0.35rem;
@@ -560,10 +405,6 @@ a:hover {
   flex-direction: column;
   gap: var(--kcm-space-3);
 }
-
-/* ==========================================================================
-   Rótulos de sección, al modo CAPTA
-   ========================================================================== */
 
 .capta-rotulo {
   display: block;
@@ -614,14 +455,6 @@ a:hover {
   font-size: 0.8rem;
 }
 
-/* ==========================================================================
-   La tarjeta
-   --------------------------------------------------------------------------
-   La pieza base: blanca, esquina de 24, borde de una línea azul muy diluida y
-   una sombra baja que la despega del fondo. No cambia de fondo al pasar por
-   encima —una tarjeta no es un botón—: sólo se aviva el borde.
-   ========================================================================== */
-
 .tarjeta {
   position: relative;
   padding: clamp(1.1rem, 2.2vw, 1.6rem);
@@ -660,21 +493,6 @@ a:hover {
   margin-bottom: 0;
 }
 
-/* ==========================================================================
-   La tira de indicadores
-   --------------------------------------------------------------------------
-   Es el «Bottom Stats» del prompt: mosaicos de igual peso, cifra grande en
-   mono y un renglón de contexto debajo. El color del borde superior dice el
-   estado sin escribirlo.
-   ========================================================================== */
-
-/*
- * El mínimo es de 185 y no de 210 px por una razón concreta: con 210 una tira
- * de cinco mosaicos —la de la cobertura DC-3— parte cuatro arriba y uno suelto
- * abajo, que se lee como un error de maquetación. Con 185 los cinco caben en un
- * renglón, y las tiras de cuatro o menos siguen estirándose igual porque
- * `auto-fit` reparte el sobrante entre las columnas que haya.
- */
 .kpi-tira,
 .contadores,
 .metricas-resumen-grilla {
@@ -701,11 +519,6 @@ a:hover {
   border-color: var(--bento-borde-vivo);
 }
 
-/*
- * La cinta de estado. Va a la izquierda y no arriba: sobre una tarjeta blanca
- * de esquina de 20 px, una línea horizontal de 2 px queda cortada por el radio
- * en los dos extremos y se lee como un defecto de dibujo.
- */
 .kpi::before {
   content: "";
   position: absolute;
@@ -747,24 +560,6 @@ a:hover {
   flex-wrap: wrap;
 }
 
-/*
- * Las cifras de los mosaicos.
- *
- * Estaban en monoespaciada, y ése era el aire anticuado: una cifra de tablero
- * a 1.75rem en SF Mono o Consolas se lee como la salida de una terminal, no
- * como el dato de una consola. La monoespaciada estaba ahí por una razón buena
- * —que los dígitos ocupen lo mismo y las cifras no bailen entre recargas— y esa
- * razón la cubre `tabular-nums` sin pagar el aspecto: la propia familia de
- * texto trae cifras tabulares.
- *
- * El resto sigue la §15 de tipografía: tracking negativo porque es texto
- * grande, interlineado apretado por lo mismo, y `font-optical-sizing` para que
- * la fuente elija su forma al tamaño en que se dibuja.
- *
- * Los números de nómina, las huellas y los códigos **siguen** en monoespaciada,
- * y deben seguir: ahí alinear dígitos y distinguir un cero de una O es el
- * motivo, no la estética.
- */
 .kpi-cifra,
 .metrica-numero {
   display: block;
@@ -776,7 +571,6 @@ a:hover {
   font-optical-sizing: auto;
   letter-spacing: -0.02em;
   line-height: 1.05;
-  /* Una cifra nunca debe empujar el ancho de su mosaico. */
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -787,8 +581,6 @@ a:hover {
   font-weight: 600;
 }
 
-/* La pista bajo la cifra. Mismo tratamiento que `.texto-nota`: es el mismo
- * papel —explicar en pequeño— y no tendría sentido que se leyera distinto. */
 .kpi-pista {
   margin: 0.45rem 0 0;
   color: var(--kcm-secundario);
@@ -813,13 +605,6 @@ a:hover {
 .metrica-reforzar {
   color: var(--kcm-warn);
 }
-
-/* ==========================================================================
-   Retículas de mosaicos
-   --------------------------------------------------------------------------
-   Tarjetas de igual peso que se encienden al pasar por encima. Aquí vivía
-   además la retícula de funciones de la portada; se fue con ella.
-   ========================================================================== */
 
 .grilla-comparativa,
 .tarjeta-dep-metricas {
@@ -868,13 +653,6 @@ a:hover {
 .enlace-nomina {
   font-family: var(--kcm-font-mono);
 }
-
-/* ==========================================================================
-   Insignias
-   --------------------------------------------------------------------------
-   Los chips del prompt: píldora de borde tenue y versalita corta. El fondo
-   nunca es opaco, para que la tarjeta siga leyéndose por detrás.
-   ========================================================================== */
 
 .insignia,
 .badge {
@@ -956,10 +734,6 @@ a:hover {
   color: var(--kcm-warn);
   letter-spacing: 0.02em;
 }
-
-/* ==========================================================================
-   Tablas, con la densidad del Sistema CAPTA
-   ========================================================================== */
 
 .tabla-contenedor {
   overflow-x: auto;
@@ -1056,10 +830,6 @@ a:hover {
   color: var(--kcm-danger);
 }
 
-/* ==========================================================================
-   Formularios
-   ========================================================================== */
-
 .formulario,
 .formulario-sesion,
 .formulario-busqueda,
@@ -1083,11 +853,6 @@ a:hover {
   font-weight: 600;
 }
 
-/*
- * Dentro de un grupo la etiqueta es encabezado, no campo: la base de 210px de la
- * regla anterior se volvía altura en la columna y separaba cada encabezado de
- * su recuadro (se veía en «Conectar un equipo»).
- */
 .grupo-campo > label {
   flex: 0 0 auto;
 }
@@ -1096,12 +861,10 @@ a:hover {
   flex-direction: row;
 }
 
-/* El renglón que va debajo de una tira de cifras necesita aire propio. */
 .nota-bajo-tira {
   margin-top: var(--kcm-space-3);
 }
 
-/* La búsqueda por nombre pide más ancho que un selector; una fecha, menos. */
 .campo-busqueda-ancho {
   flex: 2 1 280px;
 }
@@ -1118,27 +881,11 @@ a:hover {
   letter-spacing: 0.02em;
 }
 
-/*
- * El texto de ejemplo de un campo vacío.
- *
- * No había regla, así que cada navegador ponía el suyo: en la consola clara sale
- * un gris cercano al 4:1 y en la agenda pública —que corre en tema oscuro— sale
- * un gris oscuro que sobre campo negro apenas se distingue del fondo. Y no es
- * adorno: «Cinco dígitos» o «Nombre del solicitante» es lo único que dice qué
- * se espera en esa casilla. Va en la tinta apagada del tema, que en los dos
- * casos está medida, con `opacity: 1` porque Firefox la rebaja por su cuenta.
- */
 ::placeholder {
   color: var(--kcm-muted);
   opacity: 1;
 }
 
-/*
- * Una fila de campos dentro de un formulario. El `flex: 1 1 100%` no es adorno:
- * el formulario que la contiene es una fila flexible, y sin base declarada esta
- * retícula se encogía a su contenido y se metía en el renglón del campo
- * anterior. En `/sesiones` eso dejaba «Capacitación» debajo de «Fecha».
- */
 .fila-campos {
   display: grid;
   flex: 1 1 100%;
@@ -1146,18 +893,11 @@ a:hover {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
-/*
- * La celda que sólo lleva una casilla no tiene etiqueta encima, así que en una
- * retícula de campos quedaría pegada al borde superior mientras sus vecinos
- * alinean el control abajo. Se empuja al pie de su celda para que la casilla
- * quede al mismo nivel que los recuadros del renglón.
- */
 .grupo-campo-casilla {
   justify-content: flex-end;
   padding-bottom: 0.6rem;
 }
 
-/* La fila de acciones cierra el formulario: nunca comparte renglón con un campo. */
 .formulario > .acciones-formulario,
 .formulario-sesion > .acciones-formulario,
 .formulario-filtros > .acciones-formulario {
@@ -1211,26 +951,6 @@ option {
   align-items: center;
 }
 
-/* ==========================================================================
-   Botones
-   --------------------------------------------------------------------------
-   Tres cosas tenía que arreglar el rediseño de esta pieza, y las tres salieron
-   de mirar la consola con los ojos de quien la abre por primera vez.
-
-   1. **Todos pesaban lo mismo.** En una pantalla con seis botones no había
-      forma de saber cuál era *el* botón. Ahora hay tres pesos y sólo uno lleno:
-      el azul es la acción de la pantalla, y no hay dos azules por pantalla.
-   2. **No parecían pulsables.** Eran rectángulos planos del color del mosaico
-      de una tarjeta. Ahora llevan filo claro arriba y sombra abajo —las dos
-      señales de relieve— y se hunden de verdad al pulsarlos.
-   3. **El área de toque medía 34 px.** A esa altura se falla con el dedo, y con
-      el ratón también cuando la fila es densa. El mínimo pasa a 40 px; los
-      botones chicos se quedan en 28 px, y viven sólo dentro de celdas de tabla.
-
-   El hundido es el único movimiento con rebote de toda la consola, a propósito:
-   es el gesto que confirma que el clic entró. Todo lo demás se posa sin pasarse.
-   ========================================================================== */
-
 button,
 .boton,
 .boton-kcm,
@@ -1258,12 +978,6 @@ button,
   line-height: 1.2;
   cursor: pointer;
   text-decoration: none;
-  /*
-   * El relieve son dos capas y cada una hace una cosa: el filo blanco de arriba
-   * simula la luz que da en el canto superior, y la caída corta de abajo separa
-   * el botón del papel. Sin el par, un rectángulo del color del fondo de la
-   * tarjeta no se lee como algo que se pueda pulsar.
-   */
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
     0 1px 2px rgba(15, 30, 61, 0.07);
@@ -1294,12 +1008,6 @@ button:hover,
     0 5px 12px -5px rgba(15, 30, 61, 0.26);
 }
 
-/*
- * El hundido. Baja un píxel, encoge un pelo y cambia la caída por una sombra
- * interior: es el mismo botón visto desde arriba cuando está dentro de su hueco.
- * Dura 110 ms al bajar y vuelve con resorte, que es lo que lo hace sentir un
- * botón y no una imagen que cambia de color.
- */
 button:active,
 .boton:active,
 .boton-kcm:active,
@@ -1323,26 +1031,9 @@ button:disabled,
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
-  /* Sin desaturar, un primario apagado sigue siendo la mancha azul más grande
-     de la pantalla y sigue atrayendo el clic que no va a hacer nada. */
   filter: grayscale(0.4);
 }
 
-/*
- * La acción principal. Es más alta, más ancha y la única llena de color.
- *
- * Un `<button type="submit">` sin clase cuenta como principal: casi todos los
- * formularios de la consola tienen uno solo y rotularlo sería repetir lo que ya
- * dice ser el único botón de envío.
- *
- * Va envuelto en `:where()` y ahí hay un arreglo, no un estilo. Escrito como
- * `button[type="submit"]` el selector pesa más que cualquier clase de una sola
- * palabra, así que le ganaba a `.boton-exito` y a `.boton-advertencia`: los
- * botones «Autorizar» y «Cerrar» de la lista de sesiones se dibujaban azules
- * como todos los demás, que es exactamente lo que esas dos variantes existen
- * para evitar. `:where()` deja el selector pesando como una clase, y la clase,
- * que va escrita después, gana.
- */
 :where(button)[type="submit"],
 .boton-primario,
 .boton-kcm {
@@ -1367,10 +1058,6 @@ button:disabled,
     0 12px 24px -12px rgba(34, 76, 159, 0.8);
 }
 
-/*
- * El anillo de foco del primario. El de la casa es azul al 45 % y sobre el
- * relleno azul no se ve; sobre el lienzo claro, un anillo de tinta sí.
- */
 :where(button)[type="submit"]:focus-visible,
 .boton-primario:focus-visible,
 .boton-kcm:focus-visible {
@@ -1390,18 +1077,6 @@ button:disabled,
   color: var(--kcm-warn);
 }
 
-/*
- * El botón que emite una constancia incompleta. Es rojo a propósito: entrega un
- * documento con recuadros vacíos —a veces la fecha misma— y quien lo pulsa tiene
- * que ver que no está emitiendo una constancia terminada.
- */
-/*
- * El estado de autorización como punto de color. Era una insignia con la palabra
- * «Sí» o «No» que se llevaba el ancho de una columna entera para decir un bit,
- * y el campo del PIN de al lado quedaba tan angosto que no cabía lo que hay que
- * escribir en él. El texto sigue ahí para quien usa lector de pantalla y como
- * título al pasar el puntero: el color no es la única señal.
- */
 .punto-estado {
   display: inline-block;
   width: 0.7rem;
@@ -1417,14 +1092,6 @@ button:disabled,
   background: var(--kcm-danger);
 }
 
-/*
- * El tablero de entregas de la pantalla de liberación.
- *
- * Va plegado dentro de su propia tarjeta: no es lo primero que se hace en esa
- * pantalla —primero se libera—, pero tiene que estar ahí para poder contestar
- * «¿ya llegó?» sin cambiar de sitio. El triángulo del navegador se sustituye por
- * uno propio porque el de omisión se ve distinto en cada sistema.
- */
 .tablero-entregas > .tablero-resumen {
   display: flex;
   align-items: center;
@@ -1458,14 +1125,6 @@ button:disabled,
   letter-spacing: -0.01em;
 }
 
-/*
- * El foco de una entrega. Rojo mientras el cliente de Excel no acusa la
- * escritura, verde cuando ya la acusó, ámbar cuando contestó que no pudo.
- *
- * El color nunca va solo: cada foco lleva su `title` y su texto para lectores de
- * pantalla en el marcado, porque un punto de color no dice nada a quien no
- * distingue los dos tonos.
- */
 .foco {
   display: inline-block;
   width: 0.7rem;
@@ -1485,13 +1144,11 @@ button:disabled,
   background: var(--kcm-warn);
 }
 
-/* La columna que sólo lleva ese punto no necesita más ancho que su encabezado. */
 .columna-angosta {
   width: 3.2rem;
   text-align: center;
 }
 
-/* Y lo que se libera de ancho se lo queda el campo del PIN. */
 .campo-pin {
   min-width: 11rem;
 }
@@ -1502,46 +1159,6 @@ button:disabled,
   color: var(--kcm-danger);
 }
 
-/* ==========================================================================
-   Encendido de la instancia local
-   --------------------------------------------------------------------------
-   La tarjeta que aparece sólo en la computadora del departamento, y el botón
-   que la apaga. Son piezas propias y no un `.tarjeta` con un `.boton-peligro`
-   suelto, porque esto no es una acción más de la pantalla: es la única que
-   termina el proceso que sostiene todo lo demás.
-
-   Tres decisiones, y las tres vienen de mirar el gesto y no el componente.
-
-   1. **El estado se lee antes que la acción.** Un punto y una frase corta
-      arriba, el botón debajo. Quien encendió la máquina hace diez minutos para
-      mandar el barrido necesita confirmar que sigue encendida antes de buscar
-      cómo apagarla.
-   2. **El hundido es más profundo que el de un botón corriente.** El gesto que
-      confirma el clic tiene que pesar lo que pesa el acto; la casa hunde un
-      píxel y encoge a 0.985, y aquí se baja a 0.97. No es un movimiento nuevo:
-      es el mismo, con más recorrido.
-   3. **El botón se transforma en la pregunta.** `view-transition-name` empareja
-      este botón con la tarjeta de confirmación de `/apagar`, así que el
-      navegador convierte el uno en la otra en lugar de cortar entre pantallas.
-      La confirmación sale de donde se pulsó, que es de donde el ojo la espera.
-      El nombre aparece una sola vez por documento —repetirlo cancelaría la
-      transición, como ya advierte el bloque del armazón— y un navegador que no
-      lo entienda navega como hoy.
-
-   Lo que deliberadamente **no** lleva: translucidez. La consola es plana por
-   decisión del rediseño —el vidrio competía con las tablas—. Un panel de
-   cristal aquí sería reintroducir por la puerta de atrás lo que se quitó por
-   la de enfrente.
-   ========================================================================== */
-
-/*
- * La tarjeta de encendido no lleva franja de color.
- *
- * Tenía un filo rojo de 4 px a la izquierda, heredado de los avisos de error, y
- * decía lo que no era: en esa tarjeta no hay ningún problema —la plataforma
- * está encendida y funcionando—, sólo vive ahí el botón de apagarla. El rojo se
- * queda donde sí significa algo, que es el propio botón.
- */
 .energia-estado {
   display: flex;
   align-items: center;
@@ -1550,11 +1167,6 @@ button:disabled,
   font-weight: 600;
 }
 
-/*
- * El punto. Fijo y sin latido: un parpadeo lento es justo la oscilación que
- * `prefers-reduced-motion` existe para evitar, y aquí no aportaría nada que el
- * color no diga ya.
- */
 .energia-punto {
   width: 0.6rem;
   height: 0.6rem;
@@ -1564,8 +1176,6 @@ button:disabled,
   flex: none;
 }
 
-/* El mismo punto, sin encender: gris y sin el halo, que es lo que lo hacía
- * leerse como «está corriendo». El rótulo de al lado dice el resto. */
 .energia-punto-apagado {
   background: var(--capta-tenue);
   box-shadow: none;
@@ -1579,32 +1189,15 @@ button:disabled,
   transform: translateY(1px) scale(0.97);
 }
 
-/*
- * El otro extremo del emparejamiento: la tarjeta que pregunta. Lleva el mismo
- * nombre que el botón, y por eso el navegador la entiende como el mismo objeto
- * en otro estado en vez de como una pantalla distinta.
- */
 .energia-confirmacion {
   view-transition-name: kcm-energia;
 }
 
-/* La tarjeta que queda detrás del acuse, cuando el recuadro ya se cerró. */
 .energia-reposo {
   max-width: 44rem;
   margin-inline: auto;
   text-align: center;
 }
-
-/* ==========================================================================
-   El recuadro emergente
-   --------------------------------------------------------------------------
-   Un diálogo sin guiones. Lo abre y lo cierra el fragmento de la dirección
-   —`:target`—, que es lo único que queda cuando la política declara
-   `default-src 'none'`: no hay `showModal()` ni nada que lo llame.
-
-   El velo no atrapa el foco; sin guiones no hay manera. Se asume: las dos
-   pantallas que lo usan no tienen detrás nada que pueda hacer daño.
-   ========================================================================== */
 
 .emergente {
   position: fixed;
@@ -1622,24 +1215,9 @@ button:disabled,
   display: grid;
 }
 
-/*
- * El ancla que lo cierra. Es un elemento vacío que vive justo antes del
- * emergente y sirve de interruptor: marcarlo apaga a su hermano. Es la única
- * forma que tiene la hoja de reaccionar a un fragmento que no es el suyo, y
- * hace falta porque el botón de OK no puede navegar —para cuando se pulsa, el
- * servidor ya no existe—.
- */
 .ancla-de-cierre {
   display: block;
   height: 0;
-  /*
-   * Y no arrastra la pantalla al cerrarse. Marcar un fragmento hace que el
-   * navegador desplace hasta él, así que pulsar OK dejaba el tablero corrido
-   * hacia abajo con la barra de título fuera de la vista. Con un margen de
-   * desplazamiento de una pantalla entera, el destino calculado queda por
-   * encima del principio del documento y el navegador lo recorta a cero: la
-   * página se queda exactamente donde estaba.
-   */
   scroll-margin-block-start: 100vh;
 }
 
@@ -1695,32 +1273,6 @@ button:disabled,
   }
 }
 
-/* ── El acuse del apagado ──────────────────────────────────────────────────
- *
- * Cuatro cosas en orden: la rueda mientras el proceso se cierra, la palomita
- * cuando terminó, el rótulo y el botón. No hay reloj que las encadene —no hay
- * guiones—, así que las encadenan los retardos de aquí abajo, y por eso están
- * todos escritos en el mismo sitio y en orden creciente: es el guion de la
- * escena y se lee de corrido.
- *
- * El primer tiempo no es estético. La ruta responde y cierra el proceso 250 ms
- * después, así que la rueda dura 1.4 s para que la palomita aparezca cuando el
- * servidor ya está muerto de verdad y no antes: una palomita que se adelanta al
- * hecho es una pantalla que miente.
- */
-
-/*
- * El recuadro del acuse es más angosto que el de la pregunta y crece con la
- * escena. Lo segundo hace falta: con el rótulo y el botón reservando su sitio
- * desde el principio, la caja salía con la rueda arriba y dos tercios de blanco
- * debajo esperando un texto que aún no existía. Creciendo, la caja siempre es
- * del tamaño de lo que hay dentro.
- *
- * El crecimiento es `block-size: 0` a `auto`, que sólo se puede animar con la
- * `interpolate-size` que la hoja ya enciende para los bloques plegables. Donde
- * no se entienda, la altura cambia de golpe a media animación y el desvanecido
- * la acompaña: se pierde el crecimiento, no el resultado.
- */
 .emergente-acuse {
   display: flex;
   width: min(22rem, 100%);
@@ -1733,13 +1285,6 @@ button:disabled,
   margin-bottom: 0;
 }
 
-/*
- * El `min-block-size: 0` no es de adorno. En una columna flexible cada hijo
- * trae `min-block-size: auto`, que es «nunca más bajo que tu contenido», y con
- * eso el `block-size: 0` del primer fotograma no colapsaba nada: la caja salía
- * con la rueda arriba y el hueco del texto debajo, que es lo que se quería
- * quitar.
- */
 .emergente-acuse .emergente-titulo {
   order: 2;
   margin-block-start: var(--kcm-space-3);
@@ -1754,10 +1299,6 @@ button:disabled,
   animation: kcmAcuseCrece var(--kcm-mov-vista) var(--kcm-curva-entra) 2120ms both;
 }
 
-/*
- * Rueda y palomita ocupan la misma celda. Si se turnaran en el flujo, la caja
- * daría un salto al cambiar una por otra justo cuando el ojo está mirando ahí.
- */
 .escena {
   display: grid;
   width: 60px;
@@ -1784,12 +1325,6 @@ button:disabled,
   transform: rotate(calc(var(--rayo) * 30deg));
 }
 
-/*
- * Los doce rayos son el mismo trazo girado, y lo que da el giro no es una
- * rotación sino el desfase: cada uno recorre la misma bajada de opacidad un
- * doceavo de vuelta más tarde. El retardo es negativo para que ninguno empiece
- * encendido a destiempo: al dibujarse, cada rayo ya está en su punto del ciclo.
- */
 .escena-rueda i::before {
   content: "";
   position: absolute;
@@ -1840,12 +1375,6 @@ button:disabled,
   --rayo: 11;
 }
 
-/*
- * La palomita se dibuja sola: el trazo entero cabe en 24 unidades de longitud,
- * así que se esconde desplazándolo 24 y se descubre llevándolo a 0. Va en tinta
- * y no en verde a propósito —apagar no es un éxito, es un final— y entra con el
- * único resorte de la consola, el mismo del botón al soltarlo.
- */
 .escena-palomita {
   color: var(--kcm-ink);
   animation: kcmPalomitaLlega 380ms var(--kcm-curva-resorte) 1460ms both;
@@ -1909,9 +1438,6 @@ button:disabled,
   font-size: 0.76rem;
 }
 
-/* El ojo de vista previa. Es un boton de icono: sin texto, cuadrado, para que
-   quepa junto a los de emitir sin ensanchar la columna de acciones. Lleva
-   `title` y `aria-label` en el marcado, que es de donde sale su nombre. */
 .boton-icono {
   padding: 0.34rem;
   min-width: 1.75rem;
@@ -1923,24 +1449,12 @@ button:disabled,
   display: block;
 }
 
-/*
- * El botón de icono aplicado. Un icono sin texto no puede decir por sí solo si
- * está surtiendo efecto, y el orden que impone el de combinar no se nota en una
- * lista de tres renglones: encendido se ve que está puesto, y el rótulo del
- * marcado dice cómo quitarlo.
- */
 .boton-icono-activo {
   background: var(--kcm-brand-light);
   border-color: var(--bento-borde-vivo);
   color: var(--kcm-brand);
 }
 
-/*
- * La tira de pestañas del plan con su botón de orden al lado. Van en la misma
- * fila porque los dos mandan sobre la misma lista: la pestaña decide a quién se
- * ve y el botón en qué orden. Pegado a las pestañas y no en el extremo derecho
- * de la tarjeta, que es donde nadie lo relacionaría con la tabla.
- */
 .barra-de-plan {
   display: flex;
   align-items: center;
@@ -1948,7 +1462,6 @@ button:disabled,
   flex-wrap: wrap;
 }
 
-/* Las pestañas se llevan el ancho sobrante y desplazan dentro de su píldora. */
 .barra-de-plan .subpestanas {
   min-width: 0;
 }
@@ -1964,11 +1477,6 @@ button:disabled,
   text-decoration: underline;
 }
 
-/*
- * No hereda nada del relieve ni del hundido: es texto subrayado y tiene que
- * seguir pareciéndolo. Si se levantara al pasar el puntero, en una frase se
- * leería como un renglón que se despega.
- */
 .boton-enlace:hover,
 .boton-enlace:active {
   background: none;
@@ -1977,10 +1485,6 @@ button:disabled,
   color: var(--kcm-brand-dark);
   transform: none;
 }
-
-/* ==========================================================================
-   Avisos
-   ========================================================================== */
 
 .aviso,
 .aviso-error,
@@ -2044,7 +1548,6 @@ button:disabled,
   animation: progreso-ia 2s ease-in-out infinite;
 }
 
-/* Con el plan en la mano la barra deja de ir y venir y mide casos resueltos. */
 .barra-progreso-relleno.avance-medido {
   margin-left: 0;
   animation: none;
@@ -2066,11 +1569,6 @@ button:disabled,
   }
 }
 
-/*
- * La tarjeta de avance de /ocupaciones. Se muestra y se oculta con `hidden`,
- * porque la política de esa pantalla no admite estilos en línea; aquí `hidden`
- * manda aunque la clase de un botón declare su propio `display`.
- */
 .avance-ia[hidden],
 .avance-ia [hidden] {
   display: none !important;
@@ -2124,10 +1622,6 @@ button:disabled,
   font-weight: var(--kcm-peso-apoyo);
 }
 
-/* ==========================================================================
-   Listas de definición y fichas
-   ========================================================================== */
-
 .definiciones,
 .perfil-grilla-detalles,
 .detalle-item {
@@ -2165,16 +1659,6 @@ button:disabled,
   border-top: 1px solid var(--bento-borde);
 }
 
-/*
- * Departamento, área, planta y antigüedad son los datos por los que se decide
- * qué le toca a alguien, y se leían al mismo tamaño que el resto del texto.
- * Suben; la escolaridad —declarada por omisión en casi toda la plantilla— baja.
- */
-/*
- * Un solo tamaño y una sola familia para los datos de la ficha. Antes el valor
- * iba en monoespaciada a 1.02 rem y el puesto en versalitas a 0.58: dos datos
- * del mismo encabezado con casi el doble de diferencia entre ellos.
- */
 .perfil-grilla-detalles .detalle-valor {
   font-family: var(--kcm-font);
   font-size: 0.92rem;
@@ -2186,7 +1670,6 @@ button:disabled,
   font-size: var(--capta-rotulo);
 }
 
-/* El encabezado se comprime: la separación entre rótulo y dato era de 0.7 rem. */
 .perfil-grilla-detalles .detalle-item {
   gap: 0.1rem;
 }
@@ -2233,11 +1716,6 @@ button:disabled,
   letter-spacing: -0.01em;
 }
 
-/*
- * Puesto, área y planta. Es un dato, no un rótulo: estaba en el grupo de las
- * versalitas diminutas y se leía la mitad de pequeño que la etiqueta que lo
- * encabeza.
- */
 .perfil-puesto {
   display: flex;
   margin: 0.12rem 0 0;
@@ -2276,10 +1754,6 @@ button:disabled,
   font-size: 0.78rem;
 }
 
-/* ==========================================================================
-   Textos auxiliares
-   ========================================================================== */
-
 .texto-atenuado,
 .texto-secundario,
 .texto-vacio {
@@ -2297,15 +1771,6 @@ button:disabled,
 .texto-centro {
   text-align: center;
 }
-
-/* ==========================================================================
-   Adaptación a pantallas angostas
-   --------------------------------------------------------------------------
-   Bajo 1080 px el lateral deja de ser columna y se vuelve una tira horizontal
-   desplazable arriba del lienzo: el mismo marcado y las mismas entradas, en una
-   sola línea. Los rótulos de grupo desaparecen ahí, porque en horizontal no
-   agrupan nada y sólo alargan el recorrido.
-   ========================================================================== */
 
 @media (max-width: 1080px) {
   .consola {
@@ -2344,8 +1809,6 @@ button:disabled,
     white-space: nowrap;
   }
 
-  /* En horizontal no hay «fondo» al que anclar: las pantallas de sala siguen
-     a las demás entradas dentro de la misma tira. */
   .lateral-pie {
     margin-top: 0;
     padding-top: 0;
@@ -2387,15 +1850,6 @@ button:disabled,
   }
 }
 
-/*
- * Quien pidió menos movimiento no ve ninguno.
- *
- * Las dos primeras reglas ya estaban. La tercera es nueva y hacía falta: las
- * animaciones del recorrido entre pantallas viven en pseudo-elementos que
- * `*` no alcanza —no son descendientes de nada, los crea el navegador—, así
- * que sin nombrarlos seguirían corriendo enteros. Con `animation: none` el
- * navegador salta directo a la página nueva, que es lo que se pidió.
- */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2410,13 +1864,6 @@ button:disabled,
     animation: none !important;
   }
 
-  /*
-   * La escena del apagado se resuelve de golpe. Las reglas de arriba acortan la
-   * duración pero no el retardo, así que sin esto quedarían dos segundos de
-   * rueda quieta antes del resultado: la espera de una animación sin la
-   * animación. Quien pidió menos movimiento ve la palomita y el rótulo desde el
-   * primer cuadro, que es la información, y no ve girar nada.
-   */
   .escena-rueda {
     display: none;
   }
@@ -2429,37 +1876,13 @@ button:disabled,
   }
 }
 
-/* ==========================================================================
-   Agenda pública de salas
-   --------------------------------------------------------------------------
-   Es la pantalla de `src/apps-script/web/Agenda.html` traída al lenguaje de la
-   consola: mismas tarjetas de bento, mismos chips, misma densidad de tabla y la
-   misma tipografía corporativa.
-
-   Lo que **no** trae es fondo. El original es negro liso, y las barras de haces
-   que tenía aquí competían con la retícula de bloques horarios —que ya es una
-   trama de líneas de por sí— y ensuciaban la lectura. El fondo se quedó en el
-   negro de la casa y ya.
-
-   Vive fuera de la consola: no lleva rail ni encabezado de plataforma, porque
-   quien entra aquí no administra nada, sólo reserva.
-   ========================================================================== */
-
 .agenda-cuerpo {
   min-height: 100vh;
-  /* El mismo negro del quiosco de sala, no uno parecido. */
   background: #0a0a0c;
   color: var(--kcm-ink);
   font-family: var(--kcm-font);
 }
 
-/*
- * El fondo de haces, pieza por pieza como en el quiosco: el negro de base, el
- * lienzo donde `haces.js` dibuja los quince haces y la viñeta que cierra las
- * esquinas. Va fijo: la agenda se desplaza y el fondo no debe irse con
- * ella, y `haces.js` mide el canvas contra su padre —con un padre fijo eso es
- * el viewport y no la altura completa de una página larga.
- */
 .agenda-fondo {
   position: fixed;
   inset: 0;
@@ -2501,12 +1924,6 @@ button:disabled,
   padding: clamp(16px, 2.4vw, 30px) clamp(16px, 3vw, 44px) 46px;
 }
 
-/*
- * El encabezado se sale del relleno de la envoltura para pegar la marca a la
- * esquina, como en el quiosco: allá el bloque cuelga de un contenedor a
- * `inset: 0` y arranca en el borde. Los márgenes negativos cancelan el relleno
- * del `shell` y el relleno propio devuelve los ocho píxeles de aire.
- */
 .agenda-encabezado {
   display: flex;
   margin: calc(-1 * clamp(16px, 2.4vw, 30px)) 0 0 calc(-1 * clamp(16px, 3vw, 44px));
@@ -2523,7 +1940,6 @@ button:disabled,
   gap: 4px;
 }
 
-/* El símbolo, a la medida del quiosco: 175 × 162 y sin caja alrededor. */
 .agenda-marca-simbolo {
   position: relative;
   width: clamp(104px, 12vw, 175px);
@@ -2532,7 +1948,6 @@ button:disabled,
   object-fit: contain;
 }
 
-/* El halo azul que el quiosco pone detrás del bloque de marca. */
 .agenda-marca-halo {
   position: absolute;
   width: 297px;
@@ -2691,31 +2106,11 @@ button:disabled,
   color: var(--kcm-ink);
 }
 
-/* Las salas, una tarjeta por sala con su tira de bloques. */
 .agenda-salas {
   display: grid;
   gap: var(--kcm-space-3);
 }
 
-/* --------------------------------------------------------------------------
-   Cada sala lleva el color de su marca
-   --------------------------------------------------------------------------
-   La tarjeta sigue siendo de vidrio: el color no la rellena, la tiñe. Entra
-   por tres lugares y ninguno tapa el contenido —una cinta de 3px en el canto
-   superior con la paleta completa, el tinte de marca sobre todo el fondo, y el
-   punto que precede al nombre—. Así la sala se reconoce por el color antes de
-   leerla, sin perder el contraste del texto en blanco.
-
-   El tinte cubre la tarjeta entera en diagonal y baja de intensidad hacia la
-   esquina opuesta, en vez de desvanecerse a media altura como antes. La caída
-   va del tono fuerte al mismo tono casi apagado —nunca a `transparent`—: un
-   degradado hacia transparente interpola contra negro y deja una banda sucia a
-   medio camino.
-
-   Cada tarjeta declara cuatro variables y las reglas de abajo sólo las
-   sustituyen. Una sala sin paleta se queda con el azul corporativo en vez de
-   romperse. Ver `app/src/web/room-brand.ts` para el vínculo sala → clase.
-   -------------------------------------------------------------------------- */
 .agenda-sala {
   --sala-cinta: linear-gradient(90deg, var(--kcm-brand-dark) 0%, var(--kcm-brand) 100%);
   --sala-halo: rgba(62, 104, 153, 0.42);
@@ -2725,7 +2120,6 @@ button:disabled,
   position: relative;
   overflow: hidden;
   padding: 0.9rem 1rem;
-  /* El tinte de opacidad media cubre la tarjeta entera en diagonal. */
   background:
     linear-gradient(148deg, var(--sala-halo) 0%, var(--sala-halo-fin) 100%), var(--bento-mosaico);
   border: 1px solid var(--sala-borde);
@@ -2768,7 +2162,6 @@ button:disabled,
   --sala-borde: rgba(218, 121, 74, 0.5);
 }
 
-/* Delsey y Gerencia entran con degradado de opacidad media en toda la tarjeta. */
 .agenda-sala.sala-delsey {
   --sala-cinta: linear-gradient(
     90deg,
@@ -2815,9 +2208,6 @@ button:disabled,
   font-weight: 700;
 }
 
-/* El punto repite la paleta al lado del nombre. Va como pseudoelemento y no
-   como marca en el HTML porque no dice nada que el nombre no diga ya: es
-   decoración, y la accesibilidad no debe encontrárselo. */
 .agenda-sala-cabeza h3::before {
   content: "";
   flex: none;
@@ -2882,9 +2272,6 @@ a.agenda-bloque:hover {
   color: rgba(255, 255, 255, 0.22);
 }
 
-/* Selección por dos toques. El rango entero se tiñe para que se vea qué se
-   está por reservar antes de confirmar, y el ancla lleva además un filo, que es
-   lo único que distingue «desde aquí» de «hasta aquí» en una rejilla. */
 .agenda-bloque.elegido {
   background: var(--bento-mosaico-activo);
   border-color: var(--bento-borde-vivo);
@@ -2938,7 +2325,6 @@ a.agenda-bloque:hover {
   background: var(--kcm-brand-dark);
 }
 
-/* El formulario de reservación. */
 .agenda-campo {
   display: flex;
   margin-bottom: var(--kcm-space-2);
@@ -2986,30 +2372,12 @@ a.agenda-bloque:hover {
   }
 }
 
-/* ==========================================================================
-   Acceso a la plataforma
-   --------------------------------------------------------------------------
-   La puerta, y se comporta como una puerta: dos hojas que cubren la pantalla
-   —la azul con la marca, la blanca con las credenciales— y que al entrar se
-   corren hacia sus orillas dejando ver la consola.
-
-   Lo que hay detrás no es la consola de verdad: es su silueta —el lateral y tres
-   tarjetas— dibujada con cuatro rectángulos. Montar la consola real detrás de la
-   puerta obligaría a resolverla para alguien que todavía no entró.
-
-   Ya no es la pantalla del quiosco de sala. Lo era, y compartir la escena hacía
-   que la puerta de una consola de escritorio se viera como el tótem negro del
-   aula: mismo negro, mismos haces de WebGL, misma tipografía de despliegue. Con
-   el rediseño la puerta es del mismo material que lo que abre.
-   ========================================================================== */
-
 .puerta {
   min-height: 100vh;
   overflow-x: hidden;
   background: var(--kcm-canvas);
 }
 
-/* La silueta de la consola, al fondo y fija: es lo que la puerta descubre. */
 .puerta-fondo {
   position: fixed;
   display: grid;
@@ -3040,18 +2408,6 @@ a.agenda-bloque:hover {
   box-shadow: var(--kcm-shadow);
 }
 
-/*
- * El marco de la puerta. Recorta a propósito: cuando las hojas se van a sus
- * orillas quedan a ±101 % de su ancho, y sin recorte esos dos bloques cuentan
- * como contenido del documento.
- *
- * `clip` y no `hidden`, y la diferencia se vio en pantalla: un contenedor
- * `hidden` sigue siendo desplazable por programa, y el navegador lo
- * desplaza solo para no perder de vista el elemento con el foco. Como el campo
- * de usuario lleva `autofocus`, al correrse su hoja el navegador arrastraba
- * 720 px la página entera detrás de ella y la consola aparecía descuadrada.
- * `clip` no crea contenedor de desplazamiento, así que no hay nada que arrastrar.
- */
 .puerta-hojas {
   position: relative;
   z-index: 1;
@@ -3062,26 +2418,12 @@ a.agenda-bloque:hover {
   grid-template-columns: 1.02fr 1fr;
 }
 
-/*
- * Las dos hojas. `will-change` está a propósito: sin él la hoja azul, que lleva
- * degradado y dos círculos difuminados, se repinta en cada cuadro del recorrido.
- */
 .puerta-hoja {
   position: relative;
   display: flex;
   overflow: hidden;
   flex-direction: column;
   justify-content: center;
-  /*
-   * Duraba 720 ms cuando la puerta era el gesto entero: se abría, y detrás
-   * aparecía la consola de golpe. Ahora la puerta sólo hace la primera mitad
-   * —la segunda es la silueta convirtiéndose en la consola real—, así que
-   * alargarla aquí retrasa el resto. 520 ms de hoja más 320 de recorrido se
-   * leen como un movimiento; 720 más 320 se leían como dos.
-   *
-   * Si se cambia este número hay que cambiar `RECORRIDO_MS` en `acceso.js`:
-   * es el guion el que retiene el envío mientras la hoja se va.
-   */
   transition: transform 0.52s cubic-bezier(0.65, 0, 0.35, 1);
   will-change: transform;
 }
@@ -3107,7 +2449,6 @@ a.agenda-bloque:hover {
   transform: translateX(101%);
 }
 
-/* Dos halos de luz sobre el azul. No comunican nada: son la caída de la luz. */
 .puerta-halo {
   position: absolute;
   width: 34rem;
@@ -3131,11 +2472,6 @@ a.agenda-bloque:hover {
   gap: 1rem;
 }
 
-/*
- * El símbolo en blanco. `brightness(0)` deja todos los píxeles opacos en negro
- * conservando el canal alfa, e `invert(1)` los sube a blanco: el contorno azul
- * del archivo queda blanco sin necesidad de un segundo archivo que mantener.
- */
 .puerta-simbolo {
   width: clamp(52px, 6vw, 74px);
   height: auto;
@@ -3234,10 +2570,6 @@ a.agenda-bloque:hover {
   font-size: 0.95rem;
 }
 
-/*
- * El campo rechazado. El sacudón es de la clase y no de un guion: basta con que
- * el campo la traiga puesta cuando la respuesta es un rechazo.
- */
 .campo-rechazado {
   border-color: rgba(179, 38, 30, 0.55);
   animation: puertaSacudon 0.4s ease;
@@ -3276,11 +2608,6 @@ a.agenda-bloque:hover {
   font-weight: 700;
 }
 
-/*
- * Bajo 860 px no hay dos hojas que abrir: la marca se vuelve una franja arriba
- * y el formulario ocupa el resto. La animación sigue existiendo, en vertical,
- * porque el gesto —lo que cubría la pantalla se retira— es el mismo.
- */
 @media (max-width: 860px) {
   .puerta-fondo {
     grid-template-columns: minmax(0, 1fr);
@@ -3317,7 +2644,6 @@ a.agenda-bloque:hover {
   }
 }
 
-/* El formulario de cancelación vive dentro de una celda: en línea y compacto. */
 .formulario-cancelar {
   display: flex;
   align-items: center;
@@ -3332,19 +2658,6 @@ a.agenda-bloque:hover {
   font-size: 0.78rem;
 }
 
-/* Renglón explicativo bajo un tablero o una tabla. Lo usan las pantallas de
- * cobertura, del padrón y de la conexión con Excel. */
-/*
- * El renglón explicativo. Es el texto que más se repite en la consola y el que
- * peor se leía: gris plano, a 0.84rem y con el peso del cuerpo.
- *
- * Tres ajustes como conjunto, que es como pide construirse la jerarquía: medio
- * punto más de peso —que da presencia sin ocupar más—, un pelo de tracking
- * positivo, que es lo que el texto pequeño necesita al revés que un titular, e
- * interlineado algo más suelto porque el cuerpo lo agradece. El color pasa a la
- * tinta atenuada al 80 %, que sobre tarjeta blanca queda en 6.9:1 en vez de los
- * 5.4:1 del gris anterior.
- */
 .texto-nota {
   margin: var(--kcm-space-2) 0 0;
   max-width: 74ch;
@@ -3358,16 +2671,6 @@ a.agenda-bloque:hover {
 .texto-nota strong {
   color: var(--kcm-ink);
 }
-
-/* ==========================================================================
-   Ficha del trabajador
-   --------------------------------------------------------------------------
-   Arriba, la persona y sus cuatro cifras. Debajo, dos columnas: la telaraña y
-   la trayectoria a la izquierda; los cursos del puesto y sus constancias a la
-   derecha. Los tonos de estado son los de toda la consola —verde acreditado,
-   ámbar por reforzar, azul programado, rojo pendiente— y siempre van con su
-   palabra al lado: el color no es el único que lo dice.
-   ========================================================================== */
 
 .dnc-cabecera {
   display: grid;
@@ -3570,8 +2873,6 @@ a.agenda-bloque:hover {
   color: var(--capta-tenue);
 }
 
-/* ── La telaraña ─────────────────────────────────────────────────────────── */
-
 .dnc-radar {
   margin: 0;
 }
@@ -3613,10 +2914,6 @@ a.agenda-bloque:hover {
   stroke-width: 1.5;
 }
 
-/*
- * El rótulo toma el color de su estado; el de un curso acreditado se apaga a
- * gris, porque no pide nada. `fill` sigue a `color` con `currentColor`.
- */
 .dnc-radar-rotulo {
   fill: currentColor;
   font-family: var(--kcm-font);
@@ -3677,8 +2974,6 @@ a.agenda-bloque:hover {
   gap: 0.35rem;
 }
 
-/* ── La trayectoria ──────────────────────────────────────────────────────── */
-
 .dnc-linea {
   margin: 0;
   padding: 0;
@@ -3692,7 +2987,6 @@ a.agenda-bloque:hover {
   gap: 0.12rem;
 }
 
-/* El punto del hito y, debajo, el hilo que lo une con el siguiente. */
 .dnc-hito::before {
   position: absolute;
   top: 0.25rem;
@@ -3761,8 +3055,6 @@ a.agenda-bloque:hover {
   font-size: 0.8rem;
   font-weight: 700;
 }
-
-/* ── Los cursos del puesto ───────────────────────────────────────────────── */
 
 .dnc-cursos {
   margin: 0;
@@ -3844,14 +3136,6 @@ a.agenda-bloque:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-
-/* ==========================================================================
-   Avance por curso
-   --------------------------------------------------------------------------
-   Una fila por curso: nombre, barra apilada y la cuenta escrita. La barra es un
-   SVG que se estira a su celda; los tramos llevan los tonos de estado y un
-   trazo del color de la tarjeta que los separa sin estirarse con ellos.
-   ========================================================================== */
 
 .avance-cursos {
   display: grid;
@@ -4000,20 +3284,6 @@ a.agenda-bloque:hover {
   }
 }
 
-/* ==========================================================================
-   El tablero de inicio
-   --------------------------------------------------------------------------
-   Inicio dejó de ser un índice. Antes era una retícula con las diez funciones
-   de la plataforma en recuadros y su estado de disponibilidad al lado —un menú
-   dibujado dos veces, porque el lateral ya lleva a los mismos sitios—. Ahora es
-   lo que se mira al llegar por la mañana: qué hay hoy, qué está abierto y qué
-   está esperando.
-
-   Ninguna de estas cifras es de adorno: todas salen de los servicios que la
-   consola ya tiene. Cuando la corrida usa repositorios en memoria salen en
-   cero, que es la verdad de esa corrida.
-   ========================================================================== */
-
 .tablero-columnas {
   display: grid;
   gap: var(--kcm-space-3);
@@ -4034,11 +3304,6 @@ a.agenda-bloque:hover {
   }
 }
 
-/*
- * La tarjeta destacada, en azul lleno. Es la única superficie de color del
- * tablero, y por eso lleva lo que hay que hacer a continuación y no un dato
- * más: si todo fuera azul, nada lo sería.
- */
 .destacado {
   position: relative;
   padding: clamp(1.3rem, 2.4vw, 1.75rem);
@@ -4111,7 +3376,6 @@ a.agenda-bloque:hover {
   color: #ffffff;
 }
 
-/* La lista del tablero: una fila por cosa, con su sello a la izquierda. */
 .lista-tablero {
   display: flex;
   margin: 0;
@@ -4166,7 +3430,6 @@ a.agenda-bloque:hover {
   font-size: 0.75rem;
 }
 
-/* Cabecera de sección con su acción a la derecha, como en la referencia. */
 .cabecera-fila {
   display: flex;
   align-items: flex-start;
@@ -4191,10 +3454,6 @@ a.agenda-bloque:hover {
   text-decoration: underline;
 }
 
-/*
- * Sólo para lectores de pantalla. Se usa donde el rótulo visible es un icono:
- * `clip-path` en vez de `display: none`, que lo sacaría del árbol accesible.
- */
 .solo-lectores {
   position: absolute;
   width: 1px;
@@ -4204,20 +3463,12 @@ a.agenda-bloque:hover {
   white-space: nowrap;
 }
 
-/* El formulario que vive dentro de una celda de tabla: en línea y compacto. */
 .formulario-en-linea {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
 
-/*
- * Piezas sueltas que las pantallas usaban sin que la hoja las declarara. Una
- * clase inventada no rompe nada visible: el elemento sale sin estilo y se nota
- * tarde. Van aquí, con su nombre original, en vez de renombrarlas en la vista.
- */
-
-/* Casilla con su rótulo al lado, dentro de un formulario en retícula. */
 .opcion {
   display: flex;
   align-items: center;
@@ -4231,24 +3482,12 @@ a.agenda-bloque:hover {
   margin: 0;
 }
 
-/* El bloque de insignias y puesto de la ficha del trabajador. */
 .perfil-datos-principales {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 0.4rem;
 }
-
-/* ==========================================================================
-   Pasos de una operación
-   --------------------------------------------------------------------------
-   Para cuando una tarjeta ofrece varias acciones y el orden entre ellas
-   importa: tres `<form>` sueltos uno debajo de otro se enciman, y con el mismo
-   aspecto no hay forma de saber cuál se oprime primero.
-
-   Cada paso lleva su número, su nombre, una línea de qué hace y su botón. El
-   número no es decoración: es la respuesta a «¿por dónde empiezo?».
-   ========================================================================== */
 
 .pasos {
   display: flex;
@@ -4307,23 +3546,12 @@ a.agenda-bloque:hover {
   line-height: 1.45;
 }
 
-/* El formulario del paso es sólo el envoltorio del botón: no ocupa renglón. */
 .paso-accion {
   display: flex;
   flex: none;
   align-items: center;
 }
 
-/* ── La cola del día ───────────────────────────────────────────────────────
- *
- * El único bloque de la consola donde la cifra manda sobre el texto. Va así a
- * propósito: la pregunta que contesta —«¿qué hago ahora?»— se responde con un
- * número y un verbo, y cualquier párrafo al lado la haría más lenta de leer.
- *
- * La franja de color no es decorativa: marca los renglones que piden acción de
- * quien está frente a la pantalla. Una sesión abierta no la lleva, porque lo que
- * falta ahí ocurre en la sala y no aquí.
- */
 .cola {
   list-style: none;
   margin: 0;
@@ -4351,16 +3579,6 @@ a.agenda-bloque:hover {
   border-left-color: var(--kcm-danger);
 }
 
-/*
- * La cifra de la cola, hermana de la de los mosaicos y con el mismo cambio: de
- * monoespaciada a la familia de texto con cifras tabulares. Ya declaraba
- * `tabular-nums`, así que la monoespaciada no estaba sosteniendo la alineación
- * —la sostenía esa línea— y sólo aportaba el aire de terminal.
- *
- * El tamaño pasa a `rem`: en píxeles fijos ignoraba el ajuste de tamaño de
- * texto del sistema, y esta cifra es justo la que alguien con la vista cansada
- * necesita poder agrandar.
- */
 .cola-cifra {
   font-family: var(--kcm-font);
   font-size: 1.875rem;
@@ -4419,49 +3637,20 @@ a.agenda-bloque:hover {
   transition-duration: var(--kcm-mov-toque);
 }
 
-/* ==========================================================================
-   El módulo DC-3
-   --------------------------------------------------------------------------
-   Cuatro pantallas —emisión, panel, lote e historial— que comparten tres cosas
-   que el resto de la consola no tenía: una lista que se marca por renglones,
-   una barra de cobertura y los filtros como fichas que se quitan de una en una.
-
-   Nada de esto lleva guiones. Las casillas viven dentro del formulario que
-   envuelve la tabla, «marcar esta página» es un enlace que vuelve a pintarla con
-   las casillas puestas, y la barra es un `<progress>` nativo porque
-   `style-src 'self'` descarta el atributo `style` y un ancho proporcional no se
-   puede escribir de otro modo sin inventar una escala de clases.
-   ========================================================================== */
-
-/* La tarjeta que sólo enlaza a otra pantalla: menos alta y sin aire sobrante. */
 .tarjeta-compacta {
   padding: var(--kcm-space-3) var(--kcm-space-4);
 }
 
-/*
- * Dos tarjetas a la par, que se apilan cuando no caben. El `minmax(0, 1fr)` no
- * es adorno: sin el cero, una tabla ancha dentro de una columna la estira por
- * encima de su mitad y la de al lado se encoge hasta desaparecer.
- */
 .rejilla-dos {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
 }
 
-/* La tira de cifras dentro de una tarjeta ya estrecha. */
 .kpi-tira-compacta .kpi {
   padding: var(--kcm-space-2) var(--kcm-space-3);
 }
 
-/*
- * El mosaico de la situación que se está viendo.
- *
- * Las tres situaciones son también las tres pestañas, así que uno de los tres
- * mosaicos siempre corresponde a lo que hay debajo. Marcarlo evita la pregunta
- * de «¿esta lista es la de listos o la de faltan datos?» en una pantalla que se
- * usa con prisa.
- */
 .kpi-activo {
   border-color: var(--bento-borde-vivo);
   box-shadow:
@@ -4469,15 +3658,6 @@ a.agenda-bloque:hover {
     inset 0 0 0 1px var(--bento-borde-vivo);
 }
 
-/*
- * La barra de cobertura.
- *
- * `appearance: none` es obligatorio antes de poder pintarla, y los dos
- * pseudoelementos de abajo no son alternativas: Chrome y Safari dibujan el valor
- * con `::-webkit-progress-value` sobre `::-webkit-progress-bar`, y Firefox con
- * `::-moz-progress-bar`. Sin los dos bloques, la barra se ve nativa en uno de
- * los dos navegadores y pintada en el otro.
- */
 .cobertura-barra {
   display: block;
   width: 100%;
@@ -4522,8 +3702,6 @@ a.agenda-bloque:hover {
   min-width: 12rem;
 }
 
-/* ── Los filtros puestos, como fichas ─────────────────────────────────────── */
-
 .chips-filtro {
   display: flex;
   margin: var(--kcm-space-2) 0 0;
@@ -4538,11 +3716,6 @@ a.agenda-bloque:hover {
   font-weight: 700;
 }
 
-/*
- * Una ficha es un enlace que lleva a la misma pantalla sin ese filtro. Por eso
- * no lleva subrayado ni color de enlace: se lee como un objeto que se quita, no
- * como un sitio al que ir.
- */
 .chip-filtro,
 .chip-limpiar {
   display: inline-flex;
@@ -4581,11 +3754,6 @@ a.agenda-bloque:hover {
   border-style: dashed;
 }
 
-/*
- * Lo que le falta a un renglón, una ficha por dato. En ámbar y no en rojo: un
- * recuadro en blanco no invalida la constancia, la deja a medias para llenarse a
- * mano, y el rojo de esta consola está reservado a lo que no se puede hacer.
- */
 .chip-falta {
   display: inline-block;
   margin: 0 0.2rem 0.2rem 0;
@@ -4598,8 +3766,6 @@ a.agenda-bloque:hover {
   white-space: nowrap;
 }
 
-/* ── La lista que se marca ────────────────────────────────────────────────── */
-
 .formulario-tanda {
   margin: var(--kcm-space-3) 0 0;
 }
@@ -4609,11 +3775,6 @@ a.agenda-bloque:hover {
   text-align: center;
 }
 
-/*
- * `accent-color` pinta la casilla con el azul de la plataforma sin reconstruir
- * el control: el nativo ya sabe de foco, de teclado y de lectores de pantalla, y
- * una casilla dibujada a mano pierde las tres cosas.
- */
 .casilla-kcm {
   width: 1.05rem;
   height: 1.05rem;
@@ -4621,19 +3782,10 @@ a.agenda-bloque:hover {
   cursor: pointer;
 }
 
-/* La fila marcada se distingue del resto sin depender del color de la casilla. */
 .tabla-plan tbody tr:has(.casilla-kcm:checked) {
   background: var(--kcm-brand-light);
 }
 
-/*
- * Las acciones de un renglón, en una sola línea.
- *
- * Envolvían, y con tres controles eso significa un renglón de tabla el doble de
- * alto que los demás en cuanto el nombre del curso crece. `nowrap` las mantiene
- * juntas y la columna se ensancha lo que haga falta, que es lo que la tabla
- * sabe hacer sola.
- */
 .celda-acciones {
   display: flex;
   align-items: center;
@@ -4642,11 +3794,6 @@ a.agenda-bloque:hover {
   white-space: nowrap;
 }
 
-/*
- * El pie de la tabla: a la izquierda lo que se puede hacer con lo marcado, a la
- * derecha dónde se está. Se apilan en cuanto no caben, y la cuenta queda arriba
- * de los dos botones de página, que es como se lee de arriba abajo.
- */
 .pie-de-tabla {
   display: flex;
   margin-top: var(--kcm-space-3);
@@ -4678,23 +3825,6 @@ a.agenda-bloque:hover {
   white-space: nowrap;
 }
 
-/* ==========================================================================
-   DC-3 como plataforma
-   --------------------------------------------------------------------------
-   El módulo dejó de ser cuatro reportes con el aspecto de cualquier otra
-   pantalla y pasó a ser una aplicación dentro de la consola: barra propia con
-   la cifra de lo que falta emitir y un buscador que lleva al expediente de una
-   persona, filtros de un clic con su cuenta al lado, el plazo legal en cada
-   renglón, y una barra de selección que aparece al marcar.
-
-   Sigue sin haber un solo guion. Lo que en otra aplicación haría JavaScript lo
-   hace aquí el navegador con lo que ya trae: `popover` para las advertencias,
-   `:has()` para la barra de selección, un contador de CSS para su cifra y
-   `<meta refresh>` para que el documento baje solo después de emitir.
-   ========================================================================== */
-
-/* ── La barra del módulo ─────────────────────────────────────────────────── */
-
 .modulo {
   display: flex;
   padding: 0.35rem 0.35rem 0.35rem 0.45rem;
@@ -4707,12 +3837,6 @@ a.agenda-bloque:hover {
   box-shadow: var(--kcm-shadow);
 }
 
-/*
- * Nombre propio en el recorrido entre pantallas: al moverse dentro del módulo la
- * barra se queda quieta y la píldora se desliza. Va acotado a `.lienzo >` por
- * la misma razón que la tira genérica: un nombre repetido cancela la
- * transición entera.
- */
 .lienzo > .modulo {
   view-transition-name: kcm-modulo;
 }
@@ -4769,7 +3893,6 @@ a.agenda-bloque:hover {
   flex: none;
 }
 
-/* La cifra de lo que falta emitir: la bandeja dice cuánto hay sin abrirla. */
 .modulo-cuenta {
   min-width: 1.6rem;
   padding: 0.06rem 0.45rem;
@@ -4834,8 +3957,6 @@ a.agenda-bloque:hover {
   border-radius: var(--kcm-radius-pill);
   font-size: 0.8rem;
 }
-
-/* ── La bandeja: filtros a la izquierda, lista a la derecha ─────────────── */
 
 .bandeja {
   display: grid;
@@ -4925,7 +4046,6 @@ a.agenda-bloque:hover {
   color: var(--kcm-brand);
 }
 
-/* El punto de color acompaña al rótulo, nunca lo sustituye. */
 .faceta-punto {
   width: 0.55rem;
   height: 0.55rem;
@@ -5017,7 +4137,6 @@ a.agenda-bloque:hover {
   flex-wrap: wrap;
 }
 
-/* Opciones hermanas que se excluyen: el orden, el periodo. */
 .segmentado {
   display: inline-flex;
   padding: 0.2rem;
@@ -5069,7 +4188,6 @@ a.agenda-bloque:hover {
   color: var(--kcm-brand);
 }
 
-/* Lo que vale para toda la lista se dice una vez, arriba, y no en cada renglón. */
 .bandeja-lista .nota-lista {
   max-width: none;
   margin: 0.5rem 0 0;
@@ -5085,8 +4203,6 @@ a.agenda-bloque:hover {
   padding: 0.2rem 0;
   background: transparent;
 }
-
-/* ── Los renglones ──────────────────────────────────────────────────────── */
 
 .celda-persona {
   min-width: 14rem;
@@ -5135,7 +4251,6 @@ a.persona-nombre:hover {
   min-width: 4.2rem;
 }
 
-/* El curso, corto y con su nombre completo al pasar el puntero. */
 .curso-ficha {
   display: inline-block;
   padding: 0.18rem 0.55rem;
@@ -5149,18 +4264,6 @@ a.persona-nombre:hover {
   white-space: nowrap;
 }
 
-/* ── La advertencia sobre el renglón ────────────────────────────────────── */
-
-/*
- * Un `popover` declarativo. El navegador lo pone en la capa superior, lo cierra
- * con Esc o con un clic fuera, y devuelve el foco al botón que lo abrió: todo lo
- * que un diálogo necesita, sin una línea de guion.
- *
- * `display: none` por omisión es deliberado. En un navegador que no entiende
- * `popover`, el elemento es un `<div>` más y la advertencia de cada renglón se
- * dibujaría debajo de la lista; así se queda oculta, y la regla de abajo
- * cambia el botón por el enlace a la pantalla de confirmación.
- */
 .confirmacion {
   display: none;
   width: min(27rem, calc(100vw - 2rem));
@@ -5189,7 +4292,6 @@ a.persona-nombre:hover {
   letter-spacing: -0.01em;
 }
 
-/* Lista de advertencias de la liberación: un trabajador por renglón, con scroll si son muchas. */
 .confirmacion .confirmacion-lista {
   max-height: 16rem;
   margin: 0.65rem 0 0;
@@ -5258,7 +4360,6 @@ a.persona-nombre:hover {
   accent-color: var(--kcm-brand);
 }
 
-/* Botón con `popover` donde se entiende; enlace a la pantalla donde no. */
 .sin-popover {
   display: none;
 }
@@ -5277,17 +4378,6 @@ a.persona-nombre:hover {
   max-width: 46rem;
 }
 
-/* ── La barra de lo marcado ─────────────────────────────────────────────── */
-
-/*
- * Aparece al marcar el primer renglón y se pega al borde inferior mientras se
- * recorre la lista. Es oscura para que no se confunda con la tabla: es la
- * herramienta que actúa sobre ella, no una fila más.
- *
- * La cifra la pone un contador de CSS que suma las casillas marcadas del mismo
- * formulario; el elemento que la enseña va después de la tabla, que es lo que
- * el contador necesita para haberlas contado todas.
- */
 .formulario-tanda {
   counter-reset: marcadas;
 }
@@ -5382,8 +4472,6 @@ a.persona-nombre:hover {
   color: rgba(255, 255, 255, 0.8);
 }
 
-/* ── El acuse de una emisión ────────────────────────────────────────────── */
-
 .acuse {
   display: flex;
   padding: var(--kcm-space-3) var(--kcm-space-4);
@@ -5454,8 +4542,6 @@ a.persona-nombre:hover {
     transform: translateY(-6px);
   }
 }
-
-/* ── El expediente de una persona ───────────────────────────────────────── */
 
 .expediente-cabecera {
   display: flex;
@@ -5607,8 +4693,6 @@ a.persona-nombre:hover {
   border-top: 1px solid var(--bento-borde);
 }
 
-/* ── La búsqueda ────────────────────────────────────────────────────────── */
-
 .lista-personas {
   display: flex;
   margin: 0;
@@ -5671,8 +4755,6 @@ a.persona-nombre:hover {
   color: var(--kcm-secundario);
 }
 
-/* ── El historial ───────────────────────────────────────────────────────── */
-
 .historial-filtros {
   display: flex;
   margin-bottom: var(--kcm-space-3);
@@ -5695,7 +4777,6 @@ a.persona-nombre:hover {
   justify-self: start;
 }
 
-/* El encabezado de cada día: se lee como un separador, no como otra columna. */
 .tabla-kcm .fila-dia th {
   padding: 0.75rem 0.9rem 0.45rem;
   background: var(--bento-tarjeta);
@@ -5717,12 +4798,6 @@ a.persona-nombre:hover {
   color: var(--kcm-secundario);
 }
 
-/* ── La cobertura por área ──────────────────────────────────────────────── */
-
-/*
- * El avance de entrega va en el azul de la plataforma y no en verde: mide una
- * proporción, no dice que algo esté bien. El verde se queda para los estados.
- */
 .cobertura-entrega::-webkit-progress-value {
   background: var(--kcm-brand);
 }
@@ -5764,8 +4839,6 @@ a.persona-nombre:hover {
   font-size: 0.78rem;
   font-weight: 700;
 }
-
-/* ── Los datos del formato ──────────────────────────────────────────────── */
 
 .definiciones-dc3 {
   display: grid;
@@ -5841,8 +4914,6 @@ a.persona-nombre:hover {
   font-size: 0.82rem;
 }
 
-/* ── Pantallas angostas ─────────────────────────────────────────────────── */
-
 @media (max-width: 1180px) {
   .bandeja {
     grid-template-columns: minmax(0, 1fr);
@@ -5882,13 +4953,6 @@ a.persona-nombre:hover {
   }
 }
 
-/* ── Ajustes de la primera vuelta ───────────────────────────────────────── */
-
-/*
- * Las acciones de un renglón van en su propia caja y no convierten la celda en
- * una caja flexible: una celda con `display: flex` deja de ser celda, y su línea
- * inferior se dibujaba a otra altura que la del resto del renglón.
- */
 .acciones-renglon {
   display: flex;
   align-items: center;
@@ -5912,14 +4976,6 @@ a.persona-nombre:hover {
   white-space: nowrap;
 }
 
-/*
- * Los envíos secundarios del módulo —aplicar un filtro, buscar— no llevan el
- * azul lleno: en cada pantalla hay una sola acción principal, y filtrar no lo
- * es. `.formulario-secundario` declara lo mismo para cualquier formulario de
- * búsqueda que comparta pantalla con la acción principal, como el catálogo de
- * Ocupaciones junto a la consulta. Sin esta regla, el estilo de omisión de `type="submit"` los pintaba como
- * la acción de la pantalla.
- */
 .facetas button[type="submit"],
 .historial-formulario button[type="submit"],
 .modulo-busqueda button[type="submit"],
@@ -5946,11 +5002,6 @@ a.persona-nombre:hover {
   min-height: 2.45rem;
 }
 
-/*
- * La pista de las barras dentro de una tabla. El fondo de la tabla y el de la
- * pista eran el mismo gris, así que de un medidor sólo se veía el tramo lleno,
- * suelto, como una raya sin escala.
- */
 .tabla-contenedor .cobertura-barra,
 .tabla-contenedor .cobertura-barra::-webkit-progress-bar {
   background: var(--bento-mosaico-activo);
@@ -5960,7 +5011,6 @@ a.persona-nombre:hover {
   white-space: nowrap;
 }
 
-/* Segunda vuelta: la bandeja cabe sin desplazar a lo ancho en un monitor de oficina. */
 .bandeja {
   grid-template-columns: 13.5rem minmax(0, 1fr);
 }
@@ -5982,34 +5032,20 @@ a.persona-nombre:hover {
   padding-inline: 0.85rem;
 }
 
-/* La opción de la hoja de entrega, dentro de la barra oscura. */
 .seleccion-opcion {
   white-space: nowrap;
 }
 
-/* El historial: la hora y la persona juntas, sin que la tabla se estire. */
 .tabla-historial .celda-persona {
   min-width: 12rem;
 }
 
-/*
- * El punto de quiebre de la bandeja va al final a propósito: la regla que fija
- * el ancho de la columna de filtros está más arriba con la misma especificidad,
- * y escrito antes, este bloque perdía y los filtros no bajaban nunca.
- */
 @media (max-width: 1180px) {
   .bandeja {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-/*
- * Panel de cambios: lo que trae un envío, como un «antes y después».
- *
- * Azul translúcido de la casa para el marco; verde lo que entra, rojo lo que
- * sale y el valor anterior tachado junto al nuevo. Sin leyendas: el color y el
- * signo de cada renglón dicen lo que pasa.
- */
 .panel-cambios {
   display: grid;
   gap: var(--kcm-space-3);
@@ -6258,7 +5294,6 @@ a.persona-nombre:hover {
   font-size: 0.82rem;
 }
 
-/* Lo largo que casi nunca hace falta ver, como la lista de cursos, va plegado. */
 .plegable > summary {
   padding: 0.2rem 0;
   cursor: pointer;
@@ -6295,7 +5330,6 @@ a.persona-nombre:hover {
   margin-top: var(--kcm-space-3);
 }
 
-/* Cada dato que cambia de una persona, como pastilla; varios se acomodan en fila. */
 .diff-dato {
   display: inline-flex;
   flex-wrap: wrap;
@@ -6317,7 +5351,6 @@ a.persona-nombre:hover {
   color: var(--kcm-danger);
 }
 
-/* Sólo aviso: la diferencia se enseña en gris porque no se escribe. */
 .cambio-cifra-aviso .cambio-cifra-valor,
 .diff-aviso .diff-marca {
   color: var(--kcm-muted);

@@ -1,15 +1,3 @@
-/**
- * Ocupaciones: la clave de ocupación de los trabajadores que no la traen.
- *
- * La pantalla recibe el padrón semanal y el guion `ocupaciones.js` conduce la
- * clasificación contra la API, un caso por petición: pide el plan, consulta los
- * casos de uno en uno y al final baja el Excel con las claves llenas, que se
- * revisa antes de aplicarlo desde `/padron`. Sin guion no hay clasificación: la
- * función publicada no alcanza a hacerla entera en una sola petición.
- *
- * La búsqueda en el catálogo se conserva como herramienta de verificación.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import type { Ocupacion, Subarea } from "../../domain/ocupaciones/catalogo.ts";
 import type { HojaDeEstilos } from "../estaticos.ts";
@@ -38,10 +26,6 @@ function cifra(valor: number): string {
   return valor.toLocaleString("es-MX");
 }
 
-/**
- * El formulario y la tarjeta de avance. La tarjeta nace oculta con `hidden` y
- * no con `style`: la política de la pantalla no admite estilos en línea.
- */
 function renderFormulario(datos: DatosDeOcupaciones): Html {
   return html`<section class="tarjeta" aria-labelledby="titulo-clasificacion">
     <div class="seccion-cabecera">
@@ -92,8 +76,6 @@ function renderFormulario(datos: DatosDeOcupaciones): Html {
     }
   </section>`;
 }
-
-// ------------------------------------------------------------ el catálogo
 
 function renderOpcionesDeSubarea(subareas: readonly Subarea[], elegida: string): Html {
   const porArea = new Map<string, Subarea[]>();
@@ -203,8 +185,6 @@ function renderResultadosDelCatalogo(datos: DatosDeOcupaciones): Html {
       archivo de la Secretaría.
     </p>`;
 }
-
-// ------------------------------------------------------------ la pantalla
 
 export function renderOccupationsPage(datos: DatosDeOcupaciones): string {
   const contenido = html`

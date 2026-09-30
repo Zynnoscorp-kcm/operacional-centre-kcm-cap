@@ -1,24 +1,6 @@
-/**
- * Tipos de dominio para Preliberación (Función 4).
- *
- * Fuente: `docs/arquitectura/MODELO_DATOS.md`, hojas ASISTENCIAS y
- * PRELIBERACION_REVISION.
- *
- * El reconocimiento óptico quedó fuera de alcance, de modo que no existe
- * compuerta de revisión de imágenes previa a la preliberación.
- */
-
 import type { SessionStatus } from "../quiosco/tipos.ts";
 
-// ---------------------------------------------------------------------------
-// Estados de revisión de preliberación
-// ---------------------------------------------------------------------------
-
 export type PreReleaseReviewStatus = "SIN_REVISION" | "CON_HALLAZGOS" | "SIN_HALLAZGOS";
-
-// ---------------------------------------------------------------------------
-// Resultado de examen — los tres estados + el inicial
-// ---------------------------------------------------------------------------
 
 export type ExamOutcome =
   "EXAMEN_PENDIENTE" | "EXAMEN_CONFIRMADO" | "EXAMEN_NO_ENCONTRADO" | "EXAMEN_REPROBADO";
@@ -30,13 +12,6 @@ export const VALID_EXAM_OUTCOMES: readonly ExamOutcome[] = Object.freeze([
   "EXAMEN_REPROBADO",
 ]);
 
-/**
- * Las tres alternativas que el revisor ve y puede escoger.
- * `EXAMEN_PENDIENTE` queda fuera a propósito: es el valor inicial del registro,
- * no una decisión. En el banco de trabajo un examen parte como aprobado y sólo
- * se mueve a reprobado o no entregado; para volver a "no calificado" no hay
- * botón, porque eso sería deshacer la revisión, no registrarla.
- */
 export const SELECTABLE_EXAM_OUTCOMES: readonly ExamOutcome[] = Object.freeze([
   "EXAMEN_CONFIRMADO",
   "EXAMEN_REPROBADO",
@@ -50,16 +25,11 @@ export const EXAM_OUTCOME_LABELS: Readonly<Record<ExamOutcome, string>> = Object
   EXAMEN_REPROBADO: "Reprobado",
 });
 
-// ---------------------------------------------------------------------------
-// Hallazgos de preliberación
-// ---------------------------------------------------------------------------
-
 export interface FindingDefinition {
   readonly label: string;
   readonly derived: boolean;
 }
 
-/** Hallazgos derivados (calcula el servidor, no se declaran a mano). */
 export const DERIVED_FINDINGS = Object.freeze([
   "EXAMENES_FALTANTES",
   "EXAMENES_REPROBADOS",
@@ -68,7 +38,6 @@ export const DERIVED_FINDINGS = Object.freeze([
   "ASISTENCIA_NO_COTEJADA",
 ] as const);
 
-/** Hallazgos declarados (inspección de la lista física). */
 export const DECLARED_FINDINGS = Object.freeze([
   "FIRMA_INSTRUCTOR_FALTANTE",
   "FIRMAS_COLABORADORES_FALTANTES",
@@ -92,25 +61,15 @@ export const PRERELEASE_FINDINGS: Readonly<Record<FindingCode, FindingDefinition
   DATOS_SESION_INCORRECTOS: { label: "Datos de sesión incorrectos", derived: false },
 });
 
-// ---------------------------------------------------------------------------
-// Estados de sesión válidos para cada operación
-// ---------------------------------------------------------------------------
-
-/** Sesiones que aparecen en la lista revisable del workbench. */
 export const EDITABLE_STATUSES: readonly SessionStatus[] = Object.freeze([
   "CERRADA",
   "PRELIBERACION",
   "LIBERADA_PARCIAL",
 ]);
 
-/** Sesiones válidas para entrar a PRELIBERACION. */
 export const PRE_RELEASE_ENTRY_STATUSES: readonly SessionStatus[] = Object.freeze(["CERRADA"]);
 
 export const RELEASE_QUEUE_STATUS: SessionStatus = "LISTA_PARA_LIBERAR";
-
-// ---------------------------------------------------------------------------
-// Roles
-// ---------------------------------------------------------------------------
 
 export const REVIEW_ROLES = Object.freeze(["CAPACITACION", "ADMINISTRADOR"] as const);
 export const READ_ROLES = Object.freeze([
@@ -120,20 +79,11 @@ export const READ_ROLES = Object.freeze([
   "CAPACITADOR",
 ] as const);
 
-// ---------------------------------------------------------------------------
-// Constantes
-// ---------------------------------------------------------------------------
-
 export const MAX_COMMENT_LENGTH = 1500;
 export const MAX_REASON_LENGTH = 200;
 export const MAX_ROSTER_SIZE = 200;
 export const MAX_FINDINGS_COUNT = 20;
-/** Tope de la bandeja de revisión; el legado usa el mismo corte. */
 export const MAX_LISTED_SESSIONS = 200;
-
-// ---------------------------------------------------------------------------
-// Motivos de bloqueo para liberación
-// ---------------------------------------------------------------------------
 
 export type BlockingReason =
   | "IDENTIDAD_INVALIDA"
@@ -146,13 +96,6 @@ export type BlockingReason =
   | "SESION_NO_AUTORIZADA"
   | "YA_LIBERADO_PREVIAMENTE";
 
-/**
- * Los motivos, con el nombre que los lee quien recibe el reporte impreso.
- *
- * La clave es el contrato entre capas y no cambia; esto es sólo su traducción
- * para una hoja de papel, donde `SESION_NO_AUTORIZADA` no significa nada para
- * quien no conoce el sistema.
- */
 export const BLOCKING_REASON_LABELS: Readonly<Record<BlockingReason, string>> = Object.freeze({
   IDENTIDAD_INVALIDA: "Identidad no validada",
   NUMERO_NO_IDENTIFICADO: "Número no identificado",
@@ -164,10 +107,6 @@ export const BLOCKING_REASON_LABELS: Readonly<Record<BlockingReason, string>> = 
   SESION_NO_AUTORIZADA: "Sesión no autorizada",
   YA_LIBERADO_PREVIAMENTE: "Ya liberado antes",
 });
-
-// ---------------------------------------------------------------------------
-// DTOs
-// ---------------------------------------------------------------------------
 
 export interface ParticipantAttendance {
   readonly attendanceId: string;
@@ -272,10 +211,6 @@ export interface PreReleaseReviewRecord {
   readonly updatedAt: string;
 }
 
-// ---------------------------------------------------------------------------
-// Inputs
-// ---------------------------------------------------------------------------
-
 export interface SaveReviewInput {
   readonly sessionId: string;
   readonly requestId: string;
@@ -306,27 +241,13 @@ export interface EmployeeInfo {
   readonly active: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Reporte de preliberación
-// ---------------------------------------------------------------------------
-
-/**
- * Los dos modos del reporte. `VISTA_PREVIA` no deja rastro: se puede pedir
- * cuantas veces se quiera sin cambiar la revisión ni la etapa de la sesión.
- * `ARCHIVO` sí, y por eso deja evidencia inmutable y un asiento de auditoría.
- */
 export type ReportMode = "VISTA_PREVIA" | "ARCHIVO";
 
 export const REPORT_KIND = "REPORTE_PRELIBERACION";
 export const REPORT_MIME_TYPE = "application/pdf";
 
-/** Tope de tamaño; un reporte que lo rebase indica un padrón corrupto, no un PDF grande. */
 export const MAX_REPORT_BYTES = 5 * 1024 * 1024;
 
-/**
- * Fila de `operacion.sesion_evidencia` para un reporte archivado. Sólo describe el archivo:
- * los bytes viven en el almacén de objetos, referenciados por `storagePath`.
- */
 export interface ReportEvidenceRecord {
   readonly evidenceId: string;
   readonly sessionId: string;
@@ -341,12 +262,10 @@ export interface ReportEvidenceRecord {
   readonly createdAt: string;
 }
 
-/** Lo que devuelve generar un reporte, con o sin archivo. */
 export interface PreReleaseReport {
   readonly sessionId: string;
   readonly sessionCode: string;
   readonly mode: ReportMode;
-  /** Sin hallazgos: el reporte es un talón de sesión concluida, no un acta. */
   readonly clean: boolean;
   readonly findings: readonly string[];
   readonly counters: PreReleaseCounters;

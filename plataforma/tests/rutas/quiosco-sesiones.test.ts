@@ -1,7 +1,3 @@
-/**
- * Pruebas de integración HTTP para rutas de Quiosco y Sesiones (Funciones 1, 2 y 3).
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
@@ -13,7 +9,6 @@ import { buildServer } from "../../src/server/build-server.ts";
 const FIXED_DATE = new Date("2026-08-03T12:00:00.000Z");
 const clock = { now: () => FIXED_DATE, nowIso: () => FIXED_DATE.toISOString() };
 
-/** Cookie de consola: `/sesiones` y `/api/sessions` viven detrás del guardia. */
 async function cookieDeConsola(app: FastifyInstance): Promise<string> {
   const res = await app.inject({
     method: "POST",
@@ -29,9 +24,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     KCM_ENV: "development",
     KCM_PORT: "8787",
     KCM_PILOT_SESSION_PIN: "8765",
-    // Sin acceso abierto: esa bandera apaga la comprobación de PIN del quiosco,
-    // que es justo lo que estas pruebas fijan. Para las pantallas que el
-    // guardia cierra se entra con credencial, como entraría una persona.
     KCM_PILOT_CONSOLE_USER: "Maricela0000",
     KCM_PILOT_CONSOLE_PASSWORD: "0000",
   });
@@ -68,8 +60,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.ok(res.body.includes("Registro de asistencia"));
     assert.ok(res.headers["content-security-policy"]?.includes("default-src 'none'"));
 
-    // Es una pantalla externa: corre en la computadora de la sala y no debe
-    // arrastrar la navegación de la consola central.
     assert.equal(res.body.includes('class="lateral"'), false, "el quiosco no lleva menú lateral");
     assert.equal(res.body.includes("Preliberación"), false, "el quiosco no navega a la consola");
   });
@@ -77,7 +67,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
   it("POST /api/kiosk/unlock desbloquea la estación con el PIN de quiosco correcto (Secret 1)", async () => {
     const { app } = await createTestApp();
 
-    // PIN incorrecto
     const resFail = await app.inject({
       method: "POST",
       url: "/api/kiosk/unlock",
@@ -85,7 +74,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     });
     assert.equal(resFail.statusCode, 400);
 
-    // PIN correcto
     const resOk = await app.inject({
       method: "POST",
       url: "/api/kiosk/unlock",
@@ -117,7 +105,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
   it("POST /api/kiosk/launch crea la sesión pero la deja esperando autorización", async () => {
     const { app } = await createTestApp();
 
-    // Intento con PIN de quiosco (Secret 1) debe fallar para lanzar sesión
     const resFail = await app.inject({
       method: "POST",
       url: "/api/kiosk/launch",
@@ -129,7 +116,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     });
     assert.equal(resFail.statusCode, 400);
 
-    // Con PIN de apertura (Secret 2)
     const resOk = await app.inject({
       method: "POST",
       url: "/api/kiosk/launch",
@@ -146,13 +132,10 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.equal(resOk.statusCode, 200);
     const body = JSON.parse(resOk.body);
     assert.equal(body.success, true);
-    // La sala levanta la sesión, no la abre: queda en borrador, visible en la
-    // consola, y sin ficha con la que registrar a nadie.
     assert.equal(body.pendingAuthorization, true);
     assert.equal(body.session.status, "BORRADOR");
     assert.equal(body.token, undefined);
 
-    // Sin autorizar, la sala no consigue ficha: el registro no se abre.
     const desbloqueo = await app.inject({
       method: "POST",
       url: "/api/kiosk/unlock",
@@ -168,7 +151,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.equal(sinAutorizar.statusCode, 409);
     assert.equal(sinAutorizar.json().error.code, "SESION_NO_AUTORIZADA");
 
-    // Capacitación la autoriza desde la consola y hasta entonces la sala entra.
     const autorizacion = await app.inject({
       method: "POST",
       url: `/api/sessions/${body.session.sessionId}/authorize`,
@@ -185,7 +167,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.equal(vinculo.statusCode, 200);
     body.token = vinculo.json().token;
 
-    // Comprobar que el quiosco puede hacer bootstrap con el token recibido
     const resBoot = await app.inject({
       method: "GET",
       url: "/api/kiosk/bootstrap",
@@ -197,7 +178,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.equal(bootBody.acceptingRegistrations, true);
     assert.equal(bootBody.availability.maximum, 40);
 
-    // Registro de participante a través de la API
     const resReg = await app.inject({
       method: "POST",
       url: "/api/kiosk/register",
@@ -215,7 +195,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
       "Solicitud recibida; la asistencia se confirmará durante el cotejo físico",
     );
 
-    // Cierre de sesión desde el quiosco
     const resClose = await app.inject({
       method: "POST",
       url: "/api/kiosk/close",
@@ -230,7 +209,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     const { app } = await createTestApp();
     const cookie = await cookieDeConsola(app);
 
-    // Crear sesión por API
     const resCreate = await app.inject({
       method: "POST",
       url: "/api/sessions",
@@ -245,14 +223,12 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.equal(resCreate.statusCode, 201);
     const { session } = JSON.parse(resCreate.body);
 
-    // Abrir sesión
     await app.inject({
       method: "POST",
       url: `/api/sessions/${session.sessionId}/open`,
       headers: { cookie },
     });
 
-    // Consultar vista HTML /sesiones
     const resHtml = await app.inject({
       method: "GET",
       url: "/sesiones",
@@ -262,7 +238,6 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
     assert.ok(resHtml.body.includes("Sesiones operativas"));
     assert.ok(resHtml.body.includes(session.sessionCode));
 
-    // Consultar API JSON /api/sessions
     const resApi = await app.inject({
       method: "GET",
       url: "/api/sessions",
@@ -308,24 +283,11 @@ describe("Rutas HTTP de Quiosco y Sesiones", () => {
   });
 });
 
-/**
- * La ficha de sesión que confirma la sala antes de registrar a nadie.
- *
- * El código de sesión son doce caracteres que se dictan en voz alta. En un día
- * con dos cursos en la misma sala, teclear el de al lado no daba ninguna señal:
- * el quiosco aceptaba el código y pasaba directo a registrar, y las asistencias
- * quedaban colgadas del curso ajeno hasta que alguien lo notara en la
- * liberación. Estas pruebas fijan que el vínculo viaje con lo que hace falta
- * para darse cuenta: el nombre del curso, no su identificador.
- */
 describe("Quiosco · ficha de confirmación de sesión", () => {
   const config = loadConfig({
     KCM_ENV: "development",
     KCM_PORT: "8787",
     KCM_PILOT_SESSION_PIN: "8765",
-    // Sin acceso abierto: esa bandera apaga la comprobación de PIN del quiosco,
-    // que es justo lo que estas pruebas fijan. Para las pantallas que el
-    // guardia cierra se entra con credencial, como entraría una persona.
     KCM_PILOT_CONSOLE_USER: "Maricela0000",
     KCM_PILOT_CONSOLE_PASSWORD: "0000",
   });
@@ -364,8 +326,6 @@ describe("Quiosco · ficha de confirmación de sesión", () => {
     const sessionCode = apertura.json().session.sessionCode as string;
     const sessionId = apertura.json().session.sessionId as string;
 
-    // La sesión nace del quiosco, así que no abre registro hasta que
-    // Capacitación la autoriza desde la consola. Es la compuerta que se prueba.
     const autorizacion = await app.inject({
       method: "POST",
       url: `/api/sessions/${sessionId}/authorize`,
@@ -394,8 +354,6 @@ describe("Quiosco · ficha de confirmación de sesión", () => {
     assert.equal(ficha.date, "2026-08-03");
     assert.equal(ficha.status, "ABIERTA");
 
-    // Lo que hace útil a la ficha: un nombre que una persona reconoce. Si esto
-    // devolviera `CAP-SINT-001`, la pantalla de confirmación no serviría de nada.
     assert.ok(ficha.trainingName, "la ficha trae nombre de curso");
     assert.notEqual(ficha.trainingName, ficha.trainingId);
   });

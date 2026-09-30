@@ -1,47 +1,15 @@
 Attribute VB_Name = "KcmActualizador"
 Option Explicit
 
-' Actualizacion de los modulos del cliente en un solo paso.
-'
-' Quitar e importar a mano, modulo por modulo, es lento y facil de equivocar: un
-' modulo importado sin quitar el viejo entra como KcmPanel1 y el libro deja de
-' compilar. KcmActualizarModulos lo hace de una vez con todos los .bas y .cls de
-' la carpeta de modulos (KCM-VBA-CRLF en el escritorio): quita el que tenga el
-' mismo nombre e importa el nuevo, y quita los modulos retirados del cliente.
-'
-' Tres cosas que no son obvias:
-'
-' - No se actualiza a si mismo: un modulo no puede quitarse mientras corre. Si
-'   este cambia, se reimporta a mano, una vez.
-' - El viejo se renombra antes de quitarlo. Excel difiere la baja hasta que
-'   termina la macro, y sin el cambio de nombre el nuevo entraria como KcmPanel1.
-' - Todo lo que se necesita de otros modulos -la carpeta, el permiso de macOS
-'   para leer cada archivo, la lista y la confirmacion- se pide ANTES de quitar
-'   nada, y si falta un permiso no se toca ningun modulo. Quitar el viejo e
-'   importar el nuevo que no se deja leer dejaba el libro sin ese modulo. El
-'   aviso final sale cuando la macro ya termino, con los modulos nuevos en su
-'   sitio; mientras tanto el resultado viaja en la barra de estado.
-'
-' Requiere, una sola vez en cada equipo, confiar en el acceso al modelo de
-' objetos de proyectos de VBA.
-
 Private Const ESTE_MODULO As String = "KcmActualizador"
 Private Const ACCION As String = "Actualizar modulos"
 Private Const PREFIJO_BIEN As String = "KCM modulos: "
 Private Const PREFIJO_MAL As String = "KCM modulos, detenido: "
 
-' No se toca: el diccionario es la clase de la que depende todo el cliente,
-' incluido este modulo. Si se quedara sin el, nada compilaria, ni esta macro
-' para repararlo. Casi nunca cambia; cuando cambie, se importa a mano.
 Private Const NO_SE_IMPORTAN As String = "|KcmDiccionario|"
 
-' Retirados del cliente. Si siguen en el libro, se quitan: KcmOrdenBarrido desde el
-' 2026-09-05; KcmEnvioLocal desde que los envios grandes salen en partes;
-' KcmCoordinator, la corrida programada que nunca se habilito, y KcmDiagHash, el
-' diagnostico temporal de la huella, que cubre la autoprueba.
 Private Const RETIRADOS As String = "|KcmOrdenBarrido|KcmEnvioLocal|KcmCoordinator|KcmDiagHash|"
 
-''' Reemplaza de una vez los modulos del libro por los de la carpeta nueva.
 Public Sub KcmActualizarModulos()
     Dim proyecto As Object
     Dim componente As Object
@@ -88,8 +56,6 @@ Public Sub KcmActualizarModulos()
         Exit Sub
     End If
 
-    ' Todos los permisos de una vez y antes de tocar nada. Sin permiso para leer
-    ' un archivo, su modulo quedaria quitado y sin reponer.
     ilegible = KcmConcederAccesoArchivos(porImportar)
     If Len(ilegible) > 0 Then
         KcmAvisoAtencion ACCION, "No se cambio ningun modulo: falta permiso para leer " & _
@@ -103,7 +69,6 @@ Public Sub KcmActualizarModulos()
         "Se reemplazaran " & CStr(porImportar.Count) & " modulos del libro por los de la carpeta.", _
         carpeta & vbCrLf & "Al terminar falta Depuracion, Compilar, y guardar el libro.") Then Exit Sub
 
-    ' Desde aqui no se llama a ningun otro modulo del cliente: se estan reemplazando.
     On Error GoTo Fallo
     sufijo = "_v" & Format$(Now, "hhnnss")
     For Each archivo In porImportar
@@ -141,7 +106,6 @@ Fallo:
     Application.OnTime Now, "KcmAvisarModulosActualizados"
 End Sub
 
-''' El aviso final, cuando la macro ya termino y los modulos nuevos estan en su sitio.
 Public Sub KcmAvisarModulosActualizados()
     Dim texto As String
 
@@ -157,7 +121,6 @@ Public Sub KcmAvisarModulosActualizados()
     End If
 End Sub
 
-''' El nombre del modulo a partir de la ruta de su archivo: sin carpeta ni extension.
 Private Function KcmNombreDeModulo(ByVal ruta As String) As String
     Dim nombre As String
 

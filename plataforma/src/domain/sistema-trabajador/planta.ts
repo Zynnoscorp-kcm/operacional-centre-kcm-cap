@@ -1,26 +1,7 @@
-/**
- * Nombre corto de la planta.
- *
- * La matriz escribe `ECATEPEC I` y `ECATEPEC II`; en el piso, en los formatos y
- * en la conversación son la 1 y la 2. La pantalla muestra el número y
- * el título del dato conserva el nombre completo, así que nadie pierde el
- * original.
- *
- * Lo que no sea una de esas dos —hoy `MANTTO INGENIERIA`, mañana lo que traiga
- * el archivo— se muestra tal cual. Traducir a ciegas convertiría un valor
- * desconocido en un número inventado, y un número de planta equivocado en la
- * ficha de un trabajador es peor que un nombre largo.
- */
-
 const ROMANOS: Readonly<Record<string, string>> = { I: "1", II: "2", "1": "1", "2": "2" };
 
-/** `ECATEPEC`, con o sin acento, con o sin `PLANTA` delante, y su ordinal. */
 const ECATEPEC = /^(?:PLANTA\s+)?ECATEPEC\s*[-\s]?\s*(I{1,2}|[12])$/u;
 
-/**
- * La planta como se dice en una frase: «Planta 1» para las numeradas y el
- * nombre tal cual para las demás —«Planta MANTTO INGENIERIA» no se dice—.
- */
 export function plantLabel(plant: string | null | undefined): string {
   const corto = shortPlantName(plant);
   return /^\d+$/u.test(corto) ? `Planta ${corto}` : corto;

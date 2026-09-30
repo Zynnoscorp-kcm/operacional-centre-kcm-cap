@@ -1,11 +1,3 @@
-/**
- * Padrón semanal: lector de multipart, cuadre contra la base y las tres rutas.
- *
- * Lo que se vigila aquí es la regla que hace segura la pantalla: subir el
- * archivo no escribe. Todo lo demás —los conteos del cuadre, el plan de un
- * solo uso, la sesión obligatoria— existe para sostener esa regla.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -30,8 +22,6 @@ const ENTORNO = {
   KCM_PILOT_CONSOLE_USER: "Maricela0000",
   KCM_PILOT_CONSOLE_PASSWORD: "0000",
 } as const;
-
-// ---------------------------------------------------------------- dobles
 
 function empleado(
   employeeId: string,
@@ -85,7 +75,6 @@ class ExtractorFalso implements RosterExtractorPort {
 class RepositorioFalso implements RosterRepositoryPort {
   aplicaciones: EscriturasDePadron[] = [];
   lecturas = 0;
-  /** `trabajadorId → fecha` de la inducción vigente que la base ya tiene. */
   induccionesVigentes = new Map<string, string>();
   readonly #filas: FilaDePadronBase[];
   readonly #puestos: PuestoDelCatalogo[];
@@ -145,8 +134,6 @@ function fila(numeroTrabajador: string, extra: Partial<FilaDePadronBase> = {}): 
   };
 }
 
-// ---------------------------------------------------------------- multipart
-
 describe("Padrón · lector de multipart", () => {
   function cuerpo(limite: string, partes: string[]): Buffer {
     return Buffer.concat([
@@ -156,8 +143,6 @@ describe("Padrón · lector de multipart", () => {
   }
 
   it("separa campos de archivos y entrega los bytes intactos", () => {
-    // Un ZIP empieza con PK\x03\x04 y contiene CRLF y bytes nulos: si el lector
-    // pasara por texto, esto sería exactamente lo que se corrompe.
     const binario = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x0d, 0x0a, 0x00, 0xff, 0x0d, 0x0a]);
     const limite = "----KCM";
     const partes = Buffer.concat([
@@ -177,7 +162,6 @@ describe("Padrón · lector de multipart", () => {
     const archivo = leido.archivos[0];
     assert.ok(archivo);
     assert.equal(archivo.campo, "archivo");
-    // La ruta de Windows no viaja: sólo el nombre.
     assert.equal(archivo.nombre, "sem 29 CAP.xlsx");
     assert.deepEqual([...archivo.contenido], [...binario]);
   });
@@ -196,8 +180,6 @@ describe("Padrón · lector de multipart", () => {
     assert.equal(leido.archivos.length, 0);
   });
 });
-
-// ---------------------------------------------------------------- servicio
 
 describe("Padrón · cuadre contra la base", () => {
   function servicio(repositorio: RepositorioFalso, leido: PadronLeido | Error) {
@@ -225,9 +207,9 @@ describe("Padrón · cuadre contra la base", () => {
 
     assert.equal(plan.cuadre.activosEnArchivo, 3);
     assert.equal(plan.cuadre.reconocidos, 2);
-    assert.equal(plan.cuadre.desconocidos, 1); // 99999 no está en la base
-    assert.equal(plan.cuadre.ausentes, 1); // 00003 está activo y no viene
-    assert.equal(plan.cuadre.curpPorEscribir, 1); // sólo 00001
+    assert.equal(plan.cuadre.desconocidos, 1);
+    assert.equal(plan.cuadre.ausentes, 1);
+    assert.equal(plan.cuadre.curpPorEscribir, 1);
     assert.equal(plan.cuadre.altasPorCorregir, 1);
     assert.equal(plan.cuadre.altasQueCoinciden, 1);
     assert.equal(plan.cuadre.induccionesNuevas, 2);
@@ -235,7 +217,6 @@ describe("Padrón · cuadre contra la base", () => {
     assert.deepEqual(plan.muestras.desconocidos, ["99999"]);
     assert.deepEqual(plan.muestras.ausentes, ["00003"]);
 
-    // Lo esencial: revisar no escribe, y la base se lee una sola vez.
     assert.equal(repositorio.aplicaciones.length, 0);
     assert.equal(repositorio.lecturas, 1);
   });
@@ -244,7 +225,6 @@ describe("Padrón · cuadre contra la base", () => {
     const repositorio = new RepositorioFalso([
       fila("00001", { curp: "AAAA800101HDFXXX01", fechaAlta: "2020-01-15" }),
     ]);
-    // La inducción de esa alta ya está en el ledger: no vuelve a contarse.
     repositorio.induccionesVigentes.set(fila("00001").trabajadorId, "2020-01-15");
 
     const plan = await servicio(
@@ -271,11 +251,6 @@ describe("Padrón · cuadre contra la base", () => {
     assert.equal(plan.sinCambios, false);
   });
 
-  /**
-   * El caso que tumbaba la carga: `registro_hc` tiene un índice único por
-   * trabajador y curso mientras el registro está vigente, así que una fecha
-   * corregida no se absorbe sola. Se cuenta aparte y no se escribe.
-   */
   it("una fecha de inducción distinta se informa y no se cuenta como nueva", async () => {
     const repositorio = new RepositorioFalso([
       fila("00001", { curp: "AAAA800101HDFXXX01", fechaAlta: "2020-01-15" }),
@@ -308,9 +283,6 @@ describe("Padrón · cuadre contra la base", () => {
     assert.equal(plan.cuadre.puestosNuevos, 1);
     assert.deepEqual(plan.muestras.puestosNuevos, ["SUPERVISOR DE LINEA"]);
 
-    // Los dos se movieron, y el que fue a dar a un puesto sin declarar también
-    // cuenta como movimiento: antes no, porque la rama colgaba de un `else` de
-    // «puesto nuevo» y el destino sin catálogo tapaba la mudanza.
     assert.equal(plan.cuadre.puestosCambiados, 2);
     assert.deepEqual(
       plan.muestras.cambiosDePuesto.map((cambio) => [
@@ -359,16 +331,6 @@ describe("Padrón · cuadre contra la base", () => {
     );
   });
 
-  // --------------------------------------------------- clave de ocupación
-
-  /**
-   * La regla cambió el 2026-08-12. Hasta entonces la clave se consolidaba por
-   * puesto —se creía que la ocupación describía al puesto— y el puesto con dos
-   * claves se rechazaba entero. El departamento corrigió la premisa: la clave
-   * varía según el puesto y el área de cada trabajador, así que un mismo
-   * puesto en dos áreas trae legítimamente dos claves. Estas pruebas fijan la
-   * regla nueva, y la primera es exactamente el caso que la anterior perdía.
-   */
   it("un mismo puesto en dos áreas conserva sus dos claves", async () => {
     const repositorio = new RepositorioFalso([
       fila("00001", { area: "CONVERTIDORA" }),
@@ -384,7 +346,6 @@ describe("Padrón · cuadre contra la base", () => {
 
     assert.equal(plan.cuadre.traeColumnaCno, true);
     assert.equal(plan.cuadre.cnoPorEscribir, 2);
-    // Ya no es conflicto: es la regla. Antes esto escribía cero claves.
     assert.equal(plan.cuadre.cnoEnConflicto, 0);
     assert.equal(plan.sinCambios, false);
   });
@@ -403,8 +364,6 @@ describe("Padrón · cuadre contra la base", () => {
     ).previsualizar(Buffer.from("x"), "sem 31 CAP.xlsx");
 
     assert.equal(plan.cuadre.cnoEnConflicto, 1);
-    // El archivo es la autoridad: se escriben las dos y se avisa del choque,
-    // en lugar de dejar a los dos sin ocupación como hacía la regla anterior.
     assert.equal(plan.cuadre.cnoPorEscribir, 2);
     assert.match(plan.muestras.cnoEnConflicto[0] ?? "", /OPERADOR · CONVERTIDORA/u);
     assert.match(plan.muestras.cnoEnConflicto[0] ?? "", /8121 \/ 7231/u);
@@ -430,8 +389,6 @@ describe("Padrón · cuadre contra la base", () => {
     ).previsualizar(Buffer.from("x"), "sem 31 CAP.xlsx");
 
     assert.equal(plan.cuadre.puestosNuevos, 1);
-    // La clave va al trabajador, así que no necesita que su puesto exista en el
-    // catálogo. El puesto sin declarar sigue teniendo su propio aviso.
     assert.equal(plan.cuadre.cnoPorEscribir, 1);
   });
 
@@ -454,8 +411,6 @@ describe("Padrón · cuadre contra la base", () => {
       padron([empleado("00001", { position: "OPERADOR", curp: "AAAA800101HDFXXX01" })]),
     ).previsualizar(Buffer.from("x"), "sem 31 CAP.xlsx");
 
-    // La columna puede llegar vacía y llenarse después: sólo se escribe lo que
-    // el archivo traiga, y el hueco nunca es una instrucción de borrar.
     assert.equal(plan.cuadre.cnoPorEscribir, 0);
     assert.equal(plan.cuadre.cnoQueCoinciden, 0);
   });
@@ -482,8 +437,6 @@ describe("Padrón · cuadre contra la base", () => {
   });
 });
 
-// ---------------------------------------------------------------- rutas
-
 describe("Padrón · rutas", () => {
   async function servidor(conBase = true) {
     return buildServer({
@@ -500,7 +453,6 @@ describe("Padrón · rutas", () => {
     });
   }
 
-  /** La cookie sale de la puerta real: no hay forma de forjarla desde fuera. */
   async function sesion(app: Awaited<ReturnType<typeof servidor>>): Promise<string> {
     const res = await app.inject({
       method: "POST",
@@ -544,8 +496,6 @@ describe("Padrón · rutas", () => {
 
     const formulario = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
     assert.equal(formulario.statusCode, 200);
-    // El barrido se dispara desde Excel; la carga manual sigue siendo la otra
-    // puerta y no desapareció al retirar el encargo desde la consola.
     assert.doesNotMatch(formulario.body, /Leer no cambia nada/u);
     assert.match(formulario.body, /Carga manual del archivo/u);
     assert.match(formulario.body, /enctype="multipart\/form-data"/u);

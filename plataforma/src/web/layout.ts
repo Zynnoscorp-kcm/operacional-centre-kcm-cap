@@ -1,116 +1,30 @@
-/**
- * Envoltura común de la consola central.
- *
- * El armazón tiene dos piezas y nada más: un menú lateral angosto a la
- * izquierda y un lienzo a la derecha que ocupa todo lo que sobra. El lienzo
- * es la plataforma —barra de título, sub-pestañas y contenido—; el lateral sólo
- * lleva a sitios. Ninguna pantalla escribe `<!doctype>` por su cuenta ni vuelve
- * a dibujar el fondo.
- *
- * ── Por qué así ───────────────────────────────────────────────────────────
- *
- * El armazón anterior era un panel de vidrio esmerilado centrado sobre un fondo
- * de haces diagonales, con un rail de veinte entradas planas en seis grupos.
- * Dos cosas no funcionaban: el vidrio y los haces se leían por detrás de las
- * tablas de ocho y nueve columnas, y veinte entradas obligaban a recorrer el
- * rail entero para encontrar una. Ahora el fondo es plano, las tarjetas son
- * blancas, y las veinte funciones viven en once secciones: lo que antes eran
- * entradas hermanas —las cuatro vistas de trabajadores, las dos cargas, las
- * cuatro auditorías, las dos de base— son hoy sub-pestañas dentro de su sección.
- * No se retiró ninguna función; se dejaron de listar todas a la vez.
- */
-
 import type { DeploymentRole, EnvironmentName } from "../config/environment.ts";
 import { hojaDeEstilos, simboloKcm } from "./estaticos.ts";
 import { html, rawHtml, renderDocument, type Html } from "./kit/html.ts";
 
 const NOMBRE_DE_LA_PLATAFORMA = "Plataforma KCM";
 
-/**
- * Cómo se dice el entorno en la barra. En producción no se dice nada: es lo
- * normal. En los otros dos se avisa en palabras, para que nadie confunda una
- * instalación de pruebas con la real.
- */
 const ENTORNO_VISIBLE: Readonly<Record<EnvironmentName, string>> = {
   production: "",
   staging: "Entorno de ensayo",
   development: "Entorno de pruebas",
 };
 
-/** Oscuro para la sala y la agenda pública; claro para la consola central. */
 export type TemaVisual = "plataforma" | "quiosco";
 
 export interface OpcionesDeDiseno {
-  /** Encabezado visible de la pantalla. */
   readonly titulo: string;
   readonly subtitulo: string;
   readonly entorno: EnvironmentName;
-  /**
-   * En qué máquina está parada la persona. Se enseña porque el reparto entre
-   * nube y equipo del departamento sólo es manejable si se ve antes de
-   * intentar algo: quien abre `/padron` un lunes necesita saber, sin leer
-   * documentación, si está en la computadora que puede cargar el archivo.
-   *
-   * Opcional para no obligar a las veinte pantallas a declararlo: lo pasan las
-   * que tienen operaciones repartidas.
-   */
   readonly papel?: DeploymentRole;
   readonly contenido: Html;
-  /**
-   * Título del documento. Por omisión es «título · Plataforma KCM»; una
-   * pantalla lo fija a mano cuando la pestaña necesita otro rótulo.
-   */
   readonly tituloDocumento?: string;
-  /** Se coloca a la derecha de la barra de título; la pantalla decide qué va ahí. */
   readonly estado?: Html;
-  /** Por omisión, la consola central. */
   readonly tema?: TemaVisual;
-  /**
-   * Ruta de la pantalla, para marcar el menú y la sub-pestaña. Se compara con el
-   * `href` de cada sección y de cada sub-pestaña.
-   */
   readonly rutaActiva?: string;
-  /**
-   * Deja el lienzo sin menú lateral y a lo ancho completo.
-   *
-   * Cambia también la clase del cuerpo, y no es un detalle: la rejilla de la
-   * consola declara dos columnas —244 px para el menú y el resto para el
-   * lienzo—, así que al quitar el menú sin decírselo a la rejilla el lienzo
-   * caía en la columna de 244 px y la pantalla entera se dibujaba dentro de esa
-   * franja. Con `consola-sola` la rejilla pasa a una sola columna.
-   */
   readonly sinRail?: boolean;
-  /**
-   * Segundos entre recargas automáticas de la pantalla.
-   *
-   * Sólo lo enciende el tablero de inicio, y por eso no viene por omisión: una
-   * pantalla con formulario que se recarga sola borra lo que alguien esté
-   * escribiendo —es la razón por la que la agenda pública lo rechazó—. Inicio no
-   * tiene un solo campo, así que ahí es gratis, y es lo que permite ver que una
-   * sesión se cerró en la sala sin ir a recargar a mano.
-   *
-   * Es un `<meta http-equiv="refresh">` y no un guion porque la consola declara
-   * `default-src 'none'` sin `script-src`.
-   */
   readonly recargaCada?: number;
-  /**
-   * Barra propia de un módulo, en lugar de la tira genérica de sub-pestañas.
-   *
-   * La usan las secciones que son una aplicación dentro de la consola —hoy,
-   * DC-3—: su navegación lleva iconos, cifras y un buscador que la tira
-   * genérica no sabe dibujar. El lateral sigue encendiendo la sección por su
-   * prefijo.
-   */
   readonly modulo?: Html;
-  /**
-   * Dirección que el navegador descarga al llegar la página.
-   *
-   * Es un `<meta http-equiv="refresh">` hacia una respuesta marcada como
-   * adjunto: el navegador la baja y la página se queda donde está. Lo usa la
-   * emisión, que vuelve a la lista con sus filtros y deja que el documento baje
-   * solo; sin guiones no hay otra manera de hacer las dos cosas con un clic.
-   * Excluye `recargaCada`: sólo cabe una instrucción de ese tipo por documento.
-   */
   readonly descarga?: string;
 }
 
@@ -124,25 +38,10 @@ interface SeccionDeMenu {
   readonly nombre: string;
   readonly href: string;
   readonly icono: Html;
-  /**
-   * Las pantallas hermanas de la sección. Se dibujan como tira de pestañas
-   * arriba del contenido, no como entradas del lateral: son la misma función
-   * mirada de varias maneras.
-   */
   readonly subpestanas?: readonly Subpestana[];
-  /**
-   * Las rutas que empiezan así también encienden la sección. Lo declaran los
-   * módulos con barra propia, cuyas pantallas no son sub-pestañas del armazón.
-   */
   readonly prefijo?: string;
 }
 
-/**
- * Iconos. Son trazos de 20×20 en `currentColor`, escritos a mano y en línea:
- * la política de contenido no admite un paquete de iconos por CDN, y un `<svg>`
- * en el marcado no es un script ni una hoja externa. Ninguno lleva atributo
- * `style`, que la política tampoco dejaría aplicar.
- */
 function icono(trazo: string): Html {
   return rawHtml(
     '<svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" ' +
@@ -194,26 +93,11 @@ const ICONO_PANTALLA = icono(
   '<rect x="2.8" y="4" width="14.4" height="9.6" rx="1.8"/><path d="M7.2 17h5.6M10 13.6V17"/>',
 );
 
-/**
- * Las dos pantallas que no son secciones de la consola: corren en otra
- * computadora y se abren, no se administran. Van al pie del lateral y no en el
- * menú porque nadie «navega» a ellas desde su escritorio; se dejan a mano
- * porque al retirar la retícula de la portada se quedaron sin puerta.
- */
 const PANTALLAS_EXTERNAS: readonly { readonly nombre: string; readonly href: string }[] = [
   { nombre: "Quiosco de sala", href: "/quiosco" },
   { nombre: "Agenda pública", href: "/agenda" },
 ];
 
-/**
- * Las doce secciones de la consola, en el orden en que se recorren durante una
- * semana de trabajo: primero lo que se opera a diario, luego lo que cierra una
- * sesión, luego el padrón y sus tableros, y al final las dos consolas técnicas.
- *
- * El quiosco de sala no está aquí a propósito: corre en la computadora de la
- * sala de capacitación, es una pantalla externa y no una sección a la que se
- * navegue desde el escritorio. Sale de `/quiosco` con su propia envoltura.
- */
 const MENU: readonly SeccionDeMenu[] = [
   { grupo: "Operación", nombre: "Inicio", href: "/", icono: ICONO_INICIO },
   { grupo: "Operación", nombre: "Sesiones", href: "/sesiones", icono: ICONO_SESIONES },
@@ -259,11 +143,6 @@ const MENU: readonly SeccionDeMenu[] = [
     nombre: "Cargas",
     href: "/matriz",
     icono: ICONO_CARGAS,
-    // Van juntas y en el orden en que se usan: la matriz trae el historial de
-    // fechas, el padrón la CURP y el alta. Sincronía va después de las dos
-    // porque coteja lo que ambas dejaron aplicado. Control de cambios avisa de
-    // cada envío completo y el historial va al final porque se consulta
-    // después, cuando hay que explicar qué entró y de dónde.
     subpestanas: [
       { nombre: "Barrido de matriz", href: "/matriz" },
       { nombre: "Padrón semanal", href: "/padron" },
@@ -274,8 +153,6 @@ const MENU: readonly SeccionDeMenu[] = [
   },
   {
     grupo: "Capacitación y DNC",
-    // Antes de DC-3 porque la alimenta: la clave de ocupación es el recuadro
-    // que le faltaba a la constancia.
     nombre: "Ocupaciones",
     href: "/ocupaciones",
     icono: ICONO_OCUPACIONES,
@@ -285,9 +162,6 @@ const MENU: readonly SeccionDeMenu[] = [
     nombre: "DC-3",
     href: "/dc3",
     icono: ICONO_DC3,
-    // Sin sub-pestañas: DC-3 es un módulo con barra propia —secciones, la cifra
-    // de lo que falta emitir y el buscador del expediente—, que dibuja cada
-    // una de sus pantallas. El prefijo mantiene encendida la sección.
     prefijo: "/dc3",
   },
   { grupo: "Sistema", nombre: "Conexión Excel", href: "/excel", icono: ICONO_EXCEL },
@@ -381,11 +255,6 @@ function claseDeTema(tema: TemaVisual): string {
   return tema === "quiosco" ? "tema-quiosco" : "tema-plataforma";
 }
 
-/**
- * La sección a la que pertenece una ruta. Una sub-pestaña marca a su sección,
- * de modo que estar en `/trabajadores/departamentos` deja encendido «Trabajadores»
- * en el lateral y «Comparativa de planta» en la tira de arriba.
- */
 function seccionActiva(rutaActiva: string | undefined): SeccionDeMenu | undefined {
   if (rutaActiva === undefined) return undefined;
   return MENU.find(

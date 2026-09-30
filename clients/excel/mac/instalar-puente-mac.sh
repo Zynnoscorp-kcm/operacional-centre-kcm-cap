@@ -1,16 +1,4 @@
 #!/bin/bash
-# Instala el guion del puente KCM en la carpeta desde la que Excel para Mac puede
-# invocarlo. Es el unico paso de instalacion que macOS necesita ademas de importar
-# los modulos VBA en el libro.
-#
-#   bash excel/mac/instalar-puente-mac.sh
-#
-# Sin este paso el cliente sigue funcionando: cae solo a `popen` de libSystem, que
-# no exige instalar nada. Lo que se pierde es que curl y shasum salgan de la caja
-# de arena de Excel, y entonces una matriz que viva fuera del contenedor hay que
-# copiarla antes de poder resumirla. Con el guion instalado no hace falta.
-#
-# Es idempotente: sobrescribe el guion anterior y no toca nada mas.
 set -euo pipefail
 
 origen="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/KcmPuente.applescript"
@@ -26,7 +14,6 @@ if [ ! -f "$origen" ]; then
   exit 1
 fi
 
-# La carpeta puede no existir si Excel nunca ejecuto un guion en este equipo.
 mkdir -p "$destino"
 cp "$origen" "$destino/KcmPuente.applescript"
 chmod 644 "$destino/KcmPuente.applescript"

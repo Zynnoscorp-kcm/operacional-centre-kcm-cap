@@ -1,4 +1,3 @@
-/** Almacenamiento Drive desacoplado; la hoja conserva solo metadatos, nunca binarios. */
 var KcmDriveEvidenceRepository = (function () {
   "use strict";
   var ALLOWED_MIME = ["image/jpeg", "image/png", "application/pdf"];

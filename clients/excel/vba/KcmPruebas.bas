@@ -1,32 +1,6 @@
 Attribute VB_Name = "KcmPruebas"
 Option Explicit
 
-' La autoprueba del libro.
-'
-' Existe por una limitacion honesta: este cliente se construye y se prueba en una
-' Mac, y probarlo ahi no demuestra nada sobre la rama de Windows, porque el
-' compilador de cada sistema compila solo la suya. El analisis estatico
-' (`npm run lint:vba`) cubre lo que se puede saber leyendo el texto de las dos
-' ramas; lo que no puede saber es si un metodo de WinHTTP existe, si la politica
-' del equipo permite macros o si hay un proxy interceptando TLS.
-'
-' Esta macro cierra esa distancia de la unica forma disponible: alguien del
-' departamento la ejecuta una vez en su equipo y devuelve el resultado. Ocho
-' etapas, cada una con su renglon en la hoja KCM_ESTADO, que se selecciona y se
-' copia de un toque.
-'
-' Ninguna etapa escribe en la base ni transmite nada, con una sola excepcion
-' declarada: la ultima consulta STATUS_V1, que es la accion de estado del
-' protocolo y es de solo lectura. Si el equipo no tiene endpoint configurado, esa
-' etapa se salta en lugar de fallar.
-'
-' El modulo no tiene ninguna directiva `#If`: ejerce el puerto de plataforma
-' desde fuera, por sus entradas publicas, que es exactamente como lo usa el resto
-' del cliente.
-
-' Vectores conocidos. No dependen de este codigo: son valores publicos y fijos, y
-' por eso sirven de prueba. El de SHA-256 es el digest de la cadena "abc"; los de
-' base64 salen de RFC 4648 aplicado a las mismas cadenas.
 Private Const AP_SHA_ABC As String = _
     "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 Private Const AP_B64_HOLA As String = "SG9sYQ"
@@ -35,7 +9,6 @@ Private Const AP_B64_ABC As String = "YWJj"
 Private mFallos As Long
 Private mAvisos As Long
 
-''' Punto de entrada. Es la macro que se pide ejecutar en un equipo nuevo.
 Public Sub KcmAutoprueba()
     mFallos = 0
     mAvisos = 0
@@ -75,11 +48,6 @@ PruebaError:
     On Error GoTo 0
 End Sub
 
-' ------------------------------------------------------------------ etapas
-
-''' El reloj. El servidor rechaza una peticion fechada a mas de cinco minutos de
-''' su propia hora, y ese rechazo llega disfrazado de credencial vencida. Verlo
-''' aqui ahorra buscar el problema donde no esta.
 Private Sub KcmApReloj()
     Dim marca As String
     Dim desfase As Double
@@ -89,9 +57,6 @@ Private Sub KcmApReloj()
         KcmApFallo "2. Reloj UTC", "La marca de tiempo no tiene la forma del contrato: " & marca
         Exit Sub
     End If
-    ' Diferencia entre la marca UTC y la hora local del equipo, en horas. La hora
-    ' se arma por posicion y no con `TimeValue`, que interpreta segun la
-    ' configuracion regional y no en todas el separador es dos puntos.
     desfase = (KcmDateFromIso(Left$(marca, 10)) + _
         TimeSerial(CInt(Mid$(marca, 12, 2)), CInt(Mid$(marca, 15, 2)), _
         CInt(Mid$(marca, 18, 2))) - Now) * 24#
@@ -99,8 +64,6 @@ Private Sub KcmApReloj()
         " h respecto de UTC"
 End Sub
 
-''' Los identificadores. Un nonce repetido lo rechaza el servidor, y el
-''' `requestId` tiene que caber en el patron que valida el contrato.
 Private Sub KcmApIdentificadores()
     Dim primero As String
     Dim segundo As String
@@ -121,9 +84,6 @@ Private Sub KcmApIdentificadores()
         KcmNewRequestId("vba-request")
 End Sub
 
-''' Las codificaciones. Son el camino por el que viaja el snapshot entero: si
-''' aqui hay un byte de diferencia, el servidor responde que el sobre no es
-''' base64 valido y nada mas se puede diagnosticar desde afuera.
 Private Sub KcmApCodificaciones()
     Dim conEnie As String
     Dim ida As String
@@ -135,9 +95,6 @@ Private Sub KcmApCodificaciones()
         Exit Sub
     End If
 
-    ' La enie se construye por codigo: el editor VBA importa el .bas con la
-    ' pagina de codigos del sistema y una letra acentuada literal llegaria
-    ' corrompida. Es la misma regla que exige el linter.
     conEnie = "MU" & ChrW$(209) & "OZ"
     ida = KcmBase64WebEncode(conEnie)
     If ida <> "TVXDkU9a" Then
@@ -162,10 +119,6 @@ Private Sub KcmApCodificaciones()
         "con sus valores conocidos, con acentos incluidos"
 End Sub
 
-''' El diccionario. Sustituye al de Windows, que no existe en macOS, y lo usa
-''' todo el cliente: el indice de trabajadores, el catalogo de cursos y cada
-''' respuesta del puente. Dos claves que solo difieren en mayusculas tienen que
-''' seguir siendo dos.
 Private Sub KcmApDiccionario()
     Dim mapa As KcmDiccionario
     Dim claves As Variant
@@ -198,9 +151,6 @@ Private Sub KcmApDiccionario()
     KcmApBien "5. Diccionario", "Distingue mayusculas, reescribe y conserva el orden de insercion"
 End Sub
 
-''' La huella. En Windows recorre la API criptografica; en macOS ejecuta shasum
-''' por la via que corresponda. Se prueba sobre un archivo escrito aqui, cuyo
-''' digest es publico, de modo que no depende de la matriz ni de ninguna ruta.
 Private Sub KcmApHuella()
     Dim ruta As String
     Dim obtenido As String
@@ -237,7 +187,6 @@ End Sub
 Private Sub KcmApEscribirAbc(ByVal ruta As String)
     Dim bytes(0 To 2) As Byte
     Dim numero As Integer
-    ' Las letras a, b y c por su codigo, para no depender de la pagina de codigos.
     bytes(0) = 97
     bytes(1) = 98
     bytes(2) = 99
@@ -248,7 +197,6 @@ Private Sub KcmApEscribirAbc(ByVal ruta As String)
     Close #numero
 End Sub
 
-''' La credencial. Nunca se muestra: solo si esta y cuantos caracteres mide.
 Private Sub KcmApCredencial()
     Dim token As String
     token = KcmCredencialLeer()
@@ -261,8 +209,6 @@ Private Sub KcmApCredencial()
         CStr(Len(token)) & " caracteres. El valor no se muestra"
 End Sub
 
-''' La conexion. Es la unica etapa que sale del equipo, y con la accion de estado
-''' del protocolo, que es de solo lectura.
 Private Sub KcmApConexion()
     Dim endpoint As String
     Dim respuesta As KcmDiccionario
@@ -294,8 +240,6 @@ Private Sub KcmApConexion()
 FalloConexion:
     KcmApFallo "8. Conexion", Err.Description
 End Sub
-
-' ------------------------------------------------------------- utilidades
 
 Private Sub KcmApBien(ByVal etapa As String, ByVal detalle As String)
     KcmPanelPaso etapa, KCM_PANEL_OK, detalle

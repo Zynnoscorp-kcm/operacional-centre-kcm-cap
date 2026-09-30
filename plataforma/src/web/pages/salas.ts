@@ -91,14 +91,6 @@ export function renderRoomsPage(input: {
   });
 }
 
-/**
- * Una reservación por renglón, con su formulario de cancelación al lado.
- *
- * Cancelar borra el horario de alguien más desde una pantalla que está abierta
- * a quien pase enfrente, así que pide la misma contraseña de agenda que agendar
- * y no una confirmación a secas. El motivo viaja con un valor por omisión
- * porque el dominio lo exige y sin él cancelar fallaría por un campo vacío.
- */
 function renderReservacion(row: RoomReservation, date: string, requiereClave: boolean): Html {
   const sala = ROOMS.find((room) => room.roomId === row.roomId)?.name ?? row.roomId;
   const cancelada = row.status === "CANCELADA";

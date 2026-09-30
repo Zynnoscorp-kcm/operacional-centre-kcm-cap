@@ -1,15 +1,3 @@
-/**
- * Escribe claves de ocupación de vuelta en un XLSX sin tocar la base de datos.
- *
- * Recibe el archivo original, las filas donde escribir y el código sugerido para
- * cada caso. Devuelve un buffer con el XLSX modificado: las celdas de ocupación
- * que estaban vacías ahora llevan el código que la IA sugirió.
- *
- * Usa `rebuildZip` de `ooxml.js` para reconstruir el archivo con las hojas
- * modificadas, y cadenas en línea (`t="inlineStr"`) para no tener que tocar la
- * tabla de cadenas compartidas.
- */
-
 // @ts-expect-error script en JavaScript sin definiciones de tipos
 import { XlsxWorkbook } from "../../../../packages/dc3/xlsx-reader.js";
 // @ts-expect-error script en JavaScript sin definiciones de tipos
@@ -30,14 +18,6 @@ function escapeXml(texto: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/**
- * Inserta o reemplaza una celda en el XML de una hoja OOXML.
- *
- * Busca `<row r="N">` y dentro de ella la celda `<c r="REF">`. Si la celda
- * existe la reemplaza; si no, la inserta al final de la fila. Si la fila no
- * existe (no debería pasar con datos de un padrón leído), la crea dentro de
- * `<sheetData>`.
- */
 function establecerCelda(xml: string, ref: string, fila: number, valor: string): string {
   const celdaXml = `<c r="${ref}" t="inlineStr"><is><t>${escapeXml(valor)}</t></is></c>`;
 

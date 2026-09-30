@@ -1,17 +1,3 @@
-/**
- * Adaptador PostgreSQL de la agenda de salas (Funciones 6 y 7).
- *
- * Lo que aquí importa no es el mapeo sino dónde vive el invariante: el traslape
- * lo impide `reserva_sala_sin_traslape_activo`, un `EXCLUDE USING gist` del
- * esquema. Dos solicitudes simultáneas para la misma sala y horario no se
- * resuelven por orden de llegada ni por un candado de aplicación: la segunda
- * viola la restricción y el servidor la rechaza.
- *
- * `withRoomDateLock` toma además un candado consultivo por sala y fecha para que
- * el conflicto se detecte al validar y no como una excepción de integridad en
- * mitad de la escritura.
- */
-
 import { createHash } from "node:crypto";
 
 import type { AuditEventRecord } from "../../domain/quiosco/tipos.ts";
@@ -30,7 +16,6 @@ function iso(valor: string | Date): string {
 function soloFecha(valor: string | Date): string {
   return typeof valor === "string" ? valor.slice(0, 10) : valor.toISOString().slice(0, 10);
 }
-/** `time` de PostgreSQL llega como `HH:MM:SS`; el dominio trabaja en `HH:MM`. */
 function soloHora(valor: string): string {
   return String(valor).slice(0, 5);
 }
@@ -80,8 +65,6 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
       requesterName: r.solicitante_nombre,
       requesterPosition: r.solicitante_puesto ?? "",
       requesterArea: r.solicitante_area ?? "",
-      // El número de nómina identifica a quien reserva; el contacto es opcional
-      // desde 0021 y se expone en el mismo campo cuando existe.
       requesterContact: r.solicitante_contacto ?? r.solicitante_numero_trabajador ?? "",
       reason: r.motivo,
       estimatedAttendees: Number(r.asistentes_estimados),
@@ -150,12 +133,6 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
     return rows.map((r) => this.#mapear(r));
   }
 
-  /**
-   * `horario` es la columna que sostiene la exclusión de traslapes. Se calcula
-   * aquí a partir de fecha y horas para que no pueda quedar desalineada con
-   * ellas: si se aceptara desde fuera, un cliente podría declarar un rango que
-   * no corresponde al horario que muestra la agenda.
-   */
   async insert(reservation: RoomReservation): Promise<void> {
     await this.#db.query(
       `INSERT INTO operacion.sala_reserva (
@@ -194,10 +171,6 @@ export class SupabaseRoomReservationRepository implements RoomReservationReposit
     );
   }
 
-  /**
-   * Cancelar es una transición, no un borrado: la fila se conserva y libera su
-   * horario porque la exclusión sólo aplica a las reservas `ACTIVA`.
-   */
   async replace(reservation: RoomReservation): Promise<void> {
     const cancelador = reservation.cancelledBy
       ? (

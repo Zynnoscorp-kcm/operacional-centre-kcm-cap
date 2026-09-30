@@ -1,11 +1,3 @@
-/**
- * Saga de liberación (Función 5).
- *
- * Lo que estas pruebas fijan es la clase de defecto que en esta ejecución
- * pierde datos reales: un segundo efecto sobre una fecha ya liberada, un lote
- * aplicado a medias, o un journal que afirma un efecto que nunca ocurrió.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -68,13 +60,6 @@ function build(
   return { repository, gateway, service };
 }
 
-/**
- * Repositorio que falla la primera vez que refleja el dominio.
- *
- * Es la única forma honesta de comprobar la reanudación: obligar a que el lote
- * quede a mitad de camino en vez de forzar la fase a mano, que probaría el
- * `tamperBatch` y no la saga.
- */
 class RepositorioInterrumpible extends MemoryReleaseRepository {
   fallasRestantes = 1;
 
@@ -104,8 +89,6 @@ function buildInterrumpible() {
   return { repository, gateway, service };
 }
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · liberación completa", () => {
   it("aplica el lote, cierra la sesión y deja un efecto por clave idempotente", async () => {
     const { repository, service } = build();
@@ -125,7 +108,6 @@ describe("E10 · liberación completa", () => {
     const efectos = repository.getAllEffects();
     assert.equal(efectos.length, 3);
 
-    // La clave efectiva concatena sesión, trabajador, capacitación y mapeo.
     assert.ok(
       efectos.some(
         (efecto) =>
@@ -139,7 +121,6 @@ describe("E10 · liberación completa", () => {
       ),
     );
 
-    // El XLSB lo escribe el cliente VBA: aquí el efecto queda pendiente de acuse.
     assert.ok(efectos.every((efecto) => efecto.xlsbAckStatus === "PENDIENTE_ACUSE"));
 
     const sesion = await repository.getSessionById(SESSION_ID);
@@ -176,8 +157,6 @@ describe("E10 · liberación completa", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · idempotencia", () => {
   it("un reintento con el mismo requestId no produce un segundo efecto", async () => {
     const { repository, service } = build();
@@ -200,7 +179,6 @@ describe("E10 · idempotencia", () => {
     assert.equal(segundo.repeated, true);
     assert.equal(segundo.batchId, primero.batchId);
 
-    // Ni un efecto más, ni una versión más en la réplica.
     assert.equal(repository.getAllEffects().length, 3);
     const registroTrasSegundo = await repository.getHcRecord(
       parseWorkerNumber("10001"),
@@ -209,7 +187,6 @@ describe("E10 · idempotencia", () => {
     assert.equal(registroTrasSegundo?.version, registroTrasPrimero?.version);
     assert.equal(registroTrasSegundo?.updatedAt, registroTrasPrimero?.updatedAt);
 
-    // Y la auditoría tampoco se duplica.
     const liberadas = repository
       .getAllAudits()
       .filter((evento) => evento.action === "MATRIX_RELEASED");
@@ -221,7 +198,6 @@ describe("E10 · idempotencia", () => {
 
     await service.release({ sessionId: SESSION_ID, requestId: "req-lib-0011" }, CAPACITACION);
 
-    // Queda en LIBERADA_TOTAL, que no es un estado desde el que se libere.
     await assert.rejects(
       () => service.release({ sessionId: SESSION_ID, requestId: "req-lib-0012" }, CAPACITACION),
       InvalidReleaseStateError,
@@ -248,8 +224,6 @@ describe("E10 · idempotencia", () => {
   it("dos liberaciones simultáneas sobre la misma sesión no duplican el efecto", async () => {
     const { repository, service } = build();
 
-    // Sin serialización, ambas armarían su plan sobre las mismas asistencias y
-    // el segundo lote escribiría encima del primero.
     const resultados = await Promise.allSettled([
       service.release({ sessionId: SESSION_ID, requestId: "req-lib-0025" }, CAPACITACION),
       service.release({ sessionId: SESSION_ID, requestId: "req-lib-0026" }, CAPACITACION),
@@ -269,7 +243,6 @@ describe("E10 · idempotencia", () => {
   it("un lote interrumpido sólo se reanuda con su requestId original", async () => {
     const { repository, service } = buildInterrumpible();
 
-    // La primera llamada aplica la matriz y cae al reflejar el dominio.
     await assert.rejects(
       () => service.release({ sessionId: SESSION_ID, requestId: "req-lib-0020" }, CAPACITACION),
       /interrupción simulada/,
@@ -279,14 +252,12 @@ describe("E10 · idempotencia", () => {
     assert.equal(lotes.length, 1);
     assert.equal(lotes[0]?.phase, "MATRIZ_APLICADA", "el journal conserva la fase alcanzada");
 
-    // Otro requestId no puede abrir un lote nuevo sobre la misma sesión.
     await assert.rejects(
       () => service.release({ sessionId: SESSION_ID, requestId: "req-lib-0021" }, CAPACITACION),
       (error: Error) =>
         error instanceof ReleaseConflictError && /requestId original/.test(error.message),
     );
 
-    // Con el requestId original sí retoma, y termina sin duplicar el efecto.
     const reanudado = await service.release(
       { sessionId: SESSION_ID, requestId: "req-lib-0020" },
       CAPACITACION,
@@ -302,11 +273,8 @@ describe("E10 · idempotencia", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · atomicidad del lote", () => {
   it("un solo conflicto aborta el lote entero y no escribe nada", async () => {
-    // 10002 ya tiene una fecha distinta y la política prohíbe sobrescribir.
     const { repository, service } = build({
       hcRecords: [buildHcRecord("10002", "2026-01-20")],
     });
@@ -323,8 +291,6 @@ describe("E10 · atomicidad del lote", () => {
     const conflictivo = outcome.results.find((result) => result.employeeId === "10002");
     assert.equal(conflictivo?.status, "OVERWRITE_NOT_ALLOWED");
 
-    // Las demás no se intentaron: quedan marcadas como abortadas, no como
-    // fallidas, y la réplica sigue intacta para ellas.
     const otras = outcome.results.filter((result) => result.employeeId !== "10002");
     assert.ok(otras.every((result) => result.status === "ATOMIC_BATCH_ABORTED"));
 
@@ -332,7 +298,6 @@ describe("E10 · atomicidad del lote", () => {
     assert.equal(await repository.getHcRecord(parseWorkerNumber("10001"), TRAINING_ID), null);
     assert.equal(await repository.getHcRecord(parseWorkerNumber("10003"), TRAINING_ID), null);
 
-    // La fecha que ya estaba no se tocó.
     const intacto = await repository.getHcRecord(parseWorkerNumber("10002"), TRAINING_ID);
     assert.equal(intacto?.completionDate, "2026-01-20");
     assert.equal(intacto?.provenance, "XLSB_IMPORT");
@@ -346,9 +311,6 @@ describe("E10 · atomicidad del lote", () => {
   });
 
   it("un trabajador ausente de la matriz bloquea el lote en vez de crear una identidad", async () => {
-    // 99999 asiste pero no aparece en el padrón de la réplica. El adaptador
-    // toma como padrón la unión de asistencias y registros, así que se declara
-    // explícitamente cuál es el universo conocido.
     const conAusente = new MemoryReleaseRepository({
       sessions: [buildSession()],
       attendances: [buildAttendance("10001"), buildAttendance("99999")],
@@ -372,8 +334,6 @@ describe("E10 · atomicidad del lote", () => {
     assert.equal(conAusente.getAllEffects().length, 0);
   });
 });
-
-// ---------------------------------------------------------------------------
 
 describe("E10 · compuertas antes de cualquier efecto", () => {
   it("no libera una sesión sin autorizar", async () => {
@@ -442,8 +402,6 @@ describe("E10 · compuertas antes de cualquier efecto", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · integridad del journal", () => {
   it("detecta un lote cuya fila fue alterada sin volver a firmarse", async () => {
     const { repository, service } = build();
@@ -480,8 +438,6 @@ describe("E10 · integridad del journal", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · vista previa", () => {
   it("cuenta incluidos y excluidos sin producir ningún efecto", async () => {
     const { repository, service } = build({
@@ -498,7 +454,6 @@ describe("E10 · vista previa", () => {
     assert.equal(preview.atomicBatchReady, true);
     assert.equal(preview.excluded[0]?.reasons.includes("ASISTENCIA_NO_COMPROBADA"), true);
 
-    // Preflight no escribe: la réplica y el journal siguen vacíos.
     assert.equal(await repository.getHcRecord(parseWorkerNumber("10001"), TRAINING_ID), null);
     assert.equal((await repository.listBatchesBySession(SESSION_ID)).length, 0);
     assert.equal(repository.getAllEffects().length, 0);

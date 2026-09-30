@@ -20,22 +20,12 @@ test("las leyendas horneadas cubren todos los campos que el formato imprime", ()
     assert.notEqual(LEYENDAS_DC3[clave].trim(), "");
   }
   assert.equal(LEYENDAS_DC3.formId, "DC-3");
-  // Trece recuadros: el RFC moral son doce caracteres y el borrador imprime un guion antes de la
-  // homoclave. Se fija aqui porque es un dato del patron que sale en todas las constancias, no una
-  // etiqueta, y un cambio silencioso ahi invalidaria todas las constancias.
   assert.deepEqual([...LEYENDAS_DC3.taxId], [..."KCM810226-DEA"]);
 });
 
-// El borrador oficial esta ignorado por Git y no existe en ningun servidor. Esta comparacion corre
-// donde alguien lo tenga a mano y avisa si el formato oficial cambio; donde no esta, se salta. Es
-// deliberado: emitir constancias no puede depender de un archivo que no viaja, pero tampoco quiero
-// que un cambio en el formato pase inadvertido para quien si puede verlo.
 test("coinciden con el borrador oficial cuando esta presente", { skip: !existsSync(BORRADOR) }, () => {
   const delBorrador = extractDc3Legends(readFileSync(BORRADOR));
   for (const [clave, valor] of Object.entries(delBorrador)) {
-    // Unica diferencia declarada: el borrador escribe la razon social con errata y aqui va
-    // corregida. Se comprueba que sigan siendo distintas, para que nadie "arregle" la horneada
-    // copiandola del borrador sin darse cuenta.
     if (clave === "employerName") {
       assert.notEqual(LEYENDAS_DC3.employerName, valor);
       assert.match(LEYENDAS_DC3.employerName, /^KIMBERLY CLARK DE MÉXICO/);
@@ -54,9 +44,6 @@ test("coinciden con el borrador oficial cuando esta presente", { skip: !existsSy
   assert.deepEqual(Object.keys(LEYENDAS_DC3).sort(), Object.keys(delBorrador).sort());
 });
 
-// El reverso del formato oficial son los dos catalogos del CNO: material de consulta, no parte de la
-// constancia que se entrega. Antes esto solo podia comprobarse donde estuviera el borrador; ahora
-// que las leyendas viven en el codigo, se comprueba siempre.
 test("la constancia no arrastra el reverso de consulta del formato", () => {
   const pdf = generateDc3Document({
     workerName: "PERSONA DE PRUEBA UNO",
@@ -77,14 +64,9 @@ test("la constancia no arrastra el reverso de consulta del formato", () => {
   }
 });
 
-// La induccion son doce horas repartidas en tres jornadas: la constancia declara un periodo de tres
-// dias, no un dia suelto. El resto de los cursos empieza y termina el mismo dia. La consola calcula
-// el termino con esta misma funcion y los dias del periodo que declara cada curso.
 test("el periodo de la induccion cierra dos dias despues del alta", () => {
   assert.equal(sumarDiasIso("2026-08-23", 2), "2026-08-25");
   assert.equal(sumarDiasIso("2026-12-31", 2), "2027-01-02");
-  // Sin desplazamiento declarado, inicio y fin son el mismo dia.
   assert.equal(sumarDiasIso("2026-08-23", 0), "2026-08-23");
-  // Lo que no es una fecha se devuelve tal cual: el recuadro sale como vino.
   assert.equal(sumarDiasIso("", 2), "");
 });

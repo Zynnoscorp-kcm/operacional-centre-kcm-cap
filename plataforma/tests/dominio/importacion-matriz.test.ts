@@ -1,16 +1,3 @@
-/**
- * Ingesta y reconciliación de la matriz XLSB.
- *
- * Invariantes verificados:
- * 1. Recorrido estricto de 5 fases (RECIBIDO -> PREPARADO -> VALIDADO -> APROBADO -> CONFIRMADO).
- * 2. Inviolabilidad de fechas liberadas por plataforma (SESSION_RELEASE nunca se sobrescribe desde XLSB).
- * 3. Detección y contención de conflictos ante fechas contradictorias.
- * 4. Reconciliación por procedencia (ALTA, CORREGIDA, RETIRADA, REACTIVADA) con historial append-only.
- * 5. Idempotencia y repetición segura (no-op ante mismo requestId).
- * 6. Alcance FULL vs DELTA (ausencia en extracto no es baja).
- * 7. Protección ante fórmulas no cacheadas, errores de celda e inyección de fórmulas.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryMatrixRepository } from "../../src/adapters/memoria/matriz.ts";
@@ -186,7 +173,7 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
             skippedCourseCount: 0,
             skippedCompletionCount: 0,
             formulaCellCount: 10,
-            formulaCachedValueCount: 8, // 2 faltantes
+            formulaCachedValueCount: 8,
             formulaErrorCount: 0,
             externalLinkCount: 0,
             mergedCellCount: 0,
@@ -239,20 +226,16 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
 
       assert.equal(batch.phase, "RECIBIDO");
 
-      // 2. PREPARADO
       transitionToPrepared(batch, "FULL", batch.diagnostics, { totalEmployees: 2 });
       assert.equal(batch.phase, "PREPARADO");
 
-      // 3. VALIDADO
       transitionToValidated(batch, batch.counts, false);
       assert.equal(batch.phase, "VALIDADO");
 
-      // 4. APROBADO
       transitionToApproved(batch, "auditor@kcm.invalid", "Aprobado por jefe");
       assert.equal(batch.phase, "APROBADO");
       assert.equal(batch.approvalActorId, "auditor@kcm.invalid");
 
-      // 5. CONFIRMADO
       transitionToConfirmed(batch);
       assert.equal(batch.phase, "CONFIRMADO");
       assert.ok(batch.completedAt);
@@ -332,7 +315,7 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
         idempotencyKey: "key-1",
         workerNumber: parseWorkerNumber("10001"),
         trainingId: trainingId1,
-        completionDate: "2024-01-01", // Fecha vieja en matriz
+        completionDate: "2024-01-01",
         provenance: "XLSB_IMPORT",
         status: "VIGENTE",
         sessionId: null,
@@ -386,13 +369,12 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       const snap = createSyntheticSnapshot();
       const trainingId1 = generateTrainingId("hc-course:c1-qms");
 
-      // Registro liberado por plataforma en quiosco/sala
       const platformRecord: HcRecord = {
         recordId: "rec-platform-1",
         idempotencyKey: "platform-key-1",
         workerNumber: parseWorkerNumber("10001"),
         trainingId: trainingId1,
-        completionDate: "2026-07-20", // Fecha liberada en sala
+        completionDate: "2026-07-20",
         provenance: "SESSION_RELEASE",
         status: "VIGENTE",
         sessionId: "ses-123",
@@ -419,7 +401,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
         updatedAt: "2026-07-01T00:00:00Z",
       };
 
-      // El snapshot trae 2025-06-10 para ese par (contradice 2026-07-20 liberada por plataforma)
       const reconciled = reconcileSnapshot({
         snapshot: snap,
         existingWorkers: [],
@@ -439,7 +420,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       assert.equal(conflict.existingDate, "2026-07-20");
       assert.equal(conflict.snapshotDate, "2025-06-10");
 
-      // La fecha de la plataforma NO se agregó a recordsToUpdate
       const updatedPlatform = reconciled.recordsToUpdate.find(
         (r) => r.recordId === "rec-platform-1",
       );
@@ -447,7 +427,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
     });
 
     it("fecha de plataforma ausente en snapshot se marca pendingMaster y permanece VIGENTE", () => {
-      // Snapshot sin completion para el trabajador 10001
       const snap = createSyntheticSnapshot({
         completions: [
           {
@@ -539,7 +518,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
         updatedAt: "2025-01-01T00:00:00Z",
       };
 
-      // 1. Retiro en FULL
       const reconciledRetire = reconcileSnapshot({
         snapshot: snapWithoutCompletion,
         existingWorkers: [],
@@ -561,7 +539,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       assert.ok(retiredHistory);
       assert.equal(retiredHistory.changeType, "RETIRADA");
 
-      // 2. Reactivación cuando reaparece la fecha
       const retiredRecord: HcRecord = {
         ...existingXlsbRecord,
         status: "RETIRADO",
@@ -673,7 +650,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       const service = new MatrixImportService(repository);
       const snapshot = createSyntheticSnapshot();
 
-      // Primer llamado
       const firstResult = await service.importSnapshot({
         requestId: "req-idempotent",
         snapshot,
@@ -682,7 +658,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       assert.equal(firstResult.status, "COMPLETADO");
       assert.equal(firstResult.repeated, false);
 
-      // Segundo llamado idéntico
       const secondResult = await service.importSnapshot({
         requestId: "req-idempotent",
         snapshot,
@@ -691,7 +666,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       assert.equal(secondResult.status, "COMPLETADO");
       assert.equal(secondResult.repeated, true);
 
-      // El estado no duplica filas
       const dbState = repository.getState();
       assert.equal(dbState.batches.length, 1);
       assert.equal(dbState.workers.length, 2);
@@ -703,7 +677,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       const repository = new MemoryMatrixRepository();
       const trainingId1 = generateTrainingId("hc-course:c1-qms");
 
-      // Insertar previamente registro liberado en sala
       await repository.applyBatchAtomic(
         {
           importId: "imp-seed",
@@ -771,7 +744,7 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
               idempotencyKey: "plat-key",
               workerNumber: parseWorkerNumber("10001"),
               trainingId: trainingId1,
-              completionDate: "2026-07-20", // Liberada en plataforma
+              completionDate: "2026-07-20",
               provenance: "SESSION_RELEASE",
               status: "VIGENTE",
               sessionId: "ses-1",
@@ -792,7 +765,7 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       );
 
       const service = new MatrixImportService(repository);
-      const conflictingSnapshot = createSyntheticSnapshot(); // Trae 2025-06-10 para 10001
+      const conflictingSnapshot = createSyntheticSnapshot();
 
       await assert.rejects(
         () =>
@@ -809,7 +782,6 @@ describe("Reconciliación y ciclo de vida de importación de matriz", () => {
       assert.equal(conflictingBatch.phase, "CONFLICTO");
       assert.equal(conflictingBatch.counts.conflictCount, 1);
 
-      // El registro de plataforma sigue intacto
       const platformRecord = dbState.records.find((r) => r.recordId === "rec-plat");
       assert.equal(platformRecord?.completionDate, "2026-07-20");
     });

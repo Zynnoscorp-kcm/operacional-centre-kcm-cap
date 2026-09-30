@@ -1,4 +1,3 @@
-/** Ciclo de vida de Session v1. */
 var KcmSessionService = (function () {
   "use strict";
 
@@ -25,10 +24,6 @@ var KcmSessionService = (function () {
     });
   }
 
-  /**
-   * El evento se escribe antes del estado que habilita efectos posteriores. Si la escritura
-   * de estado falla, cualquier reintento adopta el unico evento semantico y termina el cambio.
-   */
   function auditOnce(identity, repo, input, allowCreate) {
     var operationRequestId = requestId();
     var reason = KcmValidation.text(input.reason || "", "reason", 300, false);

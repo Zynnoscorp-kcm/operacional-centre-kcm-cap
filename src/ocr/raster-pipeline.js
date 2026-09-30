@@ -54,12 +54,6 @@ function normalizedImageDto(normalized, pngBytes, sha256, includeBytes) {
   return Object.freeze(dto);
 }
 
-/**
- * Vertical OCR local real: valida el binario, rasteriza PDF cuando aplica,
- * rectifica pixeles a la plantilla y entrega recortes al proveedor elegido.
- * El proveedor simulado sigue disponible para separar pruebas geometricas de
- * pruebas de reconocimiento; TesseractDigitsProvider consume los mismos datos.
- */
 function prepareRasterOcrPipeline({
   bytes,
   declaredMimeType,
@@ -219,10 +213,6 @@ export function runRasterOcrPipeline(options) {
   return finalizeRasterOcrPipeline(prepared, recognition);
 }
 
-/**
- * Variante enchufable para proveedores REST. Conserva exactamente la misma
- * normalizacion, validacion, candidatos y DTO de la funcion sincrona.
- */
 export async function runRasterOcrPipelineAsync(options) {
   const prepared = prepareRasterOcrPipeline(options);
   const recognition = await prepared.provider.recognize(recognizeInput(prepared));

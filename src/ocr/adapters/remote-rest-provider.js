@@ -204,10 +204,6 @@ function strictBase64Png(value, field) {
   return inputBuffer(bytes, field);
 }
 
-/**
- * Validador compartible por un worker HTTP. Rechaza cualquier campo ajeno al
- * contrato, decodifica solo PNGs y verifica hashes individuales y de lote.
- */
 export function validateRemoteOcrRequestPayload(value, { limits = {} } = {}) {
   const configuredLimits = { ...DEFAULT_LIMITS, ...limits };
   const safeLimits = Object.freeze({
@@ -320,7 +316,6 @@ function safeEngineField(value, field) {
   return value;
 }
 
-/** Valida y normaliza el JSON de salida que comparte cliente y worker. */
 export function validateRemoteOcrResponsePayload(value, { requestSha256 } = {}) {
   assertExactKeys(value, ["schema", "version", "requestSha256", "engine", "rows"], "response");
   if (value.schema !== REMOTE_OCR_RESPONSE_SCHEMA || value.version !== REMOTE_OCR_SCHEMA_VERSION) {
@@ -498,7 +493,6 @@ async function discardResponseBody(response) {
   try {
     await response.body?.cancel?.();
   } catch {
-    // El cuerpo remoto nunca se incluye en errores ni bitacoras.
   }
 }
 
@@ -635,10 +629,6 @@ export class RemoteRestDigitsProvider {
     }
   }
 
-  /**
-   * Envia exclusivamente los 200 recortes procesados. `hints`, padron, nombres,
-   * sesion, documento y la pagina completa se ignoran deliberadamente.
-   */
   async recognize({ segmentation, imageBytes, normalizedImage, crops } = {}) {
     validateTemplate(segmentation);
     const extraction = suppliedExtraction({ segmentation, imageBytes, normalizedImage, crops });

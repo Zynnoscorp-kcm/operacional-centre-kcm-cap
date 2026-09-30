@@ -1,9 +1,3 @@
-/**
- * El agente por lotes, contra modelos de mentira que contestan según los casos
- * que reciben. Cada uno anota lo que se le preguntó, para comprobar cómo se
- * repartió el trabajo y qué texto habría salido hacia el proveedor.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -24,7 +18,6 @@ import {
 
 type Decision = (id: string) => { codigo: string; confianza?: string } | null;
 
-/** Contesta subáreas y ocupaciones para los identificadores que encuentra en el mensaje. */
 class ModeloDeLote implements ModeloDeLenguajePort {
   readonly nombre: string;
   readonly preguntas: SolicitudJson[] = [];
@@ -130,7 +123,6 @@ function clasificador(
     version: "v-prueba",
     huella: "h-prueba",
     ...(reloj ? { reloj: () => reloj.ahora } : {}),
-    // Nadie espera de verdad: se anota cuánto y, con reloj, se adelanta.
     esperar: (milisegundos) => {
       esperas.push(milisegundos);
       if (reloj) reloj.ahora += milisegundos;
@@ -142,7 +134,6 @@ function clasificador(
 async function hastaTerminar(lote: ClasificadorPorLotes, estado: EstadoDelLote) {
   let actual = estado;
   for (let vuelta = 0; vuelta < 20; vuelta += 1) {
-    // Lo que regresa de Excel pasa por la misma lectura que en producción.
     const avance = await lote.avanzar(lote.leer(JSON.stringify(actual)));
     if (avance.terminado) return { ...avance, vueltas: vuelta + 1 };
     actual = avance.estado;
@@ -159,7 +150,6 @@ describe("Ocupaciones · agente por lotes", () => {
     const avance = await lote.avanzar(lote.iniciar(casos(14)));
 
     assert.equal(avance.terminado, true);
-    // Subáreas: 1 tanda por papel. Ocupación: 6 + 6 + 2 casos, 3 tandas por papel.
     assert.equal(avance.estado.consultas, 8);
     assert.equal(avance.resultados?.length, 14);
     assert.ok(avance.resultados?.every((resultado) => resultado.estado === "sugerida"));
@@ -243,7 +233,6 @@ describe("Ocupaciones · agente por lotes", () => {
     const reintento = principal.preguntas.at(-1)?.mensaje ?? "";
     assert.deepEqual(idsDe(reintento), ["C002"]);
     assert.match(reintento, /C002: no sirvió porque el código elegido no está en la lista/u);
-    // El código inválido va a la razón del caso; al modelo sólo le llega la frase fija.
     assert.doesNotMatch(reintento, /1034070202/u);
     assert.ok(avance.resultados?.every((resultado) => resultado.estado === "sugerida"));
   });
@@ -303,7 +292,6 @@ describe("Ocupaciones · agente por lotes", () => {
 
     assert.deepEqual(esperas, [5000, 10_000]);
     assert.ok(avance.resultados?.every((resultado) => resultado.estado === "sugerida"));
-    // Con la subárea resuelta, la ocupación vuelve al tamaño normal: una tanda de tres.
     assert.equal(principal.preguntas.length, 4);
   });
 
@@ -324,11 +312,9 @@ describe("Ocupaciones · agente por lotes", () => {
     const final = await hastaTerminar(lote, lote.iniciar(casos(6)));
     const estado = (id: string) => final.resultados?.find((r) => r.id === id);
 
-    // 6, 6, 5 y 2 casos: a la cuarta tanda fallida C001 se da por fallido.
     assert.equal(conC001, 4);
     assert.equal(estado("C001")?.estado, "revisar");
     assert.match(estado("C001")?.razon ?? "", /falló en 4 tandas: principal respondió 413/u);
-    // El 413 no cuenta como falla del proveedor: el papel sigue y los demás coinciden.
     for (const id of ["C003", "C004", "C005", "C006"]) assert.equal(estado(id)?.estado, "sugerida");
   });
 
@@ -370,7 +356,6 @@ describe("Ocupaciones · agente por lotes", () => {
     const propuesta = estado.principal.propuestas.C001;
     assert.ok(propuesta);
 
-    // Una descripción alterada se vuelve a tomar del catálogo.
     const alterada = {
       ...estado,
       principal: {
@@ -383,7 +368,6 @@ describe("Ocupaciones · agente por lotes", () => {
       "OPERADOR MÁQUINA FABRICACIÓN ARTÍCULOS PAPEL",
     );
 
-    // Una clave que no existe no se acepta.
     const inventada = {
       ...estado,
       principal: {
@@ -451,7 +435,6 @@ describe("Ocupaciones · agente por lotes", () => {
       () => lote.leer(conPapel({ avisos: { C001: "trabajador 28392, juan@correo.mx" } })),
       codigo,
     );
-    // Lo que la plataforma sí escribe se lee igual, con las subáreas normalizadas.
     const leido = lote.leer(
       conPapel({
         subareas: { C001: [" 05.5"] },

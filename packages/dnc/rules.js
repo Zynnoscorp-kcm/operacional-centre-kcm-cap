@@ -1,7 +1,3 @@
-/**
- * Reglas de aplicabilidad DNC en dos niveles (Department y Area) con versionado y vigencia.
- */
-
 import {
   UNIFIED_COURSES,
   COURSE_CATEGORIES,
@@ -16,11 +12,7 @@ export const DNC_RULE_LEVELS = Object.freeze({
 
 export const CURRENT_DNC_RULES_VERSION = "1.0.0";
 
-/**
- * Matriz de los 128 pares canónicos curso-departamento del TSV de Calidad.
- */
 export const TSV_QUALITY_PAIRS = Object.freeze([
-  // INSPECCIÓN EN LINEA (6 departamentos)
   { courseName: "INSPECCIÓN EN LINEA", department: "HIGIENICOS" },
   { courseName: "INSPECCIÓN EN LINEA", department: "FLEXOGRAFICA" },
   { courseName: "INSPECCIÓN EN LINEA", department: "SERVILLETAS Y FACIALES" },
@@ -28,7 +20,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "INSPECCIÓN EN LINEA", department: "TOALLAS (CONVERSION)" },
   { courseName: "INSPECCIÓN EN LINEA", department: "GERENCIA TECNICA" },
 
-  // IMAGEN DE CALIDAD (6 departamentos)
   { courseName: "IMAGEN DE CALIDAD", department: "MAQUINA PAÑUELERA" },
   { courseName: "IMAGEN DE CALIDAD", department: "FLEXOGRAFICA" },
   { courseName: "IMAGEN DE CALIDAD", department: "SERVILLETAS Y FACIALES" },
@@ -36,7 +27,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "IMAGEN DE CALIDAD", department: "TOALLAS (CONVERSION)" },
   { courseName: "IMAGEN DE CALIDAD", department: "GERENCIA TECNICA" },
 
-  // CONTROL DE PRODUCTO NO CONFORME (11 departamentos)
   { courseName: "CONTROL DE PRODUCTO NO CONFORME", department: "MAQUINA WADDING 05" },
   { courseName: "CONTROL DE PRODUCTO NO CONFORME", department: "MAQUINA WADDING 02" },
   { courseName: "CONTROL DE PRODUCTO NO CONFORME", department: "MAQUINA PAÑUELERA" },
@@ -49,7 +39,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "CONTROL DE PRODUCTO NO CONFORME", department: "MAQUINA WADDING 04" },
   { courseName: "CONTROL DE PRODUCTO NO CONFORME", department: "FLEXOGRAFICA" },
 
-  // BPM (21 departamentos)
   { courseName: "BPM", department: "MAQUINA 1" },
   { courseName: "BPM", department: "MAQUINA WADDING 05" },
   { courseName: "BPM", department: "AGUA" },
@@ -72,7 +61,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "BPM", department: "GERENCIA PLANTA" },
   { courseName: "BPM", department: "INGENIERIA DE PROYECTOS" },
 
-  // POLITICA DE CALIDAD (21 departamentos)
   { courseName: "POLITICA DE CALIDAD", department: "MAQUINA WADDING 03" },
   { courseName: "POLITICA DE CALIDAD", department: "GERENCIA TECNICA" },
   { courseName: "POLITICA DE CALIDAD", department: "MAQUINA WADDING 05" },
@@ -95,7 +83,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "POLITICA DE CALIDAD", department: "RELACIONES INDUSTRIALES" },
   { courseName: "POLITICA DE CALIDAD", department: "GERENCIA PLANTA" },
 
-  // BPR (21 departamentos)
   { courseName: "BPR", department: "MAQUINA WADDING 05" },
   { courseName: "BPR", department: "MAQUINA WADDING 03" },
   { courseName: "BPR", department: "GERENCIA TECNICA" },
@@ -118,7 +105,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "BPR", department: "INGENIERIA DE PROYECTOS" },
   { courseName: "BPR", department: "RELACIONES INDUSTRIALES" },
 
-  // QMS (21 departamentos)
   { courseName: "QMS", department: "MAQUINA WADDING 05" },
   { courseName: "QMS", department: "FLEXOGRAFICA" },
   { courseName: "QMS", department: "GERENCIA TECNICA" },
@@ -141,7 +127,6 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "QMS", department: "GERENCIA PLANTA" },
   { courseName: "QMS", department: "INGENIERIA DE PROYECTOS" },
 
-  // HACCP (21 departamentos)
   { courseName: "HACCP", department: "GERENCIA TECNICA" },
   { courseName: "HACCP", department: "MAQUINA WADDING 05" },
   { courseName: "HACCP", department: "CALDERAS" },
@@ -165,15 +150,10 @@ export const TSV_QUALITY_PAIRS = Object.freeze([
   { courseName: "HACCP", department: "RELACIONES INDUSTRIALES" }
 ]);
 
-/**
- * Compila las reglas oficiales del sistema DNC v1.0.0.
- * Retorna las 128 reglas de nivel DEPARTMENT para calidad + las 13 reglas de nivel AREA para técnicos.
- */
 export function buildStandardDncRules(version = CURRENT_DNC_RULES_VERSION) {
   const rules = [];
   let ruleSeq = 1;
 
-  // 1. Compilar los 128 pares del TSV a nivel DEPARTMENT
   for (const pair of TSV_QUALITY_PAIRS) {
     const course = resolveCourse(pair.courseName);
     if (!course) {
@@ -196,7 +176,6 @@ export function buildStandardDncRules(version = CURRENT_DNC_RULES_VERSION) {
     }));
   }
 
-  // 2. Compilar los 13 cursos técnicos del DNC a nivel AREA (GERENCIA DE MANTTO. ELECTRICO)
   const technicalCourses = UNIFIED_COURSES.filter(
     (c) => c.category === COURSE_CATEGORIES.TECHNICAL
   );
@@ -221,9 +200,6 @@ export function buildStandardDncRules(version = CURRENT_DNC_RULES_VERSION) {
   return Object.freeze(rules);
 }
 
-/**
- * Registro de reglas compiladas en memoria para evaluación de alta velocidad.
- */
 export class DncRuleRegistry {
   constructor(rules = buildStandardDncRules()) {
     this.rules = rules;
@@ -251,9 +227,6 @@ export class DncRuleRegistry {
     }
   }
 
-  /**
-   * Obtiene todas las reglas aplicables a un trabajador según su departamento y área.
-   */
   getApplicableRulesForEmployee({ department, area }) {
     const applicable = [];
     const normDept = normalizeCatalogKey(department);
@@ -270,9 +243,6 @@ export class DncRuleRegistry {
     return applicable;
   }
 
-  /**
-   * Determina si un curso específico aplica a un trabajador y retorna la regla asociada.
-   */
   findMatchingRule({ trainingId, department, area }) {
     const course = resolveCourse(trainingId);
     if (!course) return null;

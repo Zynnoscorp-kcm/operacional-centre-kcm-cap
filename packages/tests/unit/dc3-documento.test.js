@@ -1,12 +1,3 @@
-/**
- * El compositor de la constancia DC-3 y el lector del padrón activo.
- *
- * La constancia la emite la consola; aquí se prueba lo que la consola usa del
- * paquete: el documento de una página —determinista, sin datos de la hoja de
- * cálculo, con las leyendas oficiales y sin el reverso de consulta— y la
- * lectura en memoria de las dos hojas de activos del padrón semanal.
- */
-
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -131,9 +122,6 @@ const SAMPLE_DOCUMENT = Object.freeze({
   signatures: {}
 });
 
-// El flujo de contenido del PDF se escribe sin comprimir a proposito: permite verificar renglon por
-// renglon lo que se imprime, que es la unica forma de comprobar que un texto no se desborda ni se
-// cuela algo que no deberia salir.
 function drawnLines(pdf) {
   const content = pdf.toString("latin1");
   const lines = [];
@@ -167,14 +155,11 @@ test("genera un PDF de una pagina sin heredar metadatos de ninguna hoja de calcu
   assert.match(printed, /PERSONA SINTÉTICA UNO/);
   assert.match(printed, /CURSO SINTÉTICO/);
   assert.match(printed, /AGENTE SINTÉTICO/);
-  // La CURP y el RFC se imprimen caracter por caracter, cada uno en su recuadro.
   assert.equal(drawnLines(output).filter(({ text }) => text.length === 1).length >= 18 + 12, true);
   assert.doesNotMatch(output.toString("latin1"), /absPath|Private|PERSONA REAL/i);
   assert.match(output.toString("latin1"), /\/Producer \(KCM Cap DC3\)/);
 });
 
-// La vista previa promete el mismo documento que se emite y la reimpresion el mismo que se entrego:
-// si el PDF llevara una fecha de generacion o un identificador aleatorio, las dos promesas caerian.
 test("el mismo DC-3 produce exactamente los mismos bytes en dos corridas", () => {
   const first = generateDc3Document(SAMPLE_DOCUMENT);
   const second = generateDc3Document(SAMPLE_DOCUMENT);
@@ -199,7 +184,6 @@ test("acomoda el nombre de curso mas largo dentro del recuadro y sin perder pala
   }
   assert.equal(courseLines.map(({ text }) => text).join(" "), courseName);
   assert.equal(courseLines.length <= 2, true);
-  // Ninguna linea excede el ancho util de la caja: 612 de pagina menos margenes y respiro interior.
   for (const line of courseLines) {
     assert.equal(measureText(line.text, { size: line.size }) <= 612 - 44 * 2 - 14, true);
   }
@@ -211,8 +195,6 @@ test("una firma configurada sustituye la horneada y las demas se conservan", () 
     signatures: { instructor: "INSTRUCTOR CONFIGURADO" }
   });
   const printed = printedText(output);
-  // Los nombres al pie se comparan contra las leyendas, no contra literales: son personas reales y
-  // no tienen por que quedar transcritas tambien en la prueba.
   const firmas = LEYENDAS_DC3.templateSignatures;
   assert.match(printed, /INSTRUCTOR CONFIGURADO/);
   if (firmas.instructor) assert.equal(printed.includes(firmas.instructor), false);
@@ -222,17 +204,11 @@ test("una firma configurada sustituye la horneada y las demas se conservan", () 
 });
 
 test("la razon social de los datos sustituye la que traen las leyendas horneadas", () => {
-  // Sin razon social en los datos se imprime la horneada, ya corregida. Aun asi la buena viaja
-  // siempre en los datos: al hacerlo entra en la huella del documento y un cambio de razon social
-  // no se emite en silencio.
   assert.match(printedText(generateDc3Document(SAMPLE_DOCUMENT)), /KIMBERLY CLARK DE MÉXICO S\.A\.B DE C\.V/);
   const output = generateDc3Document({ ...SAMPLE_DOCUMENT, employerName: "RAZÓN SOCIAL CORREGIDA" });
   assert.match(printedText(output), /RAZÓN SOCIAL CORREGIDA/);
 });
 
-// `extractDc3Legends` ya no participa en la emision: solo la usa la prueba que compara las leyendas
-// horneadas contra el borrador oficial. Se conserva su exigencia porque esa comparacion no sirve de
-// nada si el extractor acepta una hoja incompleta y devuelve leyendas a medias.
 test("una hoja sin las leyendas oficiales no puede usarse para verificarlas", () => {
   const mutilated = buildZip([
     ["[Content_Types].xml", "<Types/>"],
@@ -254,8 +230,6 @@ test("un campo faltante o una CURP invalida detienen la emision", () => {
   );
 });
 
-// El archivo oficial es una hoja de calculo con dos catalogos de consulta en el reverso. Esa parte no
-// pertenece a la constancia que se entrega, y sin una prueba nadie notaria si volviera a colarse.
 test("la plantilla oficial real declara sus leyendas, no se altera y su reverso no se imprime", (t) => {
   if (!existsSync(OFFICIAL_TEMPLATE)) {
     t.skip("La plantilla oficial es material privado y no esta presente en este entorno");
@@ -280,9 +254,6 @@ test("la plantilla oficial real declara sus leyendas, no se altera y su reverso 
   assert.match(printed, /DATOS DE LA EMPRESA/);
   assert.match(printed, /PERSONA SINTÉTICA UNO/);
   assert.match(printed, /CURSO SINTÉTICO DE VERIFICACIÓN/);
-  // Reverso de consulta: ni el titulo de los catalogos ni sus renglones deben aparecer. La leyenda
-  // oficial de instrucciones si menciona "el reverso de este formato" y se conserva textual: es
-  // redaccion de la STPS, no una marca de pagina.
   assert.doesNotMatch(printed, /CLAVES Y DENOMINACIONES/i);
   assert.doesNotMatch(printed, /Cultivo, crianza/i);
   assert.doesNotMatch(printed, /Desarrollo personal y familiar/i);

@@ -1,23 +1,3 @@
-/**
- * Caracterización y congelamiento de comportamiento de preliberación.
- * Valida la paridad de la implementación Node con los contratos de:
- * - motivos de bloqueo, asistencia del participante y vista previa
- * - banco de trabajo: guardar, alta manual, entrada, envío y retorno
- * - reconciliación de exámenes
- *
- * Invariantes verificados:
- * 1. Transiciones bloqueadas, idempotentes y auditadas antes de persistir estado.
- * 2. Alta duplicada con otra solicitud se rechaza.
- * 3. Guardar NO cambia el estado de la sesión.
- * 4. Excluir exige motivo.
- * 5. Una asistencia ya liberada no admite exclusión.
- * 6. Exámenes parten como aprobados y sólo admiten las tres alternativas visibles.
- * 7. Hallazgos derivados se calculan servidor-side, no se declaran a mano.
- * 8. Cotejo confirma asistencias con identidad validada.
- * 9. Alta manual idempotente por requestId, rechaza duplicados.
- * 10. Datos personales no se exponen fuera de lo necesario.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryPreReleaseRepository } from "../../src/adapters/memoria/preliberacion.ts";
@@ -49,10 +29,6 @@ const FIXED_DATE = new Date("2026-08-03T10:00:00.000Z");
 const testClock = { now: () => FIXED_DATE, nowIso: () => FIXED_DATE.toISOString() };
 
 const IDENTITY: ActorIdentity = { actor: "REVISOR_TEST", role: "CAPACITACION" };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -130,10 +106,6 @@ function setupWorkbench(
   const service = new WorkbenchService({ repository: repo, clock: testClock });
   return { repo, service, session };
 }
-
-// ===========================================================================
-// BLOQUE 1: Funciones puras (blockingReasons, participantAttendance, roster)
-// ===========================================================================
 
 describe("Caracterización de Preliberación — Funciones puras", () => {
   describe("blockingReasons", () => {
@@ -289,11 +261,6 @@ describe("Caracterización de Preliberación — Funciones puras", () => {
     });
   });
 
-  /**
-   * `eligible` sigue siendo estricto —un examen sin clasificar no libera a
-   * nadie— y esa fila queda sin motivos que mostrar. La situación es lo que
-   * traduce ese hueco en una palabra honesta.
-   */
   describe("rosterSituation", () => {
     it("una fila sin revisión guardada está pendiente, no excluida", () => {
       const row = buildRosterRow(
@@ -445,10 +412,6 @@ describe("Caracterización de Preliberación — Funciones puras", () => {
   });
 });
 
-// ===========================================================================
-// BLOQUE 2: WorkbenchService — operaciones con mutación
-// ===========================================================================
-
 describe("Caracterización de Preliberación — WorkbenchService", () => {
   describe("open", () => {
     it("abre una sesión CERRADA y muestra el roster", async () => {
@@ -490,17 +453,14 @@ describe("Caracterización de Preliberación — WorkbenchService", () => {
         IDENTITY,
       );
 
-      // La sesión NO cambió de estado
       const session = await repo.getSessionById("ses-001");
       assert.equal(session!.status, "CERRADA");
       assert.equal(state.session.status, "CERRADA");
 
-      // La revisión se guardó
       const review = repo.getReview("ses-001");
       assert.ok(review);
       assert.equal(review.comments, "Sin observaciones");
 
-      // Los exámenes se actualizaron
       const att10002 = repo.getAttendance("att-10002");
       assert.equal(att10002!.examStatus, "EXAMEN_NO_ENCONTRADO");
     });
@@ -819,7 +779,6 @@ describe("Caracterización de Preliberación — WorkbenchService", () => {
   describe("enterPreRelease — transición a PRELIBERACION", () => {
     it("cambia de CERRADA a PRELIBERACION cuando hay revisión guardada", async () => {
       const { service } = setupWorkbench();
-      // Guardar primero
       await service.save(
         {
           sessionId: "ses-001",
@@ -842,7 +801,6 @@ describe("Caracterización de Preliberación — WorkbenchService", () => {
 
     it("es idempotente: si ya está en PRELIBERACION, devuelve el estado", async () => {
       const { service, repo } = setupWorkbench({ session: { status: "PRELIBERACION" } });
-      // Seed a review
       await repo.upsertReview({
         revisionId: "rev-001",
         sessionId: "ses-001",
@@ -1014,10 +972,6 @@ describe("Caracterización de Preliberación — WorkbenchService", () => {
     });
   });
 });
-
-// ===========================================================================
-// BLOQUE 3: Bandejas, apertura por etapa y alternativas de examen
-// ===========================================================================
 
 describe("Caracterización de Preliberación — bandejas y alternativas", () => {
   describe("listEditableSessions / listReleaseQueue", () => {

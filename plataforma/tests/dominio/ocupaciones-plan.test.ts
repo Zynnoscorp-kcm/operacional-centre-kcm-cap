@@ -100,7 +100,6 @@ describe("Ocupaciones · plan del lote", () => {
         caso: "C002",
       },
     ]);
-    // Sin la columna no hay dónde escribir: la hoja se reporta, no se adivina.
     assert.deepEqual(plan.hojasSinColumna, ["EMP ACTIVOS"]);
   });
 
@@ -144,7 +143,6 @@ describe("Ocupaciones · plan del lote", () => {
       2,
     );
 
-    // C002 cubre a dos; entre C001, C003 y C004, con uno cada uno, gana el primero del padrón.
     assert.deepEqual(
       plan.casos.map((caso) => caso.id),
       ["C001", "C002"],

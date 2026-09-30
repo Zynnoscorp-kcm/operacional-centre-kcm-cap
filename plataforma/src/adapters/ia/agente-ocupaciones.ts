@@ -1,12 +1,3 @@
-/**
- * Arma el agente de ocupaciones con los modelos que tienen llave: el servicio
- * de un caso suelto y la puerta del botón «Clasificar faltantes».
- *
- * Se importa con `import()` la primera vez que alguien lo usa: así LangGraph y
- * el catálogo sólo se cargan en ese momento y ninguna otra pantalla paga su peso
- * al arrancar.
- */
-
 import type { ParametrosDelAgente } from "../../config/agente-ocupaciones.ts";
 import { AgenteDeOcupaciones } from "../../domain/ocupaciones/agente.ts";
 import { catalogoDeLaPlataforma } from "../../domain/ocupaciones/catalogo.ts";
@@ -24,10 +15,6 @@ interface Opciones {
   readonly fetch?: typeof fetch;
 }
 
-/**
- * Catálogo, modelo y huella: lo mismo para un caso suelto que para un lote. Un
- * solo modelo contesta cada caso; su cadena sólo pasa al respaldo si él falla.
- */
 function piezas(parametros: ParametrosDelAgente, opciones: Opciones) {
   const catalogo = catalogoDeLaPlataforma();
   const principal = new ModeloConRespaldo(

@@ -1,17 +1,3 @@
-/**
- * Control de cambios.
- *
- * Cada envío completo —la matriz diaria o el padrón semanal— llega aquí como un
- * aviso: qué archivo, cuándo, quién entra, quién falta y quién cambió de puesto,
- * y si ya se aplicó, si espera aprobación o si se quedó sin aplicar. La revisión
- * completa sigue en su pestaña; ésta es la bandeja que dice que hay algo que ver.
- *
- * Se arma con la bitácora de cargas y no con una tabla propia: el aviso es el
- * asiento «revisada» de cada envío, y su desenlace es el asiento «aplicada» o
- * «rechazada» con la misma solicitud. Duplicarlo en otra tabla abriría la
- * puerta a que las dos cuenten historias distintas.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import type { CargaRegistrada, TipoDeCarga } from "../../domain/cargas/tipos.ts";
 import { momento } from "../kit/fechas.ts";
@@ -19,7 +5,6 @@ import { renderPanelDeCambios, type CifraDelPanel } from "../kit/panel-de-cambio
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
-/** Lo que dura una revisión en espera, igual que en el barrido y en el padrón. */
 const VIGENCIA_MS = 30 * 60 * 1000;
 
 export type EstadoDelAviso = "PENDIENTE" | "APLICADA" | "RECHAZADA" | "SIN_APLICAR";
@@ -27,7 +12,6 @@ export type EstadoDelAviso = "PENDIENTE" | "APLICADA" | "RECHAZADA" | "SIN_APLIC
 export interface AvisoDeCambio {
   readonly envio: CargaRegistrada;
   readonly estado: EstadoDelAviso;
-  /** El asiento que cerró el envío, si lo hubo. */
   readonly desenlace?: CargaRegistrada;
 }
 
@@ -36,14 +20,6 @@ export interface DatosDeControl {
   readonly avisos: readonly AvisoDeCambio[];
 }
 
-/**
- * Empareja cada envío con su desenlace.
- *
- * Los asientos llegan del más nuevo al más viejo. El desenlace de un envío es
- * el primer «aplicada» o «rechazada» posterior con la misma solicitud. Sólo el
- * envío más reciente de cada fuente puede estar pendiente: uno nuevo reemplaza
- * la revisión del anterior.
- */
 export function armarAvisos(asientos: readonly CargaRegistrada[], ahora: Date): AvisoDeCambio[] {
   const cronologico = [...asientos].reverse();
   const avisos: AvisoDeCambio[] = [];
@@ -72,8 +48,6 @@ export function armarAvisos(asientos: readonly CargaRegistrada[], ahora: Date): 
     } else {
       estado = "SIN_APLICAR";
     }
-    // Sea cual sea su estado, el envío más nuevo de cada fuente es el único que
-    // pudo quedar esperando: los anteriores ya no tienen revisión viva.
     pendientePorFuente.add(envio.tipo);
     avisos.push({ envio, estado, ...(desenlace ? { desenlace } : {}) });
   }
@@ -99,7 +73,6 @@ function cifra(asiento: CargaRegistrada, clave: string): number {
   return typeof valor === "number" ? valor : 0;
 }
 
-/** Las mismas cifras que la revisión, sacadas de lo que el envío dejó asentado. */
 function cifrasDe(envio: CargaRegistrada): CifraDelPanel[] {
   if (envio.tipo === "MATRIZ") {
     return [

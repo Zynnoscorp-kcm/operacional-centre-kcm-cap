@@ -1,12 +1,3 @@
-/**
- * El grafo del agente de ocupaciones, contra modelos de mentira.
- *
- * Cada modelo falso contesta con un guion: una respuesta por llamada, en
- * orden, y anota lo que se le preguntó. Así se comprueba el camino del grafo,
- * los reintentos, la conciliación y —lo que más importa— qué texto habría
- * salido hacia el proveedor.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -22,7 +13,6 @@ import {
   type SolicitudJson,
 } from "../../src/ports/modelo-de-lenguaje.port.ts";
 
-/** Una respuesta de guion: el objeto que devolvería el modelo, o la `FallaDeModelo` que lanzaría. */
 type Guion = unknown;
 
 class ModeloDeGuion implements ModeloDeLenguajePort {
@@ -129,7 +119,6 @@ describe("Ocupaciones · agente en LangGraph", () => {
     assert.ok(
       segunda?.mensaje.startsWith("Puesto: *OPERARIO 2°\nCentro de costos: HIGIENICOS\n\n"),
     );
-    // Las opciones son las de la subárea elegida y nada más.
     assert.match(segunda?.mensaje ?? "", /Opciones de 05\.5 Materia orgánica:/u);
     assert.doesNotMatch(segunda?.mensaje ?? "", /Opciones de 04\./u);
     for (const pregunta of principal.preguntas) {
@@ -266,7 +255,6 @@ describe("Ocupaciones · agente en LangGraph", () => {
     const resultado = await agente(principal, verificador).clasificar(CASO);
     const transcurrido = Date.now() - inicio;
     assert.equal(resultado.estado, "sugerida");
-    // Uno tras otro serían ~1 200 ms; en paralelo, ~600 ms.
     assert.ok(transcurrido < 1000, `tardó ${String(transcurrido)} ms`);
   });
 

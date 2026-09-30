@@ -1,50 +1,12 @@
 Attribute VB_Name = "KcmEntradas"
 Option Explicit
 
-' Subpanel de sesiones entrantes.
-'
-' Aditivo, como KcmPanel y KcmMatrixPanel: no modifica ninguna rutina existente
-' y quitarlo entero deja el ciclo como estaba. Tampoco implementa logica de
-' matriz; encadena KcmHttpPost y KcmApplyPendingReleases.
-'
-' El problema que resuelve es de ceguera. "Consultar pendientes" contesta con un
-' numero -"12 liberaciones listas para aplicar"- y "Recibir lotes de fechas"
-' aplica las doce. Entre esas dos cosas no habia nada: no se podia ver de que
-' sesiones eran, ni escoger. Quien libera en la consola tampoco tenia forma de
-' confirmar desde el libro que su sesion habia llegado, salvo aplicarlas todas y
-' mirar el resultado.
-'
-' Aqui cada sesion es un renglon con su codigo, su curso, su fecha y cuantas
-' fechas le faltan por escribir. Se palomea la casilla de la que se quiera
-' recibir y el boton escribe solo esas. Sin marcar nada no se escribe nada.
-'
-' El boton que aplicaba todo lo pendiente de golpe se retiro del panel: lo mismo
-' se consigue con "Marcar todas" y "Recibir marcadas", que ensena que se va a
-' escribir y pregunta antes. La entrada publica sigue existiendo para el ciclo
-' programado, que corre sin nadie delante.
-'
-' Dos decisiones que no son de estilo:
-'
-' 1. SE ACTUALIZA PULSANDO. No hay reloj. La vigilancia de barridos existe
-'    porque atiende una orden que alguien encargo en la consola y que espera; una
-'    liberacion no espera nada del libro hasta que una persona decide escribirla,
-'    y consultar cada pocos minutos serian cientos de lecturas al dia contra el
-'    presupuesto de la base para contestar casi siempre lo mismo.
-' 2. LA LISTA SE ACUMULA. Actualizar no borra lo que ya estaba: mezcla. Una
-'    sesion que la plataforma ya no reporta pendiente se marca "Escrita" y se
-'    queda a la vista, porque desaparecer en silencio es indistinguible de no
-'    haber llegado nunca. Se limpian con el boton de limpiar, no solas.
-
 Public Const KCM_ENTRADAS_SHEET As String = "KCM_ENTRADAS"
 
 Private Const KCM_ENTRADAS_PREFIJO As String = "KCME_"
-' Las casillas llevan el mismo prefijo: el encabezado las borra con el resto y
-' KcmEntradasCasillas las vuelve a poner al final de cada actualizacion.
 Private Const KCM_ENTRADAS_CASILLA As String = "KCME_C"
 Private Const KCM_ENTRADAS_FILA_PRIMERA As Long = 8
 
-' Las columnas del renglon. El identificador de sesion va a la derecha y apagado:
-' es lo que viaja al filtrar y no lo lee nadie.
 Private Const COL_MARCA As Long = 2
 Private Const COL_CODIGO As Long = 3
 Private Const COL_CURSO As Long = 4
@@ -56,25 +18,15 @@ Private Const COL_SESION As Long = 8
 Private Const ESTADO_PENDIENTE As String = "Pendiente"
 Private Const ESTADO_ESCRITA As String = "Escrita"
 
-' Geometria de la zona superior, en puntos. Titulo, fichas, botones y tabla van
-' a doce puntos uno de otro: las seis filas suman justo lo que ocupan.
 Private Const ENTRADAS_ALTO_FILA As Double = 37.5
 Private Const ENTRADAS_FICHAS_ARRIBA As Double = 120
 Private Const ENTRADAS_ACCIONES_ARRIBA As Double = 178
 
-' ---------------------------------------------------------------- entradas
-
-''' Abre el subpanel, lo redibuja y lo deja recien consultado.
-'''
-''' Es idempotente: borra sus formas por prefijo antes de dibujar, de modo que
-''' abrirlo dos veces no acumula botones. Los renglones si se conservan, que es
-''' justo lo que se quiere: la lista es la memoria de lo que ha llegado.
 Public Sub KcmEntradasAbrir()
     Dim hoja As Worksheet
 
     On Error GoTo AbrirError
 
-    ' Actualizar dibuja encabezado y botones; aqui solo se trae la hoja al frente.
     Set hoja = KcmEntradasHoja()
     KcmPaginaVentana hoja
     hoja.Range("A1").Select
@@ -85,12 +37,6 @@ AbrirError:
     KcmAvisoFallo "Ver liberaciones", "No se pudo abrir la lista de liberaciones.", Err.Description
 End Sub
 
-''' Pregunta a la plataforma que sesiones tienen fechas por escribir y mezcla la
-''' respuesta con lo que ya estaba en la hoja.
-'''
-''' Mezclar y no repintar es lo que hace que la lista sirva de memoria: una
-''' sesion que ya se escribio deja de venir en la respuesta, y si el panel se
-''' repintara desapareceria sin dejar rastro de que llego alguna vez.
 Public Sub KcmEntradasActualizar()
     Dim hoja As Worksheet
     Dim respuesta As KcmDiccionario
@@ -108,8 +54,6 @@ Public Sub KcmEntradasActualizar()
     Application.ScreenUpdating = False
     Set hoja = KcmEntradasHoja()
     KcmEntradasEncabezado hoja
-    ' Las fichas se dibujan ya, con lo que hay en la hoja: si la consulta falla,
-    ' la pagina no se queda con un hueco donde iban.
     KcmEntradasResumen hoja, KcmEntradasContarPendientes(hoja), 0, "Consultando..."
     KcmEntradasBotones hoja
 
@@ -118,15 +62,11 @@ Public Sub KcmEntradasActualizar()
     Set filas = KcmParseTsv(KcmDecodeResponsePayload(respuesta), _
         Array("sessionId", "sessionCode", "trainingId", "completionDate", "pending"))
 
-    ' Primero se indexa lo que llego, para poder recorrer la hoja una sola vez.
     Set pendientes = KcmNuevoDiccionario()
     For Each fila In filas
         pendientes.AgregarObjeto CStr(fila.Item("sessionId")), fila
     Next fila
 
-    ' Los renglones que ya estaban: los que siguen pendientes se actualizan y los
-    ' que la plataforma ya no reporta pasan a Escrita y pierden su marca, para que
-    ' un segundo pulso del boton no intente escribirlos otra vez.
     Set yaListadas = KcmNuevoDiccionario()
     ultima = KcmEntradasUltimaFila(hoja)
     For renglon = KCM_ENTRADAS_FILA_PRIMERA To ultima
@@ -144,7 +84,6 @@ Public Sub KcmEntradasActualizar()
         End If
     Next renglon
 
-    ' Y al final las que no estaban, en el orden en que las devolvio el servidor.
     For Each fila In filas
         sesion = CStr(fila.Item("sessionId"))
         If Not yaListadas.Exists(sesion) Then
@@ -172,13 +111,6 @@ ActualizarError:
     KcmAvisoFallo "Ver liberaciones", "No se pudo actualizar la lista.", causa
 End Sub
 
-''' Escribe en la matriz solo las sesiones con la casilla palomeada.
-'''
-''' El filtro se aplica sobre lo que ya se descargo y no sobre lo que se pide: la
-''' carga de RELEASE_PULL_V1 llega entera y KcmApplyPendingReleases descarta las
-''' filas de las sesiones que nadie marco. Pedir por sesion habria significado una
-''' llamada por sesion escogida, y el lote sigue siendo la unidad que se aplica
-''' todo o nada.
 Public Sub KcmEntradasRecibir()
     Dim hoja As Worksheet
     Dim renglon As Long
@@ -211,8 +143,6 @@ Public Sub KcmEntradasRecibir()
         KcmPlural(cuantas, "sesion", "sesiones") & ".") Then Exit Sub
 
     KcmApplyPendingReleases False, escogidas
-    ' Volver a preguntar deja los renglones recien escritos en Escrita sin que
-    ' nadie tenga que pulsar dos botones para ver el resultado de uno.
     KcmEntradasActualizar
     Exit Sub
 
@@ -221,7 +151,6 @@ RecibirError:
         "Las sesiones seleccionadas no se escribieron.", Err.Description
 End Sub
 
-''' Marca todas las que siguen pendientes. Las escritas no se remarcan.
 Public Sub KcmEntradasMarcarTodas()
     Dim hoja As Worksheet
     Dim renglon As Long
@@ -244,11 +173,6 @@ MarcarError:
         "No se pudieron seleccionar las sesiones pendientes.", Err.Description
 End Sub
 
-''' Retira de la lista las sesiones ya escritas. Las pendientes se quedan.
-'''
-''' Es el equivalente de la equis del tablero de la consola: cuando la lista se
-''' llena de escritas deja de servir para ver lo que falta. No se pierde nada:
-''' la evidencia de lo que entro a la matriz vive en la plataforma, no aqui.
 Public Sub KcmEntradasLimpiar()
     Dim hoja As Worksheet
     Dim renglon As Long
@@ -258,13 +182,11 @@ Public Sub KcmEntradasLimpiar()
 
     Set hoja = KcmEntradasHoja()
     ultima = KcmEntradasUltimaFila(hoja)
-    ' Descendente: borrar un renglon recorre hacia arriba los que faltan.
     For renglon = ultima To KCM_ENTRADAS_FILA_PRIMERA Step -1
         If KcmEntradasTexto(hoja.Cells(renglon, COL_ESTADO).Value2) = ESTADO_ESCRITA Then
             hoja.Rows(renglon).Delete
         End If
     Next renglon
-    ' Borrar renglones no borra las casillas que estaban encima: se vuelven a poner.
     KcmEntradasCasillas hoja
     Exit Sub
 
@@ -272,8 +194,6 @@ LimpiarError:
     KcmAvisoFallo "Ver liberaciones", _
         "No se pudieron retirar las sesiones escritas.", Err.Description
 End Sub
-
-' ---------------------------------------------------------------- el dibujo
 
 Private Function KcmEntradasHoja() As Worksheet
     Dim candidata As Worksheet
@@ -295,20 +215,12 @@ Private Function KcmEntradasHoja() As Worksheet
     Set KcmEntradasHoja = encontrada
 End Function
 
-' ---------------------------------------------------------------- el dibujo
-'
-' La hoja es una pagina de la consola: barra de marca, titulo, tres fichas, la
-' barra de acciones y la tabla. Las filas 1 a 6 solo dan el alto de la zona de
-' arriba; la tabla empieza en la fila 7 y los renglones en la 8, como siempre, para
-' que la lista que ya exista en el libro se siga leyendo igual.
-
 Private Sub KcmEntradasEncabezado(ByVal hoja As Worksheet)
     Dim fila As Long
     Dim izquierda As Double
     Dim anchoTotal As Double
     Dim subtitulo As String
 
-    ' La version anterior combinaba celdas y pintaba de azul estas filas.
     hoja.Range("A1:I7").UnMerge
     hoja.Range("A1:I7").Clear
     hoja.Range("A1:I6").Interior.Color = COLOR_LIENZO
@@ -321,8 +233,6 @@ Private Sub KcmEntradasEncabezado(ByVal hoja As Worksheet)
     hoja.Columns("E").ColumnWidth = 13
     hoja.Columns("F").ColumnWidth = 13
     hoja.Columns("G").ColumnWidth = 14
-    ' El identificador se queda en la columna H porque es lo que viaja al
-    ' filtrar, pero oculto: nadie lo lee. El curso se ensancha lo que ocupaba.
     hoja.Columns("H").ColumnWidth = 30
     hoja.Columns("H").Hidden = True
     hoja.Columns("I").ColumnWidth = 3
@@ -350,7 +260,6 @@ Private Sub KcmEntradasEncabezado(ByVal hoja As Worksheet)
     hoja.Cells(7, COL_ESTADO).HorizontalAlignment = xlCenter
 End Sub
 
-''' Las tres fichas: cuantas esperan, cuantas llegaron en esta consulta y cuando.
 Private Sub KcmEntradasResumen(ByVal hoja As Worksheet, ByVal pendientes As Long, _
     ByVal nuevas As Long, ByVal consulta As String)
     Dim izq As Double
@@ -374,7 +283,6 @@ Private Sub KcmEntradasResumen(ByVal hoja As Worksheet, ByVal pendientes As Long
         ancho, "{U}LTIMA CONSULTA", consulta, COLOR_APAGADO
 End Sub
 
-''' La barra de acciones. La principal es escribir; lo demas prepara la lista.
 Private Sub KcmEntradasBotones(ByVal hoja As Worksheet)
     Dim izq As Double
     Dim y As Double
@@ -402,10 +310,6 @@ Private Sub KcmEntradasPintarRenglon(ByVal hoja As Worksheet, ByVal renglon As L
     KcmEntradasPintarEstado hoja, renglon, estado
 End Sub
 
-''' Da forma al renglon completo y pone la etiqueta del estado.
-'''
-''' Se llama para todo renglon en cada actualizacion, pendiente o escrito, asi que
-''' aqui vive el estilo de la fila y no en la escritura de los datos.
 Private Sub KcmEntradasPintarEstado(ByVal hoja As Worksheet, ByVal renglon As Long, _
     ByVal estado As String)
     Dim color As Long
@@ -423,8 +327,6 @@ Private Sub KcmEntradasPintarEstado(ByVal hoja As Worksheet, ByVal renglon As Lo
     hoja.Cells(renglon, COL_SESION).Font.Color = COLOR_APAGADO
     hoja.Cells(renglon, COL_SESION).Font.Size = 8
 
-    ' La marca es una casilla de verificacion encima de la celda, ligada a ella: la
-    ' celda guarda VERDADERO o FALSO y el formato ;;; lo oculta detras de la casilla.
     With hoja.Cells(renglon, COL_MARCA)
         .HorizontalAlignment = xlCenter
         .Font.Bold = True
@@ -447,11 +349,6 @@ Private Sub KcmEntradasPintarEstado(ByVal hoja As Worksheet, ByVal renglon As Lo
     KcmPaginaEtiqueta hoja.Cells(renglon, COL_ESTADO), estado, color
 End Sub
 
-' ---------------------------------------------------------------- utilidades
-
-''' La ultima fila con identificador. Se mide por la columna del identificador y
-''' no por la del codigo: la marca y el codigo los puede borrar una persona, y el
-''' identificador solo lo escribe este modulo.
 Private Function KcmEntradasUltimaFila(ByVal hoja As Worksheet) As Long
     Dim ultima As Long
 
@@ -460,7 +357,6 @@ Private Function KcmEntradasUltimaFila(ByVal hoja As Worksheet) As Long
     KcmEntradasUltimaFila = ultima
 End Function
 
-''' Cuantos renglones siguen pendientes, contados en la hoja y sin preguntar a nadie.
 Private Function KcmEntradasContarPendientes(ByVal hoja As Worksheet) As Long
     Dim renglon As Long
 
@@ -471,8 +367,6 @@ Private Function KcmEntradasContarPendientes(ByVal hoja As Worksheet) As Long
     Next renglon
 End Function
 
-''' Marcada es la casilla palomeada: la celda ligada vale VERDADERO. Un libro que
-''' todavia traiga una equis escrita a mano de antes tambien cuenta como marcado.
 Private Function KcmEntradasMarcada(ByVal hoja As Worksheet, ByVal renglon As Long) As Boolean
     Dim valor As Variant
 
@@ -484,18 +378,6 @@ Private Function KcmEntradasMarcada(ByVal hoja As Worksheet, ByVal renglon As Lo
     End If
 End Function
 
-''' Una casilla por renglon pendiente, encima de su celda de marca.
-'''
-''' La casilla es una forma con macro, el mismo mecanismo de los botones del
-''' panel, y no un control de formulario: los controles de formulario no se
-''' dibujaban en todos los Excel, y la columna seguia viendose como texto. Un
-''' clic la palomea o la despalomea (KcmEntradasAlternar); la celda de abajo
-''' guarda VERDADERO o FALSO y es lo que lee "Escribir marcadas".
-'''
-''' Se quitan todas y se vuelven a poner en cada actualizacion: los renglones se
-''' agregan, se borran y cambian de estado, y una casilla que se quedara flotando
-''' sobre el renglon equivocado marcaria la sesion que nadie escogio. Las escritas
-''' no llevan casilla: ya no hay nada que escribir de ellas.
 Private Sub KcmEntradasCasillas(ByVal hoja As Worksheet)
     Dim renglon As Long
     Dim celda As Range
@@ -520,7 +402,6 @@ Private Sub KcmEntradasCasillas(ByVal hoja As Worksheet)
     Next renglon
 End Sub
 
-''' Palomeada: fondo azul y palomita blanca. Sin palomear: cuadro blanco con borde.
 Private Sub KcmEntradasPintarCasilla(ByVal casilla As Shape, ByVal marcada As Boolean)
     casilla.Line.ForeColor.RGB = COLOR_MARCA
     casilla.Line.Weight = 1.25
@@ -550,8 +431,6 @@ Private Sub KcmEntradasPintarCasilla(ByVal casilla As Shape, ByVal marcada As Bo
     End If
 End Sub
 
-''' Lo que corre al hacer clic en una casilla: cambia la marca de su renglon.
-''' El renglon sale del nombre de la forma, que KcmEntradasCasillas le pone.
 Public Sub KcmEntradasAlternar()
     Dim hoja As Worksheet
     Dim nombre As String

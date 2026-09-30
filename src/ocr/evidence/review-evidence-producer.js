@@ -92,10 +92,6 @@ function recoveryState({ documentId, sessionId, requestId }) {
   });
 }
 
-/**
- * Materializa las dos variantes de los 200 recortes y devuelve referencias que
- * pueden persistirse directamente en OCR_RESULTADOS.cropEvidenceRefs.
- */
 export class ReviewEvidenceProducer {
   #store;
   #clock;

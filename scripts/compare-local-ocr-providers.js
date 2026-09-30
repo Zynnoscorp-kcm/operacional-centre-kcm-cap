@@ -84,8 +84,6 @@ if (!tesseract.available) {
       expectedDigits: row.digits,
       expectedDetected: row.expectedDetected
     }));
-    // El padrón es una entrada legitima del posproceso de negocio, pero nunca se
-    // entrega al proveedor de reconocimiento ni se usa para escoger un digito.
     const employeeRoster = new Set(
       fixture.syntheticRows.filter((row) => row.digits).map((row) => row.digits)
     );
@@ -228,8 +226,6 @@ function measureAdversarialNegative(templateBank) {
   const guessedValue = recognition.rows[0].rawDigits;
   const candidates = createOcrCandidates(recognition.rows, {
     documentId: "synthetic-adversarial",
-    // Prueba deliberadamente fuerte: el padrón contiene la lectura producida.
-    // La confianza, y no la ausencia en padrón, debe impedir la autoaceptación.
     employeeRoster: new Set([guessedValue])
   });
   const candidate = candidates[0];

@@ -1,6 +1,3 @@
-// Constructor de libros XLSB sinteticos. Vive fuera de las pruebas que lo consumen porque el
-// extractor HC y el generador DC-3 necesitan la misma matriz binaria: duplicar estos primitivos
-// permitiria que las dos suites divergieran sobre el mismo formato.
 import { deflateRawSync } from "node:zlib";
 
 const WORKSHEET_RELATIONSHIP =
@@ -325,6 +322,5 @@ function buildSyntheticXlsb(options = {}) {
     ["xl/worksheets/operational-hc.bin", worksheet]
   ]);
 }
-
 
 export { buildSyntheticXlsb, syntheticCourseNames, serialForIso };

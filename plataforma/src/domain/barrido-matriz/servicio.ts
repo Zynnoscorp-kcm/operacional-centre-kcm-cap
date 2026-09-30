@@ -1,33 +1,3 @@
-/**
- * Barrido de la matriz: encargarlo, recibirlo, leerlo y —sólo entonces— aplicarlo.
- *
- * La regla es la del padrón semanal, palabra por palabra: leer no escribe.
- * El cliente VBA recorre el XLSB y transmite el snapshot; aquí se confronta
- * contra SQL y se guarda una revisión. Ninguna fila del dominio se mueve hasta
- * que alguien aprieta «Aplicar a la base».
- *
- * Eso corrige, para esta ruta, algo que `MATRIX_IMPORT_V1` no permite: esa
- * acción recibe y aplica en la misma petición, de modo que un barrido con
- * alcance FULL retira fechas antes de que nadie haya visto cuáles. El barrido
- * separa los dos actos sin tocar la acción anterior, que sigue existiendo para
- * el ciclo programado.
- *
- * Tres decisiones de costo, iguales a las del padrón porque el problema es el
- * mismo:
- *
- * 1. Tres lecturas por barrido: trabajadores, cursos y registros HC. Es lo
- *    que cuesta la comparación completa, y es exactamente lo que gastaría la
- *    aplicación; no se paga dos veces por preguntar antes de escribir.
- * 2. La revisión no crea el lote de importación, que es justamente lo que no
- *    debe existir todavía. Vive en el proceso y, donde hay base, además en
- *    `sistema.revision_pendiente` (`revisiones`): publicada con varias
- *    instancias, el «Aplicar» puede llegar a una que no recibió el barrido.
- *    Si se pierde, se vuelve a barrer: una lectura de la hoja, ninguna escritura.
- * 3. Un barrido a la vez. El snapshot de una matriz de 1,686 filas pesa
- *    varios megabytes; conservar una cola de ellos en memoria no compra nada.
- *    El nuevo sustituye al anterior.
- */
-
 import { randomUUID } from "node:crypto";
 
 import type { Clock } from "../../ports/reloj.port.ts";
@@ -68,7 +38,6 @@ import {
 
 const VIGENCIA_MS = 30 * 60 * 1000;
 
-/** Normaliza para comparar adscripciones. Un puesto no cambia por un espacio. */
 function clave(valor: string | null | undefined): string {
   return (valor ?? "").trim().toUpperCase();
 }
@@ -81,21 +50,11 @@ function textoVisible(valor: string | null | undefined): string {
 export interface MatrixScanDeps {
   readonly repository: MatrixRepositoryPort;
   readonly clock: Clock;
-  /** Se inyecta para pruebas; por omisión se construye sobre el repositorio. */
   readonly imports?: MatrixImportService;
-  /**
-   * Sin ella el barrido funciona igual que antes de esta ejecución: revisa y
-   * aplica, pero nadie puede saber después qué libro se aplicó ni quién lo pidió.
-   */
   readonly bitacora?: BitacoraDeCargas;
-  /**
-   * Sin él la revisión sólo vive en este proceso, que es lo correcto en una
-   * máquina y en las pruebas. Con él, cualquier instancia puede aplicarla.
-   */
   readonly revisiones?: RevisionesCompartidasPort;
 }
 
-/** Lo que se comparte entre instancias: la revisión y su comparación ya resuelta. */
 interface BarridoCompartido {
   readonly barrido: BarridoGuardado;
   readonly comparacion?: ComparacionConLaAnterior;
@@ -110,7 +69,6 @@ export class MatrixScanService {
 
   #barrido: BarridoGuardado | undefined;
   #resultado: ResultadoDeBarrido | undefined;
-  /** Resuelta al recibir el barrido, no al pintarlo. Ver el padrón: mismo motivo. */
   #comparacion: ComparacionConLaAnterior | undefined;
 
   constructor(deps: MatrixScanDeps) {
@@ -121,13 +79,6 @@ export class MatrixScanService {
     this.#revisiones = deps.revisiones;
   }
 
-  /**
-   * Trae la revisión compartida, si la hay. Las rutas la llaman antes de leer
-   * el estado: sin almacén compartido no hace nada y todo queda en memoria.
-   *
-   * El almacén manda. Si otra instancia aplicó o descartó, aquí se olvida la
-   * copia local para no ofrecer un «Aplicar» que ya no existe.
-   */
   async sincronizar(): Promise<void> {
     if (!this.#revisiones) return;
     const vigente = await this.#revisiones.vigente("BARRIDO_MATRIZ");
@@ -144,21 +95,10 @@ export class MatrixScanService {
     this.#comparacion = compartido.comparacion;
   }
 
-  /** Lo que se sabe de la carga anterior, para la revisión que está en pantalla. */
   comparacion(): ComparacionConLaAnterior | undefined {
     return this.#comparacion;
   }
 
-  // ------------------------------------------------------------ el barrido
-
-  /**
-   * Recibe el snapshot barrido y produce la revisión. No escribe nada.
-   *
-   * Un snapshot mal formado —celdas de error, números duplicados, fechas
-   * ilegibles— falla aquí con el mensaje del validador, que es el mismo que
-   * detendría la carga. Vale más rechazarlo antes de enseñar conteos que
-   * describirían una matriz que nadie va a aplicar.
-   */
   async registrar(input: {
     readonly snapshot: MatrixSnapshot;
     readonly requestId: string;
@@ -174,9 +114,6 @@ export class MatrixScanService {
 
     const barridoId = randomUUID();
 
-    // El reconciliador es el que decide qué pasaría de verdad: se le pregunta a
-    // él en lugar de reproducir sus reglas, para que la pantalla no pueda
-    // anunciar una cosa y la aplicación hacer otra.
     const reconciliado = reconcileSnapshot({
       snapshot,
       existingWorkers: trabajadores,
@@ -200,9 +137,6 @@ export class MatrixScanService {
       .filter((fila) => fila.active && !enMatriz.has(fila.workerNumber))
       .map((fila) => fila.workerNumber as string);
 
-    // Un curso que la base conoce y este barrido no trae como columna. No se
-    // desactiva solo: se denuncia, porque la causa habitual es un rango de
-    // cursos recortado y no una capacitación retirada del programa.
     const identidadesVistas = new Set(
       columnas.map((columna) => columna.claveOrigen).filter((valor) => valor !== ""),
     );
@@ -249,7 +183,6 @@ export class MatrixScanService {
       trabajadoresAusentes: ausentes.slice(0, MUESTRA_DE_BARRIDO),
       cambiosDeAdscripcion: adscripciones.slice(0, MUESTRA_DE_BARRIDO),
       columnasNuevas: columnasNuevas.map((columna) => columna.nombre).slice(0, MUESTRA_DE_BARRIDO),
-      // Completa: son pocos cursos y la revisión los enseña todos.
       columnasRetiradas: retiradas,
       conflictos: reconciliado.conflicts
         .slice(0, MUESTRA_DE_BARRIDO)
@@ -260,8 +193,6 @@ export class MatrixScanService {
         ),
     };
 
-    // El detalle, persona por persona, con nombre y adscripción. Los nombres de
-    // quien entra salen del libro; los de quien ya no aparece, de la base.
     const nombreEnLibro = new Map(
       snapshot.employees.map((empleado) => [empleado.employeeId as string, empleado.displayName]),
     );
@@ -289,7 +220,6 @@ export class MatrixScanService {
           nombre: empleado.displayName,
           adscripcion: adscripcion(empleado.position, empleado.area, empleado.department),
         })),
-      // Se da de baja sólo quien tampoco estuvo en el último padrón (0046).
       bajas: ausentes.map((nomina) => {
         const fila = enBase.get(nomina);
         const baja = fila?.seenInRoster === false;
@@ -348,8 +278,6 @@ export class MatrixScanService {
       informe.fuente.sha256,
       informe.fuente.nombreArchivo,
     );
-    // Se espera: si la respuesta saliera antes de guardar, un «Aplicar» rápido
-    // en otra instancia no encontraría la revisión.
     await this.#revisiones?.guardar("BARRIDO_MATRIZ", {
       id: barridoId,
       contenido: {
@@ -369,8 +297,6 @@ export class MatrixScanService {
         hoja: informe.fuente.hoja,
         trabajadoresEnMatriz: cuadre.trabajadoresEnMatriz,
         columnasEnMatriz: cuadre.columnasEnMatriz,
-        // Lo que lee Control de cambios: quién entra, quién falta y quién se
-        // movió. Las nóminas van de muestra, las mismas doce de la revisión.
         trabajadoresNuevos: cuadre.trabajadoresNuevos,
         muestraNuevos: informe.muestras.trabajadoresNuevos.join(", "),
         trabajadoresAusentes: cuadre.trabajadoresAusentes,
@@ -390,32 +316,20 @@ export class MatrixScanService {
     return informe;
   }
 
-  /** La revisión vigente, o `undefined` si venció o el proceso se reinició. */
   ultimoBarrido(): InformeDeBarrido | undefined {
     this.#podar();
     return this.#barrido?.informe;
   }
 
-  /** El acuse de la última aplicación, mientras dure el proceso. */
   ultimoResultado(): ResultadoDeBarrido | undefined {
     return this.#resultado;
   }
 
-  /** Olvida la revisión aquí y, si lo hay, en el almacén compartido. */
   descartar(): Promise<void> {
     this.#barrido = undefined;
     return this.#revisiones?.descartar("BARRIDO_MATRIZ") ?? Promise.resolve();
   }
 
-  // ---------------------------------------------------------- la escritura
-
-  /**
-   * Aplica lo que la revisión describe. Un barrido se aplica una sola vez.
-   *
-   * El `requestId` es el que trajo el cliente, derivado de la huella del libro:
-   * volver a aplicar la misma matriz es un no-op del lado del lote, no una
-   * segunda importación.
-   */
   async aplicar(barridoId: string, actor: string): Promise<ResultadoDeBarrido> {
     this.#podar();
     const guardado = this.#barrido;
@@ -426,10 +340,6 @@ export class MatrixScanService {
       );
     }
     if (guardado.informe.bloqueado) {
-      // Se registra el rechazo, no sólo el éxito: un barrido bloqueado por
-      // conflictos es precisamente el hecho que hay que poder consultar después,
-      // cuando alguien pregunte por qué la matriz y la plataforma dejaron de
-      // coincidir esa semana.
       await this.#bitacora?.registrar({
         tipo: "MATRIZ",
         hecho: "RECHAZADA",
@@ -449,10 +359,6 @@ export class MatrixScanService {
       );
     }
 
-    // Se retira antes de escribir: un doble clic no debe volverse dos
-    // transacciones. La aplicación es idempotente por `requestId`, pero el
-    // acuse que se enseña dejaría de ser cierto. Con almacén compartido el
-    // retiro es atómico en la base: de dos instancias, sólo una lo gana.
     this.#barrido = undefined;
     if (this.#revisiones && !(await this.#revisiones.retirar("BARRIDO_MATRIZ", barridoId))) {
       throw new DomainError(
@@ -487,10 +393,6 @@ export class MatrixScanService {
       resumen: {
         hoja: guardado.informe.fuente.hoja,
         importId: aplicado.importId,
-        // Un lote repetido no escribió nada: la carga es idempotente por
-        // `requestId` y volver a aplicar el mismo libro es un no-op. Se dice,
-        // porque de otro modo el historial mostraría dos cargas iguales sin
-        // explicar por qué la segunda no movió ninguna cifra.
         repetido: aplicado.repeated,
         insertadas: aplicado.counts.insertedCount,
         corregidas: aplicado.counts.correctedCount,
@@ -504,15 +406,6 @@ export class MatrixScanService {
     return resultado;
   }
 
-  // ------------------------------------------------------------- interiores
-
-  /**
-   * Cada columna del barrido frente al catálogo de SQL.
-   *
-   * La clasificación sale de `resolveCourseMappings`, que es el mismo paso que
-   * ejecutará la carga: lo que aquí se llama NUEVA es exactamente lo que allá
-   * daría de alta una capacitación.
-   */
   #clasificarColumnas(
     snapshot: MatrixSnapshot,
     cursos: readonly CourseCatalogEntry[],
@@ -551,21 +444,6 @@ export class MatrixScanService {
     });
   }
 
-  /**
-   * Puesto, área y departamento de quien está en los dos lados.
-   *
-   * Se reporta también el campo que la base tenía vacío y la matriz llena: es
-   * una escritura real, y esconderla haría que el acuse enseñara cambios que la
-   * revisión nunca anunció.
-   */
-  /**
-   * Cada dato del trabajador que la aplicación reescribiría, sólo si cambia.
-   *
-   * Son los mismos campos que el reconciliador actualiza —nombre, alta, nómina,
-   * puesto, área, departamento, planta y reactivación—, comparados sin
-   * mayúsculas ni espacios de más: un cambio que sólo es de formato no se
-   * enseña, porque no cambia nada que alguien vaya a leer.
-   */
   #datosQueCambian(
     snapshot: MatrixSnapshot,
     enBase: ReadonlyMap<string, WorkerCatalogEntry>,

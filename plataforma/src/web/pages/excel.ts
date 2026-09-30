@@ -1,24 +1,3 @@
-/**
- * Pantalla `Conexión Excel`.
- *
- * Es la hoja de configuración de todo lo que ocurre del lado del libro. El
- * puente VBA es el único camino: los complementos de Office no están
- * autorizados en la instalación.
- *
- * El orden de la pantalla corresponde a cómo se instala de verdad:
- *
- * 1. Estado, para saber de un vistazo si hay algo esperando a Excel;
- * 2. Conectar un equipo, que emite la credencial de esa instalación;
- * 3. Qué hace la persona que instala, en pasos numerados y sin jerga.
- *
- * Por qué el secreto se muestra aquí y no en la URL
- *
- * La emisión responde en esta misma página en lugar de redirigir con el secreto
- * en la cadena de consulta. Un secreto no va en una URL: la URL queda en el
- * historial del navegador y en el registro de cualquier intermediario. La regla
- * no admite excepciones cómodas, ni siquiera para algo que dura minutos.
- */
-
 import type { AppConfig } from "../../config/environment.ts";
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
@@ -26,19 +5,10 @@ import { renderLayout } from "../layout.ts";
 export interface DatosDeExcel {
   readonly config: AppConfig;
   readonly endpoint: string;
-  /** Origen público, para dictar la dirección correcta detrás del túnel. */
   readonly origen: string;
   readonly notice?: string;
   readonly error?: string;
-  /** Liberaciones efectivas que Excel todavía no escribió. */
   readonly pendientesDeExcel: number;
-  /**
-   * Acuses efectivos: fechas que Excel confirmó haber escrito.
-   *
-   * Se enseña esto y no «equipos con credencial» porque el repositorio no sabe
-   * enumerar credenciales —`findCredentials` exige un cliente— y un número
-   * inventado en una pantalla de estado es peor que un número ausente.
-   */
   readonly fechasEscritas: number;
 }
 

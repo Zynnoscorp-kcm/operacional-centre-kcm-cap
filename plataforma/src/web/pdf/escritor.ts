@@ -1,20 +1,3 @@
-/**
- * Escritor PDF mínimo y determinista, sin dependencias.
- *
- * Es la misma técnica que `packages/dc3/pdf/pdf-writer.js` del árbol legado, portada
- * a TypeScript para que la aplicación no dependa de ese árbol antes de que E13
- * integre `packages/dc3/`. Cuando esa ejecución consolide el compositor, este módulo
- * y aquél deben quedar en uno solo.
- *
- * Determinista a propósito: la fecha del documento la fija quien llama, nunca el
- * reloj. Dos corridas con la misma entrada producen los mismos bytes, y por eso
- * el SHA-256 del archivo sirve como identidad de la evidencia archivada.
- *
- * Usa las fuentes base Helvetica y Helvetica-Bold, que todo lector PDF incluye:
- * no hay tipografía que incrustar ni licencia que verificar. La codificación es
- * WinAnsi, que cubre acentos y eñe del español.
- */
-
 import { deflateSync } from "node:zlib";
 
 import type { ImagenParaPdf } from "./imagenes.ts";
@@ -40,10 +23,6 @@ const HELVETICA_BOLD_WIDTHS: readonly number[] = Object.freeze([
   278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
 ]);
 
-/**
- * Los glifos acentuados de Helvetica tienen el mismo avance que su letra base,
- * así que basta asignarles el código WinAnsi y medirlos por la base.
- */
 const WIN_ANSI = new Map<string, readonly [number, string]>([
   ["Á", [193, "A"]],
   ["É", [201, "E"]],
@@ -90,8 +69,6 @@ function glyph(character: string): Glyph {
   if (code >= 32 && code <= 126) return { code, widthIndex: code - 32 };
   const mapped = WIN_ANSI.get(character);
   if (mapped) return { code: mapped[0], widthIndex: mapped[1].charCodeAt(0) - 32 };
-  // Un carácter fuera de WinAnsi se sustituye por espacio en vez de romper el
-  // archivo. Lo que se imprime aquí ya viene validado por el servicio.
   return { code: 32, widthIndex: 0 };
 }
 
@@ -163,10 +140,8 @@ function formatNumber(value: number): string {
 
 export type TextAlign = "left" | "center" | "right";
 
-/** Color en componentes 0..1, como los espera el operador `rg` del PDF. */
 export type Color = readonly [number, number, number];
 
-/** Convierte `#3E6899` al triplete que el PDF entiende. */
 export function rgb(hex: string): Color {
   const match = /^#?([0-9a-fA-F]{6})$/.exec(hex);
   if (!match || match[1] === undefined) throw new Error(`Color inválido: ${hex}`);
@@ -211,38 +186,21 @@ export interface RectOptions {
   readonly lineWidth?: number;
 }
 
-/**
- * Un recuadro que se puede escribir en el visor.
- *
- * Existe para el caso de la constancia DC-3 con datos por capturar: el recuadro
- * se imprimía vacío y alguien lo llenaba con pluma. Un campo de formulario deja
- * escribirlo en pantalla y volver a guardar el archivo, sin cambiar en nada el
- * resto de la maqueta ni traer una biblioteca.
- */
 export interface FormFieldOptions {
-  /** Nombre interno del campo. Único dentro del documento. */
   readonly name: string;
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
   readonly size?: number;
-  /** Texto de ayuda que el visor enseña al pasar el puntero. */
   readonly tooltip?: string;
-  /** Valor inicial. Vacío es lo normal: el campo existe porque falta el dato. */
   readonly value?: string;
 }
 
 interface FormField extends FormFieldOptions {
-  /** Ya convertido al sistema del PDF, donde `y` crece hacia arriba. */
   readonly rect: readonly [number, number, number, number];
 }
 
-/**
- * Página en coordenadas de lectura: el origen está arriba a la izquierda y `y`
- * crece hacia abajo, como en la maqueta. La conversión al sistema del PDF, donde
- * `y` crece hacia arriba, ocurre en un solo lugar.
- */
 export class PdfPage {
   readonly width: number;
   readonly height: number;
@@ -255,11 +213,6 @@ export class PdfPage {
     this.height = height;
   }
 
-  /**
-   * Declara un campo escribible sobre las coordenadas de la maqueta. No dibuja
-   * nada: el recuadro ya está trazado por `rect`, y lo que se agrega es la
-   * posibilidad de escribir dentro.
-   */
   formField(options: FormFieldOptions): this {
     this.fields.push({
       ...options,
@@ -273,11 +226,6 @@ export class PdfPage {
     return this;
   }
 
-  /**
-   * Coloca una imagen ya leída. Las coordenadas son las de la maqueta —origen
-   * arriba a la izquierda— igual que en el resto de la página, y el dibujo va
-   * entre `q`/`Q` para que la matriz de escala no afecte a nada de lo demás.
-   */
   image(
     imagen: ImagenParaPdf,
     opciones: { x: number; y: number; width: number; height: number },
@@ -292,12 +240,10 @@ export class PdfPage {
     return this;
   }
 
-  /** Sólo lo lee `buildPdf`. */
   get placedImages(): readonly ColocacionDeImagen[] {
     return this.imagenes;
   }
 
-  /** Sólo lo lee `buildPdf`. */
   get formFields(): readonly FormField[] {
     return this.fields;
   }
@@ -408,20 +354,6 @@ export interface BuildPdfInput {
   readonly title?: string;
   readonly date: string;
   readonly producer?: string;
-  /**
-   * Una imagen que aparece en varias páginas se guarda una sola vez.
-   *
-   * Es opcional y no el comportamiento por omisión, a propósito: los documentos
-   * que ya existen —el reporte de preliberación, la constancia de una página—
-   * se archivan por su SHA-256, y guardar distinto sus imágenes cambiaría sus
-   * bytes sin cambiar nada de lo que dicen. Lo pide la tanda de constancias,
-   * donde el logotipo del sindicato pesa doscientos kilobytes y se repetiría en
-   * cada hoja.
-   *
-   * Se reconoce la misma imagen por identidad del objeto, no por contenido: el
-   * servicio que lee los logotipos ya los guarda en caché, así que la misma
-   * imagen es el mismo objeto.
-   */
   readonly compartirImagenes?: boolean;
 }
 
@@ -456,15 +388,10 @@ export function buildPdf({
   );
 
   const pageIds: number[] = [];
-  /** Widgets de todas las páginas: el catálogo los necesita en una sola lista. */
   const fieldIds: number[] = [];
-  /** Imágenes ya escritas, cuando el documento las comparte entre páginas. */
   const imagenesEscritas = new Map<ImagenParaPdf, number>();
 
   for (const page of pages) {
-    // Las imágenes se emiten antes que la página porque su recurso tiene que
-    // existir para nombrarlo en `/XObject`. Cada una puede traer su máscara de
-    // transparencia, que es otro objeto y se referencia desde la imagen.
     const recursosDeImagen: string[] = [];
     for (const { nombre, imagen } of page.placedImages) {
       const escrita = compartirImagenes ? imagenesEscritas.get(imagen) : undefined;
@@ -499,8 +426,6 @@ export function buildPdf({
     const contentId = push(
       `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`,
     );
-    // La página se reserva antes que sus campos porque cada campo apunta de
-    // vuelta a ella con `/P`, y el número tiene que existir para escribirlo.
     const pageId = push(null);
     pageIds.push(pageId);
 
@@ -513,12 +438,8 @@ export function buildPdf({
         `/V (${escapeLiteral(field.value ?? "")})`,
         `/DA (/F1 ${formatNumber(size)} Tf 0 g)`,
         `/Rect [${field.rect.map(formatNumber).join(" ")}]`,
-        // Bit 3: imprimible. Sin él, el campo se ve en pantalla y desaparece al
-        // imprimir, que es la peor combinación posible para una constancia.
         "/F 4",
         `/P ${pageId} 0 R`,
-        // Fondo y borde transparentes: el recuadro ya está trazado en la maqueta
-        // y un segundo marco encima se vería como un error de impresión.
         "/MK << >>",
       ];
       if (field.tooltip) partes.push(`/TU (${escapeLiteral(field.tooltip)})`);
@@ -536,10 +457,6 @@ export function buildPdf({
       " >>";
   }
 
-  // `NeedAppearances` le pide al visor que dibuje el contenido del campo con sus
-  // propias reglas. Es lo que evita tener que generar un flujo de apariencia por
-  // campo —varios cientos de líneas de PDF a mano— y lo respetan Acrobat, Vista
-  // Previa, Firefox y Chrome.
   const acroForm = fieldIds.length
     ? ` /AcroForm << /Fields [${fieldIds.map((id) => `${id} 0 R`).join(" ")}] ` +
       `/NeedAppearances true /DA (/F1 9 Tf 0 g) ` +

@@ -1,15 +1,3 @@
-/**
- * Las tres pantallas de la auditoría interna.
- *
- * Comparten encabezado y barra de secciones porque son la misma pregunta hecha
- * sobre tres entidades. Lo que no comparten es la ventana, y la pantalla lo
- * dice en cada una: sesiones y salas se miran a ocho días; liberaciones, sin
- * corte, porque son evidencia de lo que entró a la matriz.
- *
- * Ninguna de las tres tiene formularios: aquí no se corrige nada. La auditoría
- * que se puede editar desde la pantalla que la muestra no es auditoría.
- */
-
 import { fechaCorta } from "../kit/fechas.ts";
 import type { AppConfig } from "../../config/environment.ts";
 import { InternalAuditService } from "../../domain/consola-interna/auditoria.ts";
@@ -27,7 +15,6 @@ import {
 import { html, type Html } from "../kit/html.ts";
 import { renderLayout } from "../layout.ts";
 
-/** Sin base no hay nada que auditar, y decirlo evita leer el vacío como calma. */
 const SIN_BASE = "Sin conexión con la base de datos: no hay registros que consultar.";
 
 function renderVentana(ventana: AuditWindow): Html {
@@ -42,15 +29,10 @@ function renderVacio(columnas: number, mensaje: string): Html {
   </tr>`;
 }
 
-/** Instante ISO recortado a lo que se lee de un vistazo: día y hora local. */
 function momento(iso: string | undefined): string {
   if (iso === undefined) return "—";
   return `${fechaCorta(iso.slice(0, 10))} · ${iso.slice(11, 16)}`;
 }
-
-// -----------------------------------------------------------------------------
-// Sesiones
-// -----------------------------------------------------------------------------
 
 export function renderSessionAuditPage(input: {
   readonly config: AppConfig;
@@ -129,10 +111,6 @@ export function renderSessionAuditPage(input: {
     contenido,
   });
 }
-
-// -----------------------------------------------------------------------------
-// Reservaciones de sala
-// -----------------------------------------------------------------------------
 
 export function renderRoomAuditPage(input: {
   readonly config: AppConfig;
@@ -223,10 +201,6 @@ export function renderRoomAuditPage(input: {
   });
 }
 
-// -----------------------------------------------------------------------------
-// Liberaciones
-// -----------------------------------------------------------------------------
-
 export function renderReleaseAuditPage(input: {
   readonly config: AppConfig;
   readonly rows: readonly ReleaseAuditRow[];
@@ -290,11 +264,6 @@ export function renderReleaseAuditPage(input: {
   });
 }
 
-/**
- * Un renglón por efecto. Cuando hubo sobrescritura, la fecha anterior se marca
- * como alerta: no es un dato más de la fila, es la excepción que hay que poder
- * ver de reojo al recorrer la lista.
- */
 function renderLiberacion(fila: ReleaseAuditRow): Html {
   const sobrescribio = fila.previousDate !== undefined;
 

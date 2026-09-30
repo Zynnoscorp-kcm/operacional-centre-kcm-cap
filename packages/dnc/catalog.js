@@ -1,17 +1,9 @@
-/**
- * Catálogo unificado de capacitaciones, alias aprobados y resolución de cursos.
- */
-
 export const COURSE_CATEGORIES = Object.freeze({
-  QUALITY: "QUALITY",      // 8 cursos de calidad del TSV (nivel department)
-  TECHNICAL: "TECHNICAL",  // 13 cursos técnicos del DNC (nivel area)
-  MATRIX_OTHER: "MATRIX_OTHER" // 19 cursos adicionales de la matriz (NOMs, LOTO, etc.)
+  QUALITY: "QUALITY",
+  TECHNICAL: "TECHNICAL",
+  MATRIX_OTHER: "MATRIX_OTHER"
 });
 
-/**
- * Función estándar de normalización de cadenas de texto para búsqueda y resolución de alias.
- * Colapsa acentos, espacios múltiples y convierte a mayúsculas sin caracteres especiales.
- */
 export function normalizeCatalogKey(text) {
   if (typeof text !== "string") return "";
   return text
@@ -23,11 +15,7 @@ export function normalizeCatalogKey(text) {
     .replace(/\s+/g, " ");
 }
 
-/**
- * Catálogo canónico de capacitaciones de la plataforma KCM Cap.
- */
 export const UNIFIED_COURSES = Object.freeze([
-  // --- 8 Cursos de Calidad del TSV ---
   {
     trainingId: "kcm-course:bpm",
     canonicalName: "BUENAS PRACTICAS DE MANUFACTURA",
@@ -93,7 +81,6 @@ export const UNIFIED_COURSES = Object.freeze([
     sourceKeys: ["hc-course:control-producto-no-conforme"]
   },
 
-  // --- 13 Cursos Técnicos del DNC ---
   {
     trainingId: "kcm-course:sistema-control-motores",
     canonicalName: "SISTEMA DE CONTROL DE MOTORES",
@@ -199,7 +186,6 @@ export const UNIFIED_COURSES = Object.freeze([
     sourceKeys: ["dnc-course:capacitacion-eam"]
   },
 
-  // --- Cursos Adicionales de la Matriz (NOMs, LOTO por sourceKey, 5S, etc.) ---
   {
     trainingId: "kcm-course:loto-bloqueo",
     canonicalName: "LOTO",
@@ -242,9 +228,6 @@ export const UNIFIED_COURSES = Object.freeze([
   }
 ]);
 
-/**
- * Tabla oficial de alias aprobados para reconciliación determinista.
- */
 export const APPROVED_ALIASES = Object.freeze([
   {
     alias: "BPM",
@@ -283,21 +266,15 @@ export const APPROVED_ALIASES = Object.freeze([
   }
 ]);
 
-/**
- * Resuelve un curso por identificador canónico, nombre, alias o sourceKey.
- * Prohíbe adivinanzas automáticas no declaradas.
- */
 export function resolveCourse(identifier, options = {}) {
   if (!identifier || typeof identifier !== "string") return null;
 
   const trimmed = identifier.trim();
   if (!trimmed) return null;
 
-  // 1. Coincidencia directa por trainingId
   const byId = UNIFIED_COURSES.find((c) => c.trainingId === trimmed);
   if (byId) return byId;
 
-  // 2. Coincidencia por sourceKey explícito (soporta desambiguación de LOTO)
   if (options.sourceKey) {
     const bySourceKey = UNIFIED_COURSES.find((c) =>
       c.sourceKeys.includes(options.sourceKey)
@@ -307,13 +284,11 @@ export function resolveCourse(identifier, options = {}) {
 
   const normalized = normalizeCatalogKey(trimmed);
 
-  // 3. Coincidencia por nombre canónico normalizado
   const byCanonicalName = UNIFIED_COURSES.find(
     (c) => normalizeCatalogKey(c.canonicalName) === normalized
   );
   if (byCanonicalName) return byCanonicalName;
 
-  // 4. Coincidencia por alias aprobado
   const byAlias = APPROVED_ALIASES.find(
     (a) => normalizeCatalogKey(a.alias) === normalized
   );
@@ -321,7 +296,6 @@ export function resolveCourse(identifier, options = {}) {
     return UNIFIED_COURSES.find((c) => c.trainingId === byAlias.trainingId) || null;
   }
 
-  // 5. Búsqueda secundaria en sourceKeys generales
   const bySourceKeyGen = UNIFIED_COURSES.find((c) =>
     c.sourceKeys.some((k) => normalizeCatalogKey(k) === normalized)
   );

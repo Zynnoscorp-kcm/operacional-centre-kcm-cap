@@ -1,27 +1,11 @@
-/**
- * Lectura de PNG y JPEG para incrustarlos en un PDF.
- *
- * El escritor de PDF de la casa no sabía de imágenes: dibujaba texto, líneas y
- * recuadros. Esto le agrega lo mínimo para poner un logotipo, y nada más:
- * no reescala, no recorta y no toca el trazo de ningún documento existente.
- *
- * Se resuelve con `node:zlib`, que ya viene con Node, en vez de sumar una
- * dependencia de imágenes al despliegue. El JPEG ni siquiera se descomprime: el
- * PDF entiende su compresión tal cual y se le pasa el archivo íntegro.
- */
-
 import { inflateSync } from "node:zlib";
 
 export interface ImagenParaPdf {
   readonly width: number;
   readonly height: number;
-  /** Cuántos componentes de color tiene cada píxel: 1 gris, 3 color. */
   readonly components: 1 | 3;
-  /** El filtro con el que el PDF debe leer `data`. */
   readonly filter: "DCTDecode" | "FlateDecode";
-  /** Los bytes del flujo, ya en la forma que el filtro espera. */
   readonly data: Buffer;
-  /** Canal alfa como máscara suave, cuando la imagen lo trae. */
   readonly alpha?: Buffer;
 }
 
@@ -33,10 +17,6 @@ export function leerImagen(bytes: Buffer): ImagenParaPdf {
   throw new Error("El logotipo debe ser PNG o JPEG.");
 }
 
-/**
- * JPEG sin descomprimir. Sólo se recorren los marcadores para saber de qué
- * tamaño es y cuántos componentes trae; los bytes viajan intactos al PDF.
- */
 function leerJpeg(bytes: Buffer): ImagenParaPdf {
   let posicion = 2;
   while (posicion + 9 < bytes.length) {
@@ -45,7 +25,6 @@ function leerJpeg(bytes: Buffer): ImagenParaPdf {
       continue;
     }
     const marcador = bytes[posicion + 1] ?? 0;
-    // Los SOF describen la trama. Se excluyen DHT, DAC y RST, que comparten rango.
     const esSof =
       marcador >= 0xc0 &&
       marcador <= 0xcf &&
@@ -117,25 +96,20 @@ function leerPng(bytes: Buffer): ImagenParaPdf {
 function canalesDe(colorType: number): number {
   switch (colorType) {
     case 0:
-      return 1; // gris
+      return 1;
     case 2:
-      return 3; // color
+      return 3;
     case 3:
-      return 1; // índice de paleta
+      return 1;
     case 4:
-      return 2; // gris con alfa
+      return 2;
     case 6:
-      return 4; // color con alfa
+      return 4;
     default:
       throw new Error(`El PNG del logotipo usa un tipo de color no soportado (${colorType}).`);
   }
 }
 
-/**
- * Deshace los filtros por renglón del PNG. Es el paso que ninguna imagen se
- * salta: cada scanline se guarda como diferencia contra la anterior o contra el
- * píxel de al lado, y sin revertirlo lo que se ve es ruido.
- */
 function desfiltrar(datos: Buffer, ancho: number, alto: number, canales: number): Buffer {
   const bpp = canales;
   const porRenglon = ancho * bpp;
@@ -190,7 +164,6 @@ function paeth(a: number, b: number, c: number): number {
   return pb <= pc ? b : c;
 }
 
-/** Separa color y alfa, y resuelve la paleta si la imagen viene indexada. */
 function componer(
   ihdr: Ihdr,
   crudo: Buffer,
@@ -230,8 +203,6 @@ function componer(
     };
   }
 
-  // Con alfa: el color va por un lado y la transparencia por otro, que es como
-  // el PDF la entiende (una máscara suave aparte del color).
   const colorCanales = canales === 2 ? 1 : 3;
   const color = Buffer.alloc(pixeles * colorCanales);
   const alfa = Buffer.alloc(pixeles);

@@ -1,18 +1,3 @@
-/**
- * Caracterización y congelamiento de comportamiento de quiosco y sesiones.
- * Valida la paridad de la implementación con los contratos de quiosco y sesión.
- *
- * Invariantes verificados:
- * 1. Journal transaccional de 3 fases (RESERVADO -> ASISTENCIA_CREADA -> COMPLETADO).
- * 2. Acuse genérico indistinguible (sin oráculos de existencia, duplicidad o cupo).
- * 3. Cupo máximo estricto de 40 registros por sesión.
- * 4. Padrón activo vs trabajador no listado (identidad_validada = true/false).
- * 5. Reparación automática de journals huérfanos durante el bootstrap.
- * 6. Idempotencia total por requestId y por (sessionId, workerNumber).
- * 7. Segunda contraseña con alcances y auditoría independientes (REGISTRO_QUIOSCO vs APERTURA_SESION).
- * 8. Ciclo de vida estricto de sesiones (BORRADOR -> ABIERTA -> CERRADA -> AUTORIZADA).
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryKioskSessionRepository } from "../../src/adapters/memoria/quiosco.ts";
@@ -89,16 +74,13 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
     it("valida la segunda contraseña de apertura (Secret 2) separada del PIN de quiosco", async () => {
       const { auth, repo } = setupServices();
 
-      // PIN de apertura con clave correcta
       const ok = await auth.verifySessionLaunchSecret("9876", undefined, "ESTACION-1");
       assert.equal(ok, true);
 
-      // Auditoría de PIN de sesión
       const audits = await repo.listAuditEvents({ entityId: "SESSION_LAUNCH_PIN" });
       assert.equal(audits.length, 1);
       assert.equal(audits[0]?.action, "SESSION_PIN_ACCEPTED");
 
-      // El PIN de quiosco (1234) NO sirve como PIN de apertura
       await assert.rejects(
         () => auth.verifySessionLaunchSecret("1234", undefined, "ESTACION-1"),
         KioskAuthError,
@@ -128,13 +110,11 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       assert.equal(created.durationMinutes, 120);
       assert.equal(created.sessionCode, "KC-0001");
 
-      // Auditoría SESSION_CREATED
       const audits = await repo.listAuditEvents({ sessionId: created.sessionId });
       assert.equal(audits.length, 1);
       assert.equal(audits[0]?.action, "SESSION_CREATED");
       assert.equal(audits[0]?.newState, "BORRADOR");
 
-      // Idempotencia: misma llamada devuelve la misma sesión
       const repeated = await session.createSession(
         {
           trainingId: "CAP-SINT-001",
@@ -148,7 +128,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       );
       assert.equal(repeated.sessionId, created.sessionId);
 
-      // Conflicto si los datos difieren para el mismo requestId
       await assert.rejects(
         () =>
           session.createSession(
@@ -180,21 +159,17 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
         "req-trans-001",
       );
 
-      // Abrir sesión
       const opened = await session.openSession(s.sessionId, identity, "req-open-001");
       assert.equal(opened.status, "ABIERTA");
       assert.ok(opened.openedAt);
 
-      // Reintento idempotente de abrir
       const openedAgain = await session.openSession(s.sessionId, identity, "req-open-002");
       assert.equal(openedAgain.status, "ABIERTA");
 
-      // Cerrar sesión
       const closed = await session.closeSession(s.sessionId, identity, "req-close-001");
       assert.equal(closed.status, "CERRADA");
       assert.ok(closed.closedAt);
 
-      // No se puede volver a abrir una sesión cerrada
       await assert.rejects(
         () => session.openSession(s.sessionId, identity, "req-open-003"),
         InvalidSessionStateError,
@@ -217,7 +192,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
         "req-auth-001",
       );
 
-      // El piloto permite autorizar desde BORRADOR para preparar pruebas E2E.
       const authorized = await session.authorizeSession(
         s.sessionId,
         adminIdentity,
@@ -227,7 +201,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       assert.equal(authorized.authorized, true);
       assert.equal(authorized.authorizedBy, "ADMIN_CAP");
 
-      // Capacitador no puede autorizar
       await assert.rejects(
         () => session.authorizeSession(s.sessionId, capIdentity, "Aprobado", "req-auth-003"),
         InvalidSessionStateError,
@@ -240,7 +213,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       const { session, kiosk, auth, repo } = setupServices(["10001"]);
       const instructorIdentity: ActorIdentity = { actor: "INSTRUCTOR_1", role: "CAPACITADOR" };
 
-      // Crear y abrir sesión
       const s = await session.createSession(
         {
           trainingId: "CAP-SINT-001",
@@ -255,7 +227,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
 
       const { token } = auth.createKioskToken(s.sessionId, "ESTACION-1");
 
-      // Registro de trabajador
       const receipt = await kiosk.register({
         token,
         employeeId: "10001",
@@ -264,14 +235,12 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
 
       assert.deepEqual(receipt, GENERIC_KIOSK_RECEIPT);
 
-      // Verificar journal
       const journals = await repo.listJournalsBySession(s.sessionId);
       assert.equal(journals.length, 1);
       assert.equal(journals[0]?.phase, "COMPLETADO");
       assert.equal(journals[0]?.workerNumber, parseWorkerNumber("10001"));
       assert.ok(journals[0]?.attendanceId);
 
-      // Verificar asistencia creada
       const attendance = await repo.getAttendanceBySessionAndWorker(
         s.sessionId,
         parseWorkerNumber("10001"),
@@ -282,7 +251,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       assert.equal(attendance.route, "DIGITAL");
       assert.equal(attendance.origin, "QUIOSCO");
 
-      // Verificar auditoría
       const audits = await repo.listAuditEvents({
         sessionId: s.sessionId,
         action: "DIGITAL_ATTENDANCE_CAPTURED",
@@ -309,7 +277,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
 
       const { token } = auth.createKioskToken(s.sessionId, "ESTACION-1");
 
-      // Registro de trabajador desconocido "99999"
       const receipt = await kiosk.register({
         token,
         employeeId: "99999",
@@ -344,7 +311,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       await session.openSession(s.sessionId, instructorIdentity, "req-kiosk-open3");
       const { token } = auth.createKioskToken(s.sessionId, "ESTACION-1");
 
-      // Primer registro
       const receipt1 = await kiosk.register({
         token,
         employeeId: "10001",
@@ -352,7 +318,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       });
       assert.deepEqual(receipt1, GENERIC_KIOSK_RECEIPT);
 
-      // Mismo requestId
       const receipt2 = await kiosk.register({
         token,
         employeeId: "10001",
@@ -360,7 +325,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       });
       assert.deepEqual(receipt2, GENERIC_KIOSK_RECEIPT);
 
-      // Distinto requestId pero mismo trabajador en la misma sesión
       const receipt3 = await kiosk.register({
         token,
         employeeId: "10001",
@@ -389,7 +353,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       await session.openSession(s.sessionId, instructorIdentity, "req-kiosk-cap-open");
       const { token } = auth.createKioskToken(s.sessionId, "ESTACION-1");
 
-      // Simular 40 registros
       for (let i = 1; i <= 40; i++) {
         const empId = String(10000 + i);
         await kiosk.register({
@@ -402,17 +365,14 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       const totalCount = await repo.countAttendancesBySession(s.sessionId);
       assert.equal(totalCount, 40);
 
-      // Registro número 41 (excede cupo)
       const receipt41 = await kiosk.register({
         token,
         employeeId: "20001",
         requestId: "req-bulk-41",
       });
 
-      // Debe devolver el acuse genérico idéntico sin oráculo de cupo
       assert.deepEqual(receipt41, GENERIC_KIOSK_RECEIPT);
 
-      // El conteo en la base de datos debe permanecer en 40
       const finalCount = await repo.countAttendancesBySession(s.sessionId);
       assert.equal(finalCount, 40);
     });
@@ -434,7 +394,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       await session.openSession(s.sessionId, instructorIdentity, "req-repair-open");
       const { token } = auth.createKioskToken(s.sessionId, "ESTACION-1");
 
-      // Inyectar un journal simulado que quedó varado en RESERVADO (e.g. corte de energía)
       await repo.createJournal({
         registrationId: "journal-orphaned-1",
         sessionId: s.sessionId,
@@ -446,13 +405,11 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
         updatedAt: "2026-08-03T10:00:00.000Z",
       });
 
-      // Al llamar a bootstrap, se debe reparar
       const bootstrapState = await kiosk.bootstrap(token);
       assert.equal(bootstrapState.sessionId, s.sessionId);
       assert.equal(bootstrapState.acceptingRegistrations, true);
       assert.equal(bootstrapState.availability.maximum, 40);
 
-      // Comprobar que el journal avanzó a COMPLETADO y la asistencia se creó
       const journal = await repo.getJournalByRequest("req-interrupted-1");
       assert.equal(journal?.phase, "COMPLETADO");
       assert.ok(journal?.attendanceId);
@@ -471,7 +428,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       const { session } = setupServices();
       const instructorIdentity: ActorIdentity = { actor: "INSTRUCTOR_1", role: "CAPACITADOR" };
 
-      // Sesión 1: ABIERTA
       const s1 = await session.createSession(
         {
           trainingId: "CAP-SINT-001",
@@ -484,7 +440,6 @@ describe("Caracterización de Quiosco y Sesiones (Funciones 1, 2 y 3)", () => {
       );
       await session.openSession(s1.sessionId, instructorIdentity, "req-view-open1");
 
-      // Sesión 2: CERRADA reciente
       const s2 = await session.createSession(
         {
           trainingId: "CAP-SINT-002",

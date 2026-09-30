@@ -94,7 +94,6 @@ function recognizeCrop(binaryPath, crop, { language, timeoutMs, psm }) {
     throw new TesseractProviderError("TESSERACT_UNAVAILABLE", "El motor OCR local no esta disponible");
   }
   if (invocation.error || invocation.status !== 0) {
-    // stderr puede contener rutas o texto OCR; deliberadamente no se propaga.
     throw new TesseractProviderError("TESSERACT_FAILED", "El motor OCR local no pudo procesar un recorte", { retryable: true });
   }
   return parseTsv(invocation.stdout);
@@ -143,9 +142,6 @@ export class TesseractDigitsProvider {
           ? extractDigitCrops({ imageBytes: Buffer.from(suppliedImage), segmentation, options: this.cropOptions })
           : null;
     if (!extraction) throw new TypeError("El proveedor Tesseract requiere la imagen PNG normalizada o una lista de recortes");
-    // Una segunda representacion compacta rescata curvas que Tesseract puede
-    // perder al ampliar trazos muy gruesos. La salida principal y los artefactos
-    // de revision siguen siendo los recortes ampliados.
     const compactExtraction = suppliedImage
       ? extractDigitCrops({
         imageBytes: Buffer.from(suppliedImage),

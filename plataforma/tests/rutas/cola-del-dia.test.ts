@@ -1,20 +1,3 @@
-/**
- * La cola del día y el atajo de la sesión limpia.
- *
- * Las dos piezas atacan lo mismo desde lados distintos: que operar la consola no
- * dependa de recordar el ritual. La cola dice qué toca sin que nadie lo
- * pregunte; el atajo quita el paso que no decidía nada.
- *
- * Lo que se vigila aquí son las tres reglas que las hacen confiables:
- *
- * 1. **Los ceros no se dibujan.** Una cola que enseña cuatro ceros obliga a leer
- *    cuatro renglones para saber que no hay nada.
- * 2. **El orden es el de la jornada**, no el del tamaño ni el del alfabeto:
- *    bajar la lista tiene que ser avanzar el trabajo.
- * 3. **El atajo sólo existe sin hallazgos**, y el servidor lo comprueba otra vez
- *    aunque la pantalla no haya dibujado el botón.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -50,7 +33,6 @@ function portada(sesiones: readonly OperativeSessionSummary[], dc3PorEmitir?: nu
   });
 }
 
-/** El bloque de la cola, recortado del documento para no medir el resto. */
 function soloLaCola(html: string): string {
   const inicio = html.indexOf('id="titulo-cola"');
   const fin = html.indexOf("kpi-tira", inicio);
@@ -72,7 +54,6 @@ describe("Cola del día", () => {
 
     assert.match(cola, /esperan su lista física/u);
     assert.match(cola, /abiertas en la sala/u);
-    // Nada en revisión ni con error: esos dos renglones no existen.
     assert.doesNotMatch(cola, /en revisión/u);
     assert.doesNotMatch(cola, /con error/u);
   });
@@ -89,7 +70,6 @@ describe("Cola del día", () => {
       ]),
     );
 
-    // Tres en revisión contra una abierta: por tamaño iría primero la de tres.
     const abierta = cola.indexOf("abiertas en la sala");
     const cerrada = cola.indexOf("esperan su lista física");
     const revision = cola.indexOf("en revisión");
@@ -101,7 +81,6 @@ describe("Cola del día", () => {
     const cola = soloLaCola(portada([sesion("KCM-A", "ABIERTA"), sesion("KCM-B", "CERRADA")]));
     const filas = cola.split("cola-fila");
 
-    // La abierta no lleva franja: lo que falta ahí pasa en el quiosco, no aquí.
     assert.doesNotMatch(filas[1] ?? "", /cola-toca/u);
     assert.match(filas[2] ?? "", /cola-toca/u);
   });
@@ -125,7 +104,6 @@ describe("Cola del día", () => {
     assert.match(cola, /Cursos desde el 1 de enero de 2026/u);
     assert.match(cola, /href="\/dc3"/u);
     assert.doesNotMatch(cola, /plazo/u);
-    // Sin pendientes, la cola no dibuja el cero.
     assert.doesNotMatch(soloLaCola(portada([], 0)), /DC-3/u);
   });
 });

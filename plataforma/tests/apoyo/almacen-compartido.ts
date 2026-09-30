@@ -1,10 +1,3 @@
-/**
- * Almacén compartido falso para las pruebas de varias instancias.
- *
- * Guarda el contenido serializado, como la base: lo que no sobreviva a
- * `JSON.stringify` tampoco sobrevive a `sistema.revision_pendiente`.
- */
-
 import type {
   RevisionesCompartidasPort,
   TipoDeRevision,

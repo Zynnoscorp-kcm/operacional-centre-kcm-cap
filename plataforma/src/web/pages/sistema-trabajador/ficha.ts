@@ -1,17 +1,3 @@
-/**
- * Ficha individual del trabajador.
- *
- * Contesta tres preguntas, en el orden en que se hacen: ¿quién es y cómo va?
- * —la cabecera, con sus cuatro cifras—, ¿qué le falta? —la lista de cursos del
- * puesto, con lo que pide acción arriba— y ¿qué ha tomado y cuándo? —la
- * trayectoria, de lo más reciente a su ingreso—. La telaraña pone a la persona
- * contra su área, para leer si un rezago es propio o del área entera.
- *
- * Lo que no ayuda a decidir no está: ni claves de curso, ni niveles de regla, ni
- * la procedencia técnica de cada registro. Esos datos siguen en el perfil que
- * publica la API; la pantalla los dice en palabras o no los dice.
- */
-
 import type { EnvironmentName } from "../../../config/environment.ts";
 import { plantLabel } from "../../../domain/sistema-trabajador/planta.ts";
 import type {
@@ -31,7 +17,6 @@ export interface DatosPerfilTrabajador {
   readonly entorno: EnvironmentName;
 }
 
-/** Cómo se dice cada estado, con su tono. El orden es el de la lista: lo que pide acción, arriba. */
 const ESTADOS: Readonly<
   Record<DncStatus, { readonly texto: string; readonly tono: string; readonly orden: number }>
 > = {
@@ -49,7 +34,6 @@ const PROCEDENCIA: Readonly<Record<string, string>> = {
   MANUAL_ADJUSTMENT: "Ajuste manual",
 };
 
-/** Hitos que la trayectoria enseña de entrada; el resto, al desplegar. */
 const HITOS_A_LA_VISTA = 8;
 
 export function renderWorkerProfilePage(datos: DatosPerfilTrabajador): string {
@@ -140,11 +124,6 @@ function conteo(rotulo: string, cifra: number, tono: string): Html {
   </div>`;
 }
 
-/**
- * El avance como anillo: cuántos cursos exigibles tiene acreditados y vigentes,
- * de cuántos. Es una cuenta, no un porcentaje de cumplimiento: ése se publica
- * cuando el departamento apruebe las reglas.
- */
 function renderAvance(acreditados: number, exigibles: number): Html {
   if (exigibles === 0) return html``;
   const proporcion = acreditados / exigibles;
@@ -185,7 +164,6 @@ const CLAVES_DE_COLOR: readonly (readonly [string, string])[] = [
   ["pendiente", "Pendiente"],
 ];
 
-/** La clave de colores de los rótulos, una vez y en palabras. */
 function renderClaves(): Html {
   return html`<p class="dnc-claves">
     ${CLAVES_DE_COLOR.map(
@@ -197,7 +175,6 @@ function renderClaves(): Html {
   </p>`;
 }
 
-/** Los cursos que le exige su puesto: primero lo que pide acción. */
 function renderCursos(aplicables: readonly WorkerCourseEvaluation[]): Html {
   const ordenados = [...aplicables].sort(
     (a, b) =>
@@ -270,11 +247,6 @@ interface Hito {
   readonly tono: "acredito" | "constancia" | "ingreso";
 }
 
-/**
- * La trayectoria como línea de tiempo: acreditaciones, constancias DC-3 y el
- * ingreso, de lo más reciente a lo más viejo. Se ven los últimos hitos; el resto
- * se despliega sin salir de la ficha.
- */
 function renderTrayectoria(profile: DerivedWorkerProfile): Html {
   const { worker } = profile;
   const hitos: Hito[] = [
@@ -341,7 +313,6 @@ function renderHito(hito: Hito): Html {
   </li>`;
 }
 
-/** Las constancias DC-3 de la persona, en corto; el detalle vive en su expediente. */
 function renderConstancias(registro: readonly Dc3WorkerLogEntry[], nomina: string): Html {
   return html`<section class="tarjeta dnc-tarjeta" aria-labelledby="titulo-dc3">
     <header class="dnc-tarjeta-cabecera dnc-cabecera-fila">

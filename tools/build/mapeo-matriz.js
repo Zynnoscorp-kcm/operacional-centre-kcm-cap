@@ -1,15 +1,4 @@
 #!/usr/bin/env node
-/**
- * Propone las filas de `MATRIZ_MAPEO` a partir de un snapshot HC privado.
- *
- * El snapshot conserva `sourceColumn`, la letra real donde vive cada curso en la hoja HC del XLSB.
- * `HC_CURSOS` no la persiste, de modo que sin este puente el tablero no puede decirle a la VBA en
- * qué columna escribir. El `trainingId` se deriva con la misma regla que `KcmOperationalHcService`.
- *
- * No escribe en Google ni en el XLSB: imprime TSV para revisar y pegar.
- *
- *   npm run build:mapeo-matriz -- --snapshot referencias/privado/hc-snapshot-....json
- */
 import crypto from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -50,7 +39,6 @@ function parseArguments(argv) {
   return options;
 }
 
-/** El snapshot es privado: sólo se acepta una ruta que permanezca bajo `referencias/privado/`. */
 async function resolveSnapshot(requested) {
   if (requested) {
     const resolved = path.resolve(requested);
@@ -72,7 +60,6 @@ function columnIndex(letters) {
   return [...letters.toUpperCase()].reduce((total, letter) => total * 26 + (letter.charCodeAt(0) - 64), 0);
 }
 
-/** Un TSV no debe poder inyectar fórmulas ni romper la fila al pegarse en Sheets. */
 function tsvCell(value) {
   const text = String(value).replace(/[\t\r\n]+/g, " ").trim();
   return /^[=+\-@]/.test(text) ? `'${text}` : text;

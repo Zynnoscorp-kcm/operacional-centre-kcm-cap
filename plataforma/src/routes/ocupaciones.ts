@@ -1,23 +1,3 @@
-/**
- * Rutas de clasificación de ocupaciones con IA.
- *
- * La clasificación la conduce el navegador, un caso por petición. La función
- * publicada corta cada petición a los 120 s y un caso tarda cerca de medio
- * minuto: quince casos en una sola petición no caben, y cuando el avance
- * viajaba en una petición larga la plataforma la cortaba en el tercer caso sin
- * que la pantalla se enterara. Así, además, ninguna petición guarda estado en
- * el servidor y cualquier instancia atiende cualquier paso:
- *
- * 1. `POST /api/ocupaciones/plan` recibe el padrón y devuelve los casos:
- *    puesto, centro de costos y a cuántos trabajadores cubre cada uno.
- * 2. `POST /api/ocupaciones/sugerir` clasifica un caso.
- * 3. `POST /api/ocupaciones/escribir` recibe el mismo padrón y las claves
- *    sugeridas, vuelve a planear y devuelve el Excel con las celdas llenas.
- *
- * Cancelar es dejar de pedir casos: nada sigue corriendo en el servidor ni
- * gastando cupo del modelo. Nada se escribe en la base de datos desde aquí.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
@@ -34,11 +14,6 @@ import { renderOccupationsPage, type BusquedaEnCatalogo } from "../web/pages/ocu
 const MAXIMO_DEL_ARCHIVO = 8 * 1024 * 1024;
 const MAXIMO_EN_LA_NUBE = 4 * 1024 * 1024;
 const LIMITE_DE_BUSQUEDA = 60;
-/**
- * Casos por corrida, primero los que cubren a más trabajadores. Cada caso gasta
- * dos peticiones del cupo gratuito de OpenRouter, que da 50 al día: quince
- * dejan lugar para reintentos y para una segunda corrida corta.
- */
 const CASOS_POR_CORRIDA = 15;
 const TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -80,7 +55,6 @@ function busquedaDe(consulta: Record<string, unknown>): BusquedaEnCatalogo {
   return { texto: palabras, subarea, realizada: true, total, ocupaciones };
 }
 
-/** El padrón del formulario y los demás campos que lo acompañen. */
 function leerFormulario(peticion: FastifyRequest): {
   readonly archivo: ArchivoRecibido;
   readonly campos: Readonly<Record<string, string>>;
@@ -99,7 +73,6 @@ function leerFormulario(peticion: FastifyRequest): {
   return { archivo, campos: formulario.campos };
 }
 
-/** El plan de la corrida. El mismo archivo da siempre el mismo plan. */
 function planDe(
   archivo: ArchivoRecibido,
   extraer: (archivo: Buffer) => PadronLeido,
@@ -117,12 +90,6 @@ function planDe(
   return planearClasificacion(padron, CASOS_POR_CORRIDA);
 }
 
-/**
- * Las claves que juntó el navegador, contra el plan que se acaba de rehacer con
- * el mismo archivo. Cada una tiene que venir del mismo caso —número, puesto y
- * centro de costos— y existir en el catálogo. Si una no cuadra no se escribe
- * ninguna: una clave fuera de su caso terminaría en la celda de otra persona.
- */
 function codigosDelPlan(
   enviados: string | undefined,
   plan: PlanDeClasificacion,
@@ -168,11 +135,6 @@ function nombreDeSalida(original: string): string {
   return `${base || "padron"} con ocupaciones.xlsx`;
 }
 
-/**
- * La cabecera de la descarga. Una cabecera HTTP sólo admite latin-1: el nombre
- * real viaja codificado en `filename*` y `filename` lleva su versión sin
- * acentos para quien no entienda la otra.
- */
 function adjunto(nombre: string): string {
   const ascii =
     nombre

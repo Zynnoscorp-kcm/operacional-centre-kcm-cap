@@ -2,9 +2,6 @@ Attribute VB_Name = "KcmBridgeCore"
 Option Explicit
 Option Private Module
 
-' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
-' en Herramientas > Macros, donde solo quedan las que se usan a mano.
-
 Public Const KCM_PROTOCOL_VERSION As String = "KCM_VBA_BRIDGE_V1"
 Public Const KCM_CONFIG_SHEET As String = "KCM_CONFIG"
 Public Const KCM_RELEASE_LEDGER_SHEET As String = "KCM_ACUSES"
@@ -12,16 +9,11 @@ Public Const KCM_OVERWRITE_LEDGER_SHEET As String = "KCM_SOBRESCRITURAS"
 Public Const KCM_TOKEN_ENV As String = "KCM_VBA_BRIDGE_TOKEN"
 Public Const KCM_MARKER_PREFIX As String = "KCM_VBA_V1"
 
-' Caches por ejecucion. `KcmResetCaches` los vacia al inicio de cada entrada publica para que una
-' edicion de KCM_CONFIG entre dos ciclos surta efecto sin reabrir Excel.
 Private mConfig As KcmDiccionario
 Private mFold As KcmDiccionario
 Private mMaster As Workbook
 Private mMasterOpenedHere As Boolean
 
-''' Crea la hoja de configuracion y el ledger de acuses. No toca las hojas de una instalacion
-''' anterior: si el libro conserva `KCM_DC3_LEDGER` de cuando la emision vivia aqui, se deja
-''' intacta como evidencia historica. La emision DC-3 la resuelve ahora el generador Node.
 Public Sub KcmInstallBridge()
     Dim configSheet As Worksheet
     Dim releaseLedger As Worksheet
@@ -43,10 +35,6 @@ Public Sub KcmInstallBridge()
         KcmWriteConfig configSheet, configRow, "EMPLOYEE_COLUMN", "B"
         KcmWriteConfig configSheet, configRow, "FIRST_COURSE_COLUMN", "J"
         KcmWriteConfig configSheet, configRow, "LAST_COURSE_COLUMN", "AJ"
-        ' Ruta completa del `sem NN CAP.xlsx` de la semana en curso. Vuelve a
-        ' existir para el barrido del padron: se retiro cuando la emision DC-3
-        ' salio del cliente, y el barrido la necesita otra vez. Se deja vacia
-        ' porque cambia cada semana y adivinarla mandaria un libro viejo.
         KcmWriteConfig configSheet, configRow, "ROSTER_PATH", ""
         KcmWriteConfig configSheet, configRow, "CLOSE_MASTER_AFTER_CYCLE", "TRUE"
         configSheet.Columns("A").ColumnWidth = 34
@@ -72,18 +60,10 @@ Public Sub KcmInstallBridge()
         "Conectar este equipo completa la configuracion."
 End Sub
 
-''' Vacia los caches por ejecucion. Toda entrada publica debe llamarla antes de leer configuracion.
 Public Sub KcmResetCaches()
     Set mConfig = Nothing
 End Sub
 
-''' Mapa vacio de clave de texto a valor.
-'''
-''' Existe una sola linea para crearlo porque antes habia once, todas
-''' `CreateObject("Scripting.Dictionary")`, y ese objeto es parte de Windows: no
-''' existe en Excel para Mac. Se sustituyo por una clase del propio cliente que
-''' corre igual en los dos sistemas, en lugar de partir el codigo en dos ramas.
-''' Ver KcmDiccionario.
 Public Function KcmNuevoDiccionario() As KcmDiccionario
     Set KcmNuevoDiccionario = New KcmDiccionario
 End Function
@@ -99,8 +79,6 @@ Private Function KcmEnsureSheet(ByVal book As Workbook, ByVal sheetName As Strin
     ByVal visibility As XlSheetVisibility) As Worksheet
     On Error Resume Next
     Set KcmEnsureSheet = book.Worksheets(sheetName)
-    ' `On Error GoTo 0` restituye el manejador pero no limpia `Err`: sin este `Clear`, la hoja
-    ' ausente deja un numero de error vivo que confunde a cualquier comprobacion posterior.
     Err.Clear
     On Error GoTo 0
     If KcmEnsureSheet Is Nothing Then
@@ -121,7 +99,6 @@ Private Sub KcmEnsureHeaders(ByVal sheet As Worksheet, ByVal headers As Variant)
     sheet.Rows(1).Font.Color = RGB(255, 255, 255)
 End Sub
 
-''' Lee KCM_CONFIG una sola vez por ejecucion; una clave repetida es ambigua y falla cerrado.
 Private Function KcmConfigMap() As KcmDiccionario
     Dim sheet As Worksheet
     Dim values As Variant
@@ -162,7 +139,6 @@ Public Function KcmConfigValue(ByVal key As String, Optional ByVal required As B
     End If
 End Function
 
-''' Bandera estricta: solo TRUE o FALSE. Un valor ajeno no se interpreta.
 Public Function KcmConfigFlag(ByVal key As String, ByVal fallback As Boolean) As Boolean
     Dim raw As String
     raw = UCase$(KcmConfigValue(key, False))
@@ -177,13 +153,6 @@ Public Function KcmConfigFlag(ByVal key As String, ByVal fallback As Boolean) As
     End If
 End Function
 
-''' Compara rutas sin distinguir mayusculas y sin separadores finales, que es como se comportan
-''' tanto Windows como los volumenes de macOS por omision. El separador lo entrega Excel, de modo
-''' que la contrabarra de Windows y la diagonal de macOS se tratan igual sin escribir ninguna de
-''' las dos aqui.
-''' Los parametros no se llaman `left` ni `right`: un identificador local con el nombre de una
-''' funcion integrada hace que el compilador resuelva `Left$(...)` y `Right$(...)` contra la
-''' variable local en lugar de contra la funcion, y falle pidiendo una matriz.
 Private Function KcmSamePath(ByVal leftPath As String, ByVal rightPath As String) As Boolean
     Dim a As String
     Dim b As String
@@ -198,8 +167,6 @@ Private Function KcmSamePath(ByVal leftPath As String, ByVal rightPath As String
     KcmSamePath = (a = b)
 End Function
 
-''' Sondea la referencia en cache. Un libro cerrado a mano conserva el puntero pero falla al leer
-''' cualquier propiedad, de modo que `Name` distingue una referencia viva de una muerta.
 Private Function KcmMasterStillOpen() As Boolean
     Dim probe As String
     If mMaster Is Nothing Then Exit Function
@@ -213,10 +180,6 @@ Private Function KcmMasterStillOpen() As Boolean
     KcmMasterStillOpen = (Len(probe) > 0)
 End Function
 
-''' Abre la matriz maestra una sola vez por ejecucion y recuerda si fue este cliente quien la abrio.
-''' La referencia se sondea antes de reutilizarla: `KcmApplyPendingReleases` no cierra la matriz
-''' cuando se ejecuta por separado, asi que el puntero sobrevive a la corrida. Si entre dos corridas alguien cerro el libro a mano, reutilizarlo
-''' fallaba con un error de automatizacion sin explicacion en lugar de volver a abrirlo.
 Public Function KcmOpenMaster(Optional ByVal readOnlyAccess As Boolean = False) As Workbook
     Dim targetPath As String
     Dim book As Workbook
@@ -253,7 +216,6 @@ Public Function KcmOpenMaster(Optional ByVal readOnlyAccess As Boolean = False) 
     Set KcmOpenMaster = mMaster
 End Function
 
-''' Cierra la matriz solo si este cliente la abrio. Nunca guarda: cada etapa guarda de forma explicita.
 Public Sub KcmReleaseMaster()
     If mMaster Is Nothing Then Exit Sub
     If mMasterOpenedHere And KcmConfigFlag("CLOSE_MASTER_AFTER_CYCLE", True) Then
@@ -265,7 +227,6 @@ Public Sub KcmReleaseMaster()
     mMasterOpenedHere = False
 End Sub
 
-''' Texto seguro de una celda: un valor de error nunca debe convertirse con CStr.
 Public Function KcmCellText(ByVal value As Variant) As String
     If IsError(value) Then Exit Function
     If IsEmpty(value) Or IsNull(value) Then Exit Function
@@ -273,7 +234,6 @@ Public Function KcmCellText(ByVal value As Variant) As String
     KcmCellText = CStr(value)
 End Function
 
-''' Lectura en bloque: una sola llamada COM en lugar de una por celda.
 Public Function KcmRangeValues(ByVal sheet As Worksheet, ByVal firstRow As Long, _
     ByVal firstColumn As Long, ByVal lastRow As Long, ByVal lastColumn As Long) As Variant
     Dim raw As Variant
@@ -309,16 +269,12 @@ End Function
 Public Function KcmNormalizeEmployeeId(ByVal value As Variant) As String
     Dim text As String
     If IsError(value) Or IsEmpty(value) Or IsNull(value) Then Exit Function
-    ' El servidor recorta tambien el espacio duro; aqui se hace lo mismo.
     text = Trim$(Replace(KcmCellText(value), ChrW(160), " "))
     If Len(text) < 1 Or Len(text) > 5 Then Exit Function
     If Not text Like String$(Len(text), "#") Then Exit Function
     KcmNormalizeEmployeeId = Right$("00000" & text, 5)
 End Function
 
-''' Tabla de plegado de diacriticos. Reproduce `toUpperCase()` seguido de NFD y descarte de marcas,
-''' que es la regla exacta con la que el servidor recalcula `normalizedName`. Sin ella, una vocal
-''' acentuada llegaria como separador y la importacion respondera CONFLICT.
 Private Function KcmFoldMap() As KcmDiccionario
     If Not mFold Is Nothing Then
         Set KcmFoldMap = mFold
@@ -357,8 +313,6 @@ Private Sub KcmAddFold(ByVal target As String, ByVal codePoints As String)
     Next index
 End Sub
 
-''' Etiqueta normalizada: mayusculas A-Z0-9, diacriticos plegados y cualquier otro caracter como un
-''' unico separador. No depende de `UCase$` ni de la configuracion regional de Windows.
 Public Function KcmNormalizeLabel(ByVal value As Variant) As String
     Dim source As String
     Dim buffer As String
@@ -397,11 +351,6 @@ Public Function KcmNormalizeLabel(ByVal value As Variant) As String
     KcmNormalizeLabel = RTrim$(Left$(buffer, used))
 End Function
 
-''' Signos de puntuacion y simbolos que tanto el cliente como el extractor Node convierten en
-''' separador. Los intervalos excluyen deliberadamente los caracteres cuya descomposicion NFKD del
-''' extractor produce letras o digitos, porque ahi las dos reglas dejarian de coincidir:
-''' superindices y fracciones (B2, B3, B9, BC-BE), los ordinales AA y BA, el signo micro B5 y el
-''' simbolo de rupia 20A8.
 Private Function KcmIsSharedSeparator(ByVal code As Long) As Boolean
     If code >= &HA0 And code <= &HA9 Then KcmIsSharedSeparator = True: Exit Function
     If code >= &HAB And code <= &HB1 Then KcmIsSharedSeparator = True: Exit Function
@@ -414,9 +363,6 @@ Private Function KcmIsSharedSeparator(ByVal code As Long) As Boolean
     If code >= &H20A9 And code <= &H20BF Then KcmIsSharedSeparator = True: Exit Function
 End Function
 
-''' Devuelve el primer caracter que el cliente no sabe interpretar igual que el extractor Node, o 0
-''' si la etiqueta es segura. Una letra fuera de la tabla de plegado produciria un `sourceKey`
-''' distinto del que ya identifica al curso en HC_CURSOS, y HC crearia una capacitacion paralela.
 Public Function KcmUnfoldableCharacter(ByVal value As String) As Long
     Dim map As KcmDiccionario
     Dim index As Long
@@ -435,23 +381,6 @@ Public Function KcmUnfoldableCharacter(ByVal value As String) As Long
     Next index
 End Function
 
-''' Fecha de una celda, en ISO. Cadena vacia si la celda no contiene una fecha.
-'''
-''' Acepta dos formas porque la matriz trae las dos. Cuando la celda tiene formato
-''' de fecha, Excel entrega un `Date` y no hay nada que decidir. Cuando alguien la
-''' captura a mano sobre una celda de formato general, Excel entrega el numero de
-''' serie y `IsDate` responde que no: en VBA ningun numero es una fecha, ni
-''' siquiera uno que `CDate` convertiria sin quejarse. Rechazar esa celda dejaria
-''' fuera a un trabajador por como quedo formateada su fila, que no es una razon.
-'''
-''' Solo se convierte un numero de tipo numerico: un texto que parece numero,
-''' como un "1999" suelto en la columna de la fecha, sigue siendo un error y falla.
-''' El rango admitido va de 1900 a 2100; fuera de ahi el numero no es una fecha de
-''' ingreso sino otra cosa mal puesta, y vale mas detenerse.
-'''
-''' Se asume el calendario de 1900, que es el de los libros de la matriz. Un libro
-''' guardado con el sistema de 1904 correria todas las fechas 1462 dias, y eso
-''' se ve en la primera revision, no se cuela de una.
 Public Function KcmIsoDate(ByVal value As Variant) As String
     Dim serie As Double
 
@@ -461,10 +390,6 @@ Public Function KcmIsoDate(ByVal value As Variant) As String
         KcmIsoDate = Format$(CDate(value), "yyyy-mm-dd")
         Exit Function
     End If
-    ' Una fecha capturada como texto. `IsDate` la resuelve contra la configuracion regional del
-    ' equipo, asi que "13/05/1999" pasa en una instalacion en espanol y falla en la de al lado en
-    ' ingles: la misma matriz importaba en una computadora y se detenia en otra. Aqui se leen las
-    ' dos formas que la matriz usa de verdad, dia primero y ano primero, sin preguntarle al sistema.
     If VarType(value) = vbString Then
         KcmIsoDate = KcmIsoDateFromText(KcmCellText(value))
         Exit Function
@@ -479,11 +404,6 @@ Public Function KcmIsoDate(ByVal value As Variant) As String
     KcmIsoDate = Format$(CDate(serie), "yyyy-mm-dd")
 End Function
 
-''' Fecha escrita como texto, sin depender de la configuracion regional.
-'''
-''' Se aceptan `dd/mm/aaaa` y `aaaa-mm-dd`, con `/`, `-` o `.` de separador, que es lo que aparece
-''' en las matrices. No se acepta `mm/dd/aaaa`: entre "05/03" y "03/05" no hay forma de saber cual
-''' quiso decir quien capturo, y adivinar imprimiria una fecha falsa en un documento oficial.
 Private Function KcmIsoDateFromText(ByVal texto As String) As String
     Dim partes() As String
     Dim limpio As String
@@ -511,8 +431,6 @@ Private Function KcmIsoDateFromText(ByVal texto As String) As String
     If anio < 1900 Or anio > 2100 Then Exit Function
     If mes < 1 Or mes > 12 Then Exit Function
     If dia < 1 Or dia > 31 Then Exit Function
-    ' `DateSerial` corre el 31 de febrero al 3 de marzo en lugar de fallar. Se compara lo que
-    ' devuelve contra lo que se pidio: si no coincide, la fecha no existia.
     If Day(DateSerial(anio, mes, dia)) <> dia Then Exit Function
     KcmIsoDateFromText = Format$(DateSerial(anio, mes, dia), "yyyy-mm-dd")
 End Function
@@ -541,7 +459,6 @@ Public Function KcmColumnNumber(ByVal letters As String) As Long
     KcmColumnNumber = value
 End Function
 
-''' Letras de columna calculadas desde el numero; no depende del formato de `Range.Address`.
 Public Function KcmColumnLetters(ByVal columnNumber As Long) As String
     Dim remaining As Long
     Dim output As String
@@ -591,13 +508,10 @@ Public Function KcmJsonString(ByVal value As String) As String
     KcmJsonString = """" & KcmJsonEscape(value) & """"
 End Function
 
-''' Miembro de objeto con valor de texto. Evita los literales con comillas triples que ya
-''' rompieron la compilacion del ensamblado de snapshot.
 Public Function KcmJsonPair(ByVal name As String, ByVal value As String) As String
     KcmJsonPair = KcmJsonString(name) & ":" & KcmJsonString(value)
 End Function
 
-''' Miembro de objeto con valor JSON ya formado: numero, objeto o arreglo.
 Public Function KcmJsonRaw(ByVal name As String, ByVal rawValue As String) As String
     KcmJsonRaw = KcmJsonString(name) & ":" & rawValue
 End Function
@@ -626,7 +540,6 @@ Public Function KcmJoinCollection(ByVal values As Collection, _
     KcmJoinCollection = Join(items, delimiter)
 End Function
 
-''' Escritura de ledger en bloque: una asignacion de rango y un solo guardado.
 Public Sub KcmLedgerAppendRows(ByVal sheetName As String, ByVal rows As Collection)
     Dim sheet As Worksheet
     Dim block As Variant

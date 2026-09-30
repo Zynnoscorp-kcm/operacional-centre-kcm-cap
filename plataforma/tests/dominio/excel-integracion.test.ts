@@ -133,8 +133,6 @@ describe("E11/E14 · credenciales, puente VBA y Power Query", () => {
     const ok = await bridgeCall(target, issued.secret, "STATUS_V1");
     assert.match(ok, /^KCM_VBA_BRIDGE_V1\nOK/mu);
     assert.match(ok, /payload=/u);
-    // `status` ya es la segunda línea del protocolo. Un campo homónimo llega al
-    // cliente como clave repetida y aborta con "Respuesta VBA duplicada".
     assert.doesNotMatch(ok, /^status=/mu);
     const replay = await bridgeCall(target, issued.secret, "STATUS_V1");
     assert.match(replay, /^KCM_VBA_BRIDGE_V1\nERROR/mu);
@@ -208,8 +206,6 @@ describe("E11/E14 · credenciales, puente VBA y Power Query", () => {
   });
 
   it("un acuse con conflicto de la macro se guarda traducido y la fecha sigue pendiente", async () => {
-    // La base sólo admite seis estados de acuse. Antes, un EMPLOYEE_NOT_FOUND
-    // de la macro hacía fallar el INSERT y el conflicto no llegaba nunca.
     const { repository, service: target } = service();
     const issued = await target.issueCredential({
       clientId: "client-1",
@@ -287,17 +283,6 @@ describe("E11/E14 · credenciales, puente VBA y Power Query", () => {
     ]);
   });
 
-  /**
-   * `RELEASE_SESSIONS_V1`.
-   *
-   * Es lo que alimenta el subpanel de sesiones entrantes del libro controlador.
-   * Contesta la misma pregunta que `RELEASE_PULL_V1` —qué falta por escribir—
-   * pero agrupada por sesión y con su código legible, porque el panel enseña
-   * sesiones para escoger y no quinientos renglones para leer.
-   *
-   * Lo que se fija aquí es que el código viaje: el identificador de sesión es un
-   * UUID que nadie reconoce, y sin el código el panel no podría decir cuál llegó.
-   */
   it("RELEASE_SESSIONS_V1 agrupa lo pendiente por sesión y con su código legible", async () => {
     const { service: target } = service();
     const issued = await target.issueCredential({
@@ -341,12 +326,6 @@ describe("E11/E14 · credenciales, puente VBA y Power Query", () => {
     ]);
   });
 
-  /**
-   * Agrupar no puede cambiar lo que se considera pendiente: la lista de sesiones
-   * y la carga que se escribe salen de la misma lectura, así que una sesión ya
-   * acusada desaparece de las dos a la vez. Si se separaran, el panel enseñaría
-   * sesiones que al recibirlas no tendrían nada que escribir.
-   */
   it("una sesión ya acusada deja de aparecer en el resumen", async () => {
     const { service: target } = service();
     await target.applyAcknowledgements({

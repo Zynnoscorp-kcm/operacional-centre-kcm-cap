@@ -1,12 +1,3 @@
-/**
- * Departamentos: la capacitación de la planta, departamento por departamento.
- *
- * Una fila por departamento con la misma barra de avance que la cobertura por
- * curso, de menor a mayor avance: arriba, donde está el rezago. El nombre lleva
- * a su plantilla en el directorio. Era dos pantallas —una tabla y una retícula
- * de tarjetas con las mismas cifras—; ahora es una.
- */
-
 import type { EnvironmentName } from "../../../config/environment.ts";
 import type { DepartmentSummaryItem } from "../../../domain/sistema-trabajador/tipos.ts";
 import { html, type Html } from "../../kit/html.ts";
@@ -23,7 +14,6 @@ export interface DatosResumenDepartamentos {
   readonly entorno: EnvironmentName;
 }
 
-/** Cómo guarda la base a quien no tiene departamento. En pantalla se dice en palabras. */
 const SIN_DEPARTAMENTO = "SIN_DEPARTAMENTO";
 
 function partesDe(dep: DepartmentSummaryItem): PartesDeAvance {

@@ -1,16 +1,3 @@
-/**
- * Bitácora de las dos cargas maestras.
- *
- * Lo que se vigila aquí es lo que esta ejecución vino a arreglar: que ninguna
- * carga entre sin dejar rastro. Antes de esto, aplicar un padrón escribía CURP
- * y fechas de alta de mil setecientas personas y no quedaba constancia de qué
- * archivo había sido ni de quién lo había pedido.
- *
- * Hay una prueba que parece exótica y no lo es: la bitácora que falla. Es el
- * caso que decide si la instrumentación es segura, porque un asiento perdido
- * tiene que costar un asiento y no una carga a medio aplicar.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -39,8 +26,6 @@ const ENTORNO = {
   KCM_PILOT_CONSOLE_USER: "Maricela0000",
   KCM_PILOT_CONSOLE_PASSWORD: "0000",
 } as const;
-
-// ---------------------------------------------------------------- dobles
 
 function padron(sha256: string): PadronLeido {
   return {
@@ -109,7 +94,6 @@ class RepositorioFalso implements RosterRepositoryPort {
   }
 }
 
-/** Repositorio con un solo trabajador, cuyo tipo de nómina y planta se fijan. */
 class RepositorioDivergente implements RosterRepositoryPort {
   ultimasEscrituras: EscriturasDePadron | undefined;
   readonly #base: { tipoNomina: string | null; planta: string | null };
@@ -151,7 +135,6 @@ class RepositorioDivergente implements RosterRepositoryPort {
   }
 }
 
-/** Una bitácora que revienta en cada operación, para probar que no contagia. */
 class BitacoraRota implements LoadLogPort {
   registrar(): Promise<CargaRegistrada | undefined> {
     return Promise.reject(new Error("la base no responde"));
@@ -182,8 +165,6 @@ function servicio(input: { puerto?: LoadLogPort; sha256?: string }): {
     }),
   };
 }
-
-// ---------------------------------------------------------------- el asiento
 
 describe("Bitácora de cargas · qué queda asentado", () => {
   it("el padrón asienta revisión y aplicación, en ese orden", async () => {
@@ -228,8 +209,6 @@ describe("Bitácora de cargas · qué queda asentado", () => {
   });
 });
 
-// ------------------------------------------------------- contra la anterior
-
 describe("Bitácora de cargas · comparación con la carga anterior", () => {
   it("sin carga previa no hay comparación, y eso no es «sin cambios»", async () => {
     const { servicio: padronService } = servicio({});
@@ -243,7 +222,6 @@ describe("Bitácora de cargas · comparación con la carga anterior", () => {
     const plan = await primero.servicio.previsualizar(Buffer.from("x"), "sem 33 CAP.xlsx");
     await primero.servicio.aplicar(plan.planId, "Maricela0000");
 
-    // Mismo contenido, otro nombre: es el caso de la copia movida de carpeta.
     const segundo = servicio({ puerto, sha256: "b".repeat(64) });
     await segundo.servicio.previsualizar(Buffer.from("x"), "sem 33 CAP (copia).xlsx");
 
@@ -270,7 +248,6 @@ describe("Bitácora de cargas · comparación con la carga anterior", () => {
   it("sólo compara contra cargas aplicadas: una revisión no es una carga", async () => {
     const puerto = new MemoryLoadLog(clock);
     const primero = servicio({ puerto, sha256: "e".repeat(64) });
-    // Se revisa y no se aplica: no debe convertirse en la referencia.
     await primero.servicio.previsualizar(Buffer.from("x"), "sem 33 CAP.xlsx");
 
     const segundo = servicio({ puerto, sha256: "e".repeat(64) });
@@ -278,8 +255,6 @@ describe("Bitácora de cargas · comparación con la carga anterior", () => {
     assert.equal(segundo.servicio.comparacion(), undefined);
   });
 });
-
-// ------------------------------------------------------- la bitácora que falla
 
 describe("Bitácora de cargas · cuando la bitácora falla", () => {
   it("una carga se aplica aunque su asiento no se pueda escribir", async () => {
@@ -315,7 +290,6 @@ describe("Bitácora de cargas · cuando la bitácora falla", () => {
   });
 });
 
-/** Abre sesión con la credencial declarada y devuelve la cookie. */
 async function conSesion(app: Awaited<ReturnType<typeof buildServer>>): Promise<string> {
   const entrada = await app.inject({
     method: "POST",
@@ -326,8 +300,6 @@ async function conSesion(app: Awaited<ReturnType<typeof buildServer>>): Promise<
   assert.equal(entrada.statusCode, 303);
   return String(entrada.headers["set-cookie"] ?? "").split(";")[0] ?? "";
 }
-
-// ---------------------------------------------------------------- la pantalla
 
 describe("Bitácora de cargas · la pantalla del historial", () => {
   it("sin sesión no se llega al historial: el guardia lo cierra", async () => {
@@ -349,8 +321,6 @@ describe("Bitácora de cargas · la pantalla del historial", () => {
     });
     assert.equal(respuesta.statusCode, 200);
     assert.match(respuesta.body, /Historial de cargas/u);
-    // Sin base la bitácora muere con el proceso, y la pantalla tiene que decirlo:
-    // un historial que se vacía solo sin avisar es peor que no tenerlo.
     assert.match(respuesta.body, /se pierde al reiniciar\s+la plataforma/u);
     await app.close();
   });
@@ -368,15 +338,6 @@ describe("Bitácora de cargas · la pantalla del historial", () => {
   });
 });
 
-// ------------------------------------------------- el adaptador de PostgreSQL
-
-/**
- * Un ejecutor que sólo recuerda lo que se le pidió.
- *
- * Sirve para lo único que hace falta comprobar sin base: que los parámetros que
- * salen hacia PostgreSQL respetan las restricciones del esquema. El resto —que
- * la fila se escriba— lo garantiza la base y no una prueba con un doble.
- */
 class EjecutorEspia {
   ultimosParametros: unknown[] = [];
   query<T>(_sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
@@ -393,9 +354,6 @@ describe("Bitácora de cargas · el adaptador de PostgreSQL", () => {
     const espia = new EjecutorEspia();
     const bitacora = new SupabaseLoadLog(espia);
 
-    // El asiento de rechazo lleva lo que vino del formulario: es el único
-    // identificador que un navegador puede fabricar, y `comun.identificador_solicitud`
-    // exige de 8 a 128 caracteres de un alfabeto acotado.
     await bitacora.registrar({
       tipo: "PADRON",
       hecho: "RECHAZADA",
@@ -455,16 +413,6 @@ describe("Bitácora de cargas · el adaptador de PostgreSQL", () => {
   });
 });
 
-// ------------------------------------------------- padrón contra matriz
-
-/**
- * Las dos fuentes maestras hablan del mismo dato en dos campos: el tipo de
- * nómina y la planta. El departamento decidió que la matriz siga mandando
- * en ambos, porque la plataforma la consulta a diario, aunque el padrón sea
- * quien origina la clasificación. La consecuencia obligada de esa decisión es
- * que la divergencia se vea: si no, una carga que no puede resolverla tampoco
- * la reportaría, y nadie sabría nunca que existe.
- */
 describe("Padrón contra matriz · divergencias que no se escriben", () => {
   function servicioCon(
     empleado: { payrollType: string; plant: string },
@@ -530,9 +478,6 @@ describe("Padrón contra matriz · divergencias que no se escriben", () => {
     const plan = await s.previsualizar(Buffer.from("x"), "sem 33 CAP.xlsx");
     await s.aplicar(plan.planId, "Maricela0000");
 
-    // Ninguna escritura toca nómina ni planta: el puerto no expone forma de
-    // hacerlo y las columnas personales (0046) salen de una lista cerrada que
-    // no las incluye. Esta prueba fija que siga así.
     const escrito = repositorio.ultimasEscrituras;
     assert.ok(escrito);
     assert.deepEqual(Object.keys(escrito).sort(), [
@@ -548,7 +493,6 @@ describe("Padrón contra matriz · divergencias que no se escriben", () => {
     for (const [, columna] of escrito.datos ?? []) {
       assert.ok(!["tipo_nomina", "planta"].includes(columna), `el padrón escribió ${columna}`);
     }
-    // En el panel la diferencia sí se ve, en gris: sólo aviso.
     const avisos = (plan.detalle?.movimientos ?? []).filter((m) => m.soloAviso);
     assert.ok(avisos.some((m) => m.campo === "Tipo de nómina"));
     assert.ok(avisos.some((m) => m.campo === "Planta"));

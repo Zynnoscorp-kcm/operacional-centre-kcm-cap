@@ -1,14 +1,3 @@
-/**
- * Servicio de orquestación para la ingesta y reconciliación de la matriz XLSB.
- *
- * Coordina las cinco fases gobernadas:
- * 1. RECIBIDO: Captura de fuente/snapshot y comprobación de integridad y frescura.
- * 2. PREPARADO: Extracción y fijación del alcance declarado (FULL o DELTA).
- * 3. VALIDADO: Preflight de reconciliación por procedencia, detección de candidatos y novedades.
- * 4. APROBADO: Autorización formal por parte de un actor calificado.
- * 5. CONFIRMADO: Aplicación atómica e idempotente a las tablas del sistema.
- */
-
 import { createHash, randomUUID } from "node:crypto";
 import {
   createImportBatch,
@@ -49,9 +38,6 @@ export class MatrixImportService {
     this.extractor = extractor;
   }
 
-  /**
-   * Recibe un snapshot o buffer y crea el lote en fase RECIBIDO.
-   */
   async receiveBatch({
     source,
     requestId,
@@ -65,7 +51,6 @@ export class MatrixImportService {
     fileName?: string;
     scope?: ImportScope;
   }): Promise<{ batch: ImportBatch; snapshot: MatrixSnapshot | null; repeated: boolean }> {
-    // 1. Idempotencia: Verificar si la solicitud ya fue procesada
     const existing = await this.repository.findBatchByRequestId(requestId);
     if (existing && existing.phase === "CONFIRMADO") {
       return {
@@ -75,7 +60,6 @@ export class MatrixImportService {
       };
     }
 
-    // 2. Extraer snapshot si es un Buffer
     let snapshot: MatrixSnapshot;
     if (Buffer.isBuffer(source)) {
       if (!this.extractor) {
@@ -86,15 +70,11 @@ export class MatrixImportService {
       snapshot = source;
     }
 
-    // 3. Comprobar que no sea obsoleto frente al último lote completado
     const latestBatch = await this.repository.getLatestCompletedBatch();
     validateSnapshot(snapshot, latestBatch?.sourceExtractedAt ?? null);
 
     const snapshotSha256 = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
 
-    // El identificador va tal cual a `lote_importacion.importacion_id`, que es una columna
-    // `uuid`. Un prefijo legible lo volvia texto y Postgres rechazaba el lote entero con
-    // "invalid input syntax for type uuid", ya recibido y validado, como falla interna.
     const importId = randomUUID();
     const batch = createImportBatch({
       importId,
@@ -112,9 +92,6 @@ export class MatrixImportService {
     return { batch, snapshot, repeated: false };
   }
 
-  /**
-   * Prepara el lote fijando alcance y diagnósticos (Fase PREPARADO).
-   */
   async prepareBatch(
     batch: ImportBatch,
     snapshot: MatrixSnapshot,
@@ -129,9 +106,6 @@ export class MatrixImportService {
     return batch;
   }
 
-  /**
-   * Ejecuta el preflight de validación y reconciliación (Fase VALIDADO o CONFLICTO).
-   */
   async validateBatch(
     batch: ImportBatch,
     snapshot: MatrixSnapshot,
@@ -161,7 +135,6 @@ export class MatrixImportService {
     transitionToValidated(batch, reconciled.counts, hasConflicts);
     await this.repository.updateBatch(batch);
 
-    // Identificar cursos o trabajadores desconocidos
     const existingCourseKeys = new Set(existingCourses.map((c) => c.sourceKey));
     const existingWorkerIds = new Set(existingWorkers.map((w) => w.workerNumber));
 
@@ -178,9 +151,6 @@ export class MatrixImportService {
     };
   }
 
-  /**
-   * Aprueba el lote validado (Fase APROBADO).
-   */
   async approveBatch(
     batch: ImportBatch,
     approverActorId: string,
@@ -191,9 +161,6 @@ export class MatrixImportService {
     return batch;
   }
 
-  /**
-   * Confirma y aplica atómicamente el lote aprobado (Fase CONFIRMADO).
-   */
   async confirmBatch(
     batch: ImportBatch,
     snapshot: MatrixSnapshot,
@@ -230,7 +197,6 @@ export class MatrixImportService {
 
     transitionToConfirmed(batch, reconciled.counts);
 
-    // Aplicar de forma atómica en el repositorio
     await this.repository.applyBatchAtomic(batch, {
       workersToUpsert: reconciled.workersToUpsert,
       coursesToUpsert: reconciled.coursesToUpsert,
@@ -261,16 +227,6 @@ export class MatrixImportService {
     };
   }
 
-  /**
-   * Flujo de alto nivel para ejecutar el ciclo completo de un snapshot.
-   *
-   * Idéntico al contrato operativo de OperationalHcService.importSnapshot():
-   * - Recibe el snapshot
-   * - Prepara y valida
-   * - Si hay conflictos, marca estado CONFLICTO y lanza MatrixConflictError
-   * - Si es válido, aprueba y confirma atómicamente
-   * - Si la solicitud se repite, devuelve el resultado anterior con repeated: true
-   */
   async importSnapshot(input: ImportSnapshotInput): Promise<BatchApplicationResult> {
     const { batch, snapshot, repeated } = await this.receiveBatch({
       source: input.snapshot,

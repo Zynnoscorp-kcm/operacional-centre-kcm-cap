@@ -1,8 +1,3 @@
-/**
- * El código de sesión `KC-NNNN`: su forma, lo que se acepta tecleado y cómo
- * se asigna el consecutivo, también cuando dos sesiones se crean a la vez.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -29,7 +24,6 @@ const CURSO = {
   durationMinutes: 60,
 };
 
-/** Una sesión ya guardada con el código que diga la prueba. */
 function sesionConCodigo(sessionCode: string): SessionRecord {
   return {
     sessionId: `sesion-${sessionCode}`,
@@ -68,9 +62,7 @@ describe("Código de sesión · forma", () => {
     for (const tecleado of ["KC-0001", "kc-1", "KC1", " KC 0001 ", "kc-0001"]) {
       assert.equal(normalizarCodigoDeSesion(tecleado), "KC-0001", tecleado);
     }
-    // El formato anterior sólo se limpia: sigue encontrando su sesión.
     assert.equal(normalizarCodigoDeSesion(" kcm-260803-abc123 "), "KCM-260803-ABC123");
-    // Lo que no es un código no se inventa.
     assert.equal(normalizarCodigoDeSesion("KC-0"), "KC-0");
     assert.equal(normalizarCodigoDeSesion("KC-12345"), "KC-12345");
   });
@@ -97,14 +89,12 @@ describe("Código de sesión · consecutivo", () => {
     const segunda = await sesiones.createSession(CURSO, CAPACITADOR, "solicitud-2");
     assert.equal(primera.sessionCode, "KC-0042");
     assert.equal(segunda.sessionCode, "KC-0043");
-    // Repetir la solicitud devuelve la misma sesión, sin gastar otro número.
     const repetida = await sesiones.createSession(CURSO, CAPACITADOR, "solicitud-1");
     assert.equal(repetida.sessionCode, "KC-0042");
     assert.equal(await repo.getHighestSessionCodeNumber(), 43);
   });
 
   it("si otra sesión tomó el número al mismo tiempo, se pide el siguiente", async () => {
-    // Una instancia vio el mayor en 4 justo antes de que otra guardara KC-0005.
     class RepoConCarrera extends MemoryKioskSessionRepository {
       consultas = 0;
       override async getHighestSessionCodeNumber(): Promise<number> {

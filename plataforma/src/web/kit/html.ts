@@ -1,16 +1,3 @@
-/**
- * Render en servidor.
- *
- * No hay motor de plantillas: hay una plantilla etiquetada que escapa por
- * omisión. Interpolar texto es seguro sin pensarlo, y publicar marcado crudo
- * exige escribir `rawHtml`, que es una palabra que se ve en la revisión.
- *
- * Un valor de un tipo no previsto —un objeto, una función, un `Symbol`— lanza
- * en vez de imprimirse. La alternativa era `[object Object]` en pantalla o,
- * peor, un objeto de dominio serializado entero con campos que la vista no
- * necesitaba. Falla cerrado.
- */
-
 const ESCAPES: Readonly<Record<string, string>> = {
   "&": "&amp;",
   "<": "&lt;",
@@ -27,10 +14,6 @@ export function escapeHtml(valor: string): string {
   return valor.replace(/[&<>"']/gu, (caracter) => ESCAPES[caracter] ?? caracter);
 }
 
-/**
- * Marca una cadena como marcado ya seguro. Sólo se usa sobre contenido literal
- * del árbol, nunca sobre algo que venga de una petición o de la base.
- */
 export function rawHtml(marcado: string): Html {
   return { __html: marcado };
 }
@@ -66,10 +49,6 @@ function interpolar(valor: unknown): string {
   );
 }
 
-/**
- * Envuelve un cuerpo ya renderizado en el documento completo. Recorta los
- * extremos porque el sangrado de la plantilla dejaría espacios antes de `<html>`.
- */
 export function renderDocument(documento: Html): string {
   return `<!doctype html>\n${documento.__html.trim()}\n`;
 }

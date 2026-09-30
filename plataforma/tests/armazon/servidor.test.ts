@@ -16,7 +16,6 @@ const relojFijo: Clock = {
   nowIso: () => MOMENTO_FIJO,
 };
 
-/** La bitácora va a un sumidero: una prueba no debe ensuciar la salida. */
 const sumidero = (): Writable =>
   new Writable({
     write(_fragmento, _codificacion, listo): void {
@@ -33,9 +32,6 @@ afterEach(async () => {
 });
 
 async function servidor(entorno: EnvSource = {}): Promise<FastifyInstance> {
-  // Estas pruebas miran cabeceras, errores y forma de las pantallas, no la
-  // puerta: el guardia vive en `guardia.test.ts`. Un entorno propio manda, para
-  // que las pruebas de producción sigan cargando su configuración tal cual.
   const config: AppConfig = loadConfig(
     Object.keys(entorno).length === 0 ? { KCM_PILOT_OPEN_ACCESS: "true" } : entorno,
   );
@@ -83,13 +79,6 @@ describe("pantalla base", () => {
     assert.ok(respuesta.body.includes('lang="es-MX"'));
   });
 
-  /**
-   * Inicio dejó de ser un índice de funciones con su disponibilidad al lado. Lo
-   * que se comprueba ahora es que sea un tablero del día: los cuatro mosaicos y
-   * las tres tarjetas, cada una con su estado vacío escrito, porque con
-   * repositorios en memoria no hay nada que listar y una tarjeta en blanco no
-   * dice si está vacía o rota.
-   */
   it("es un tablero del día y no un índice de funciones", async () => {
     const app = await servidor();
     const cuerpo = (await app.inject({ method: "GET", url: "/" })).body;
@@ -107,23 +96,15 @@ describe("pantalla base", () => {
     assert.ok(cuerpo.includes("Sin reservaciones para hoy."));
     assert.ok(cuerpo.includes("Sin pendientes de liberación."));
 
-    // La retícula de funciones y sus estados de proyecto ya no existen.
     assert.equal(cuerpo.includes("rejilla-funciones"), false);
     assert.equal(cuerpo.includes("Función 1"), false);
     assert.equal(cuerpo.includes("Disponible; pantalla de sala"), false);
   });
 
-  /**
-   * El menú lateral es la única lista de secciones que queda, y son doce: las
-   * veinte entradas planas de antes se agruparon en secciones con sub-pestañas
-   * dentro de cada pantalla. Sin esta prueba, añadir la vigésimo primera entrada
-   * al lateral vuelve a ser gratis.
-   */
   it("el lateral lleva doce secciones y ninguna función quedó sin puerta", async () => {
     const app = await servidor();
     const cuerpo = (await app.inject({ method: "GET", url: "/" })).body;
 
-    // Sólo el menú, sin el pie de pantallas de sala, que no son secciones.
     const menu = cuerpo.slice(
       cuerpo.indexOf('<nav class="lateral-nav"'),
       cuerpo.indexOf('<nav class="lateral-pie"'),
@@ -200,7 +181,6 @@ describe("cabeceras de seguridad", () => {
 
     const produccion = await servidor({
       KCM_ENV: "production",
-      // Producción exige base declarada; aquí sólo se ejercita la cabecera.
       KCM_DATABASE_URL: "postgresql://u:p@localhost:5432/postgres",
     });
     assert.match(
@@ -308,11 +288,6 @@ describe("hoja de estilos", () => {
     assert.equal(respuesta.headers["etag"], `"${hojaDeEstilos.hash}"`);
   });
 
-  /**
-   * Las tipografías viajan con la plataforma: la política declara `font-src
-   * 'self'`, y una familia que no se sirve desde aquí se dibujaba distinta en
-   * cada computadora, según lo que cada una tuviera instalado.
-   */
   it("sirve sus propias tipografías, bajo su hash y con caché eterna", async () => {
     const app = await servidor();
     const hoja = (await app.inject({ method: "GET", url: hojaDeEstilos.ruta })).body;
@@ -343,12 +318,6 @@ describe("hoja de estilos", () => {
     assert.match(cuerpo, /--kcm-radius-lg:\s*24px/u);
   });
 
-  /**
-   * El azul de marca se declara una vez y se usa por variable. Un literal
-   * suelto en `base.css` es la forma en que un rediseño se queda a medias: la
-   * pantalla que lo lleva se queda con el color viejo y nadie lo nota hasta
-   * verla al lado de otra.
-   */
   it("el color vive en los tokens y no suelto en la hoja de componentes", async () => {
     const app = await servidor();
     const cuerpo = (await app.inject({ method: "GET", url: hojaDeEstilos.ruta })).body;

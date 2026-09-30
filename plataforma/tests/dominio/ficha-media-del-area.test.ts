@@ -1,12 +1,3 @@
-/**
- * La media del área de la ficha del trabajador.
- *
- * La telaraña pone a la persona contra su área: cuántos de sus compañeros de
- * área tienen vigente cada curso que les aplica. Se fija aquí cómo se calcula
- * en memoria, que la base la pide en una sola consulta acotada al área, y que
- * un fallo al medir el área no deja a nadie sin su ficha.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -21,7 +12,6 @@ import { WorkerSystemService } from "../../src/domain/sistema-trabajador/servici
 const AREA = "GERENCIA DE MANTTO. ELECTRICO";
 const HOY = "2026-09-24";
 
-/** Dos compañeros del área de 01234; uno con QMS vigente y otro sin él. */
 function repositorioConCompaneros(): MemoryWorkerSystemRepository {
   const repositorio = new MemoryWorkerSystemRepository();
   for (const [numero, nombre] of [
@@ -60,7 +50,6 @@ describe("Ficha · la media del área", () => {
 
     const qms = perfil?.areaComparison?.find((curso) => curso.trainingId === "kcm-course:qms");
     assert.ok(qms, "falta QMS en la media del área");
-    // Tres personas en el área —01234 y los dos compañeros—; sólo 02001 lo tiene vigente.
     assert.equal(qms.applicable, 3);
     assert.equal(qms.completed, 1);
   });
@@ -84,7 +73,6 @@ describe("Ficha · la media del área", () => {
     assert.deepEqual(pedidas, ["01234"]);
     const qms = perfil?.areaComparison?.find((curso) => curso.trainingId === "kcm-course:qms");
     assert.deepEqual(qms, { trainingId: "kcm-course:qms", applicable: 40, completed: 12 });
-    // Un curso que el catálogo no reconoce no se dibuja: no hay eje donde ponerlo.
     assert.equal(perfil?.areaComparison?.length, 1);
   });
 

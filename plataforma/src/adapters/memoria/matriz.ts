@@ -1,9 +1,3 @@
-/**
- * Adaptador de repositorio de matriz en memoria para pruebas unitarias y de integración rápida.
- *
- * Cumple exhaustivamente con el puerto MatrixRepositoryPort sin requerir PostgreSQL ni dependencias externas.
- */
-
 import type {
   CandidateCourse,
   CandidateWorker,
@@ -100,7 +94,6 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
   }
 
   applyBatchAtomic(batch: ImportBatch, ops: AtomicBatchOperations): Promise<void> {
-    // 1. Guardar/actualizar lote
     const batchIdx = this.batches.findIndex((b) => b.importId === batch.importId);
     if (batchIdx >= 0) {
       this.batches[batchIdx] = { ...batch };
@@ -108,7 +101,6 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
       this.batches.push({ ...batch });
     }
 
-    // 2. Upsert trabajadores
     for (const w of ops.workersToUpsert) {
       const idx = this.workers.findIndex((x) => x.workerNumber === w.workerNumber);
       if (idx >= 0) {
@@ -118,7 +110,6 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
       }
     }
 
-    // 3. Upsert cursos
     for (const c of ops.coursesToUpsert) {
       const idx = this.courses.findIndex((x) => x.trainingId === c.trainingId);
       if (idx >= 0) {
@@ -128,7 +119,6 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
       }
     }
 
-    // 4. Actualizar registros existentes
     for (const r of ops.recordsToUpdate) {
       const idx = this.records.findIndex((x) => x.recordId === r.recordId);
       if (idx >= 0) {
@@ -136,7 +126,6 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
       }
     }
 
-    // 5. Insertar nuevos registros
     for (const r of ops.recordsToInsert) {
       const idx = this.records.findIndex((x) => x.recordId === r.recordId);
       if (idx >= 0) {
@@ -146,12 +135,10 @@ export class MemoryMatrixRepository implements MatrixRepositoryPort {
       }
     }
 
-    // 6. Insertar historial append-only
     for (const h of ops.historyEntriesToInsert) {
       this.history.push({ ...h });
     }
 
-    // 7. Quién estuvo en esta matriz y la baja de quien falta en las dos fuentes.
     if (ops.workersSeen) {
       const vistos = new Set(ops.workersSeen);
       this.workers.forEach((w, i) => {

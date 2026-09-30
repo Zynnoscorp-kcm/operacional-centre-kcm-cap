@@ -1,4 +1,3 @@
-/** Bloqueo global reentrante para mutaciones Apps Script dentro de una misma ejecucion. */
 var KcmScriptLock = (function () {
   "use strict";
 

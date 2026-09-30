@@ -1,13 +1,3 @@
-/**
- * El guardia de la consola.
- *
- * El resto de las pruebas de rutas corre con la puerta abierta a propósito:
- * ejercitan lo que hay detrás. Aquí se prueba la puerta, y se prueba con la
- * lista completa de pantallas, porque el fallo que importa no es que el guardia
- * no funcione —eso se ve enseguida— sino que alguien agregue una ruta y quede
- * fuera de la lista sin que nadie lo note.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -17,7 +7,6 @@ import { buildServer } from "../../src/server/build-server.ts";
 const FECHA = new Date("2026-08-18T12:00:00.000Z");
 const clock = { now: () => FECHA, nowIso: () => FECHA.toISOString() };
 
-/** Sin acceso abierto y con una credencial declarada: la corrida real. */
 const ENTORNO = {
   KCM_ENV: "development",
   KCM_PILOT_CONSOLE_USER: "Maricela0000",
@@ -41,7 +30,6 @@ async function cookieDeConsola(app: Awaited<ReturnType<typeof servidor>>): Promi
   return String(entrada.headers["set-cookie"] ?? "").split(";")[0] ?? "";
 }
 
-/** Toda pantalla de la consola. Agregar una aquí es parte de agregarla. */
 const PANTALLAS = [
   "/",
   "/sesiones",
@@ -65,7 +53,6 @@ const PANTALLAS = [
   "/excel",
 ] as const;
 
-/** Rutas de máquina que no pueden contestar sin sesión. */
 const APIS = [
   "/api/sessions",
   "/api/pre-release/sessions",
@@ -75,11 +62,6 @@ const APIS = [
   "/api/base/tablas",
 ] as const;
 
-/**
- * Lo que responde sin sesión, con el motivo de cada una. No es una excepción
- * cómoda: cada una tiene su propio secreto —PIN de quiosco, contraseña de
- * agenda, credencial de equipo— o no contiene absolutamente nada.
- */
 const ABIERTAS = ["/healthz", "/acceso", "/quiosco", "/agenda"] as const;
 
 describe("Guardia de la consola", () => {
@@ -199,8 +181,6 @@ describe("Guardia de la consola", () => {
   it("una ruta inexistente tampoco confirma que no existe", async () => {
     const app = await servidor();
     try {
-      // Sin sesión no se distingue una ruta que no existe de una que sí: quien
-      // sondea desde fuera no obtiene el mapa de la consola.
       const res = await app.inject({ method: "GET", url: "/pantalla-que-no-existe" });
       assert.equal(res.statusCode, 303);
     } finally {

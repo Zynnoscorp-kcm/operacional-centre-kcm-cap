@@ -1,27 +1,4 @@
 #!/usr/bin/env node
-/**
- * Aplica a una base las migraciones que le falten.
- *
- * Es incremental: consulta `supabase_migrations.schema_migrations` y sólo corre
- * lo que no esté registrado. Correrlo dos veces seguidas no hace nada la segunda
- * vez, que es lo que permite que el contenedor de desarrollo lo ejecute en cada
- * arranque sin pensarlo.
- *
- * Para reconstruir desde cero —tirar los esquemas y volver a levantarlos— el
- * guion es `reset-piloto.js`, no éste.
- *
- * Variables:
- *   KCM_ADMIN_DATABASE_URL  obligatoria. Rol con permiso de crear esquemas y
- *                           roles; `kcm_app` no puede ni debe poder.
- *   KCM_APP_PASSWORD        contraseña con la que `0029` crea `kcm_app`. Sólo
- *                           se usa si el rol todavía no existe.
- *
- * Banderas:
- *   --local     aplica antes `database/seed/00-compatibilidad-supabase.sql`, que crea
- *               los roles que Supabase da por hechos y un PostgreSQL normal no.
- *   --semilla   aplica después `database/seed/semilla-sintetica.sql`.
- *   --dry-run   dice qué haría y no toca la base.
- */
 
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -74,9 +51,6 @@ async function main() {
     }
 
     if (local) {
-      // Va antes que todo: `0017` y `0018` conceden permisos a `anon` y
-      // `authenticated`, y sin esos roles la migracion falla con "role does not
-      // exist" en una base que no sea de Supabase.
       console.log(`Compatibilidad local: ${COMPATIBILIDAD}`);
       await client.query(await readFile(COMPATIBILIDAD, "utf8"));
     }

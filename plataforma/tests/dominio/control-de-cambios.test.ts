@@ -1,12 +1,3 @@
-/**
- * Control de cambios: cada envío completo con su desenlace.
- *
- * Lo que se vigila es el emparejamiento, que es donde un aviso puede mentir:
- * un envío aplicado que se lea como pendiente manda a aprobar algo que ya
- * entró, y uno viejo que se lea como pendiente manda a una revisión que ya no
- * existe.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -34,7 +25,6 @@ const AHORA = new Date("2026-09-25T18:10:00.000Z");
 
 describe("Control de cambios · emparejamiento", () => {
   it("un envío con su aplicación se lee como aplicado", () => {
-    // Del más nuevo al más viejo, como los entrega la bitácora.
     const avisos = armarAvisos(
       [
         asiento({ tipo: "MATRIZ", hecho: "APLICADA", ocurridoEn: "2026-09-25T18:05:00.000Z" }),

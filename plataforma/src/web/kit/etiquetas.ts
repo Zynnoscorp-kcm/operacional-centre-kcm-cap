@@ -1,12 +1,3 @@
-/**
- * Etiquetas legibles de los códigos de estado.
- *
- * Los estados viajan en mayúsculas por el dominio, la bitácora y la base, que es
- * donde tienen que quedar tal cual. En pantalla se escriben como cualquier otro
- * texto de la consola: la traducción vive sólo aquí, en la capa web, y ningún
- * valor guardado cambia por ella.
- */
-
 const ESTADOS_DE_SESION: Readonly<Record<string, string>> = {
   BORRADOR: "Borrador",
   ABIERTA: "Abierta",
@@ -32,11 +23,6 @@ export function etiquetaDeEstadoDeReservacion(estado: string): string {
   return ESTADOS_DE_RESERVACION[estado] ?? estado;
 }
 
-/**
- * Las claves que la bitácora asienta —acciones, tipos de registro, estados,
- * roles y orígenes— dichas en palabras. Lo que no está aquí se escribe en
- * minúsculas y sin guiones bajos: se entiende igual y no se inventa nada.
- */
 const CLAVES_DE_AUDITORIA: Readonly<Record<string, string>> = {
   ...ESTADOS_DE_SESION,
   DC3_EMITIDA_INDIVIDUAL: "Constancia DC-3 emitida",

@@ -1,7 +1,3 @@
-/**
- * Errores de dominio para Quiosco y Sesiones.
- */
-
 import { DomainError } from "../comun/errores.ts";
 
 export class SessionNotFoundError extends DomainError {
@@ -53,12 +49,6 @@ export class InvalidInputError extends DomainError {
   }
 }
 
-/**
- * Otra sesión se quedó con el código que se iba a dar. Pasa cuando dos
- * sesiones se crean a la vez y las dos piden el mismo consecutivo: la base lo
- * impide con su unicidad, el repositorio lo avisa con este error y el servicio
- * vuelve a pedir el siguiente. No llega a la pantalla.
- */
 export class SessionCodeTakenError extends DomainError {
   constructor(message = "El código de sesión ya lo tiene otra sesión.") {
     super("CODIGO_DE_SESION_OCUPADO", message);
@@ -66,7 +56,6 @@ export class SessionCodeTakenError extends DomainError {
   }
 }
 
-/** Ya se dio `KC-9999`, el último código de cuatro cifras. */
 export class SessionCodesExhaustedError extends DomainError {
   constructor(
     message = "Ya se dio el código KC-9999, el último de cuatro cifras: no hay código para una sesión nueva.",

@@ -1,16 +1,3 @@
-/**
- * `ObjectStorePort` sobre PostgreSQL.
- *
- * Reemplaza a `FileObjectStore` allí donde el proceso no tiene disco que
- * sobreviva a un redespliegue. La evidencia y su apuntador en `operacion.sesion_evidencia`
- * pasan a vivir en el mismo lugar, así que dejan de poder desincronizarse.
- *
- * No hay saneamiento de ruta como en el adaptador de disco, y no es un olvido:
- * ahí la ruta se concatenaba contra el sistema de archivos y un `..` escapaba
- * de la carpeta. Aquí la ruta es el valor de una columna en una consulta
- * parametrizada; no se interpreta ni resuelve contra nada.
- */
-
 import type { ObjectStorePort } from "./preliberacion.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
@@ -21,10 +8,6 @@ export class PostgresObjectStore implements ObjectStorePort {
     this.#db = db;
   }
 
-  /**
-   * Regenerar un reporte sustituye su contenido en lugar de fallar por llave
-   * duplicada: el dominio ya trata la ruta como identidad estable del objeto.
-   */
   async put(path: string, content: Uint8Array, contentType: string): Promise<void> {
     await this.#db.query(
       `INSERT INTO sistema.archivo (ruta, contenido, tipo_mime)
@@ -43,7 +26,6 @@ export class PostgresObjectStore implements ObjectStorePort {
       [path],
     );
     const fila = rows[0];
-    // Un objeto ausente es una respuesta válida del puerto, igual que en disco.
     return fila ? new Uint8Array(fila.contenido) : null;
   }
 }

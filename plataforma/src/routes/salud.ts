@@ -1,17 +1,3 @@
-/**
- * Comprobación de salud.
- *
- * `/healthz` es la ruta que ya usan los servidores de vista previa del árbol
- * legado (`platform-preview-server.js`, `preview-server.js` de DC-3); se
- * conserva el nombre para que el túnel y la supervisión no tengan que aprender
- * dos convenciones.
- *
- * La lista `checks` nace vacía a propósito: hoy no hay dependencia externa que
- * comprobar —Supabase está vacío y sin migraciones—. Cuando E5 aplique el
- * esquema, la comprobación de base entra aquí y `status` pasa a depender de
- * ella.
- */
-
 import type { FastifyInstance } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";

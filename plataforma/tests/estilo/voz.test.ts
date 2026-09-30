@@ -1,53 +1,10 @@
-/**
- * La voz de la plataforma, contra todo lo que se lee en pantalla.
- *
- * La consola y el libro de Excel los usan varias personas del departamento, no
- * una. Un texto que habla de tú a tú —«pulse aquí», «vaya a esa computadora»,
- * «si no la tiene a mano, deje esto vacío»— se lee como una nota escrita para
- * quien estaba delante ese día, y envejece mal: la instrucción deja de ser
- * cierta, el que la lee no es el que la recibió, y nadie sabe si sigue valiendo.
- *
- * La regla es la del apagado, que es la pantalla que fijó el tono: **se dice lo
- * que pasa, no lo que hay que hacer**. «Excel dejará de poder mandar el
- * barrido» en vez de «recuerde que después no podrá mandar el barrido». Cuando
- * de verdad hace falta nombrar una acción, se nombra el control —«Revisar, en
- * el paso 1, enumera a los trabajadores»— y no a quien lo pulsa.
- *
- * Esta prueba vigila lo que se puede vigilar: el trato de cortesía en segunda
- * persona, que es la forma más visible de ese registro. Lo demás —que el texto
- * sea corto, que diga una sola cosa— no lo comprueba una expresión regular y
- * queda en `docs/referencia/VOZ_DE_LA_CONSOLA.md`.
- *
- * Dos exclusiones, las dos por escrito:
- *
- * - **El quiosco de sala.** Ahí la pantalla sí habla con una persona concreta
- *   que está de pie frente a ella registrando su asistencia, y «escriba los
- *   cinco dígitos» es exactamente lo que tiene que decir.
- * - **Los comentarios del código.** Se escriben para quien mantiene el
- *   programa, no para quien lo usa, y ahí el imperativo es normal.
- */
-
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-/** Habla con el trabajador que está frente a la pantalla de la sala. */
 const AJENAS = new Set(["quiosco.ts", "quiosco.js"]);
-/**
- * El dominio del quiosco responde a la misma persona de pie frente a la sala:
- * «Seleccione un nombre válido de la lista» es lo que el departamento pidió que
- * dijera cuando el curso no está en el catálogo.
- */
 const AJENAS_POR_RUTA: readonly string[] = ["dominio/quiosco/"];
 
-/**
- * Imperativos de cortesía. Están en singular y con mayúscula o minúscula porque
- * así aparecen: al principio de una frase o después de dos puntos.
- *
- * No entran los que en español son también otra cosa —«Marque», «Note»— ni los
- * verbos que sólo suenan a instrucción en contexto, para que la prueba no
- * empiece a pedir excepciones. Con estos alcanza: son los que aparecían.
- */
 const TRATOS: readonly string[] = [
   "usted",
   "Pulse ",
@@ -89,7 +46,6 @@ interface Fuente {
   readonly texto: string;
 }
 
-/** El código sin sus comentarios: es lo único que llega a la pantalla. */
 function sinComentarios(fuente: string, marcaDeLinea: string): string {
   const sinBloques = fuente.replace(/\/\*[\s\S]*?\*\//gu, "");
   return sinBloques

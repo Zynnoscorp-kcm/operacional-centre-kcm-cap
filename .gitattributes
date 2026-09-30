@@ -1,23 +1,12 @@
-# Normalización de finales de línea.
-#
-# Sin este archivo, Git en Windows convierte a CRLF al clonar. Eso rompe dos
-# cosas de este proyecto: los guiones que corren dentro del contenedor Linux, y
-# la comparación byte a byte de los módulos VBA que hace el analizador.
-
 * text=auto eol=lf
 
-# El editor de VBA de Excel escribe y espera CRLF. Estos archivos se importan a
-# mano dentro del libro, no los ejecuta Node, y conservan la convención de su
-# herramienta.
 *.bas text eol=crlf
 *.cls text eol=crlf
 *.vbs text eol=crlf
 
-# Los guiones de shell y AppleScript corren en Unix; un CRLF los rompe.
 *.sh   text eol=lf
 *.applescript text eol=lf
 
-# Binarios: Git no debe tocarlos.
 *.png  binary
 *.jpg  binary
 *.jpeg binary

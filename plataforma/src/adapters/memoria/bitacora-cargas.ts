@@ -1,17 +1,3 @@
-/**
- * Bitácora de cargas en memoria.
- *
- * Es la que corre en la suite y en cualquier arranque sin base. Conserva la
- * misma semántica que la de PostgreSQL en lo único que el dominio observa: el
- * orden de inserción manda —no la marca de tiempo, que en una prueba con reloj
- * fijo es la misma para todos los asientos— y `listar` devuelve del más reciente
- * al más antiguo.
- *
- * El tope existe para que una corrida larga sin base no crezca sin fin. Es
- * generoso a propósito: el historial que la pantalla enseña son decenas de
- * asientos, no miles.
- */
-
 import { randomUUID } from "node:crypto";
 
 import type { AsientoDeCarga, CargaRegistrada, TipoDeCarga } from "../../domain/cargas/tipos.ts";
@@ -22,7 +8,6 @@ const TOPE = 500;
 
 export class MemoryLoadLog implements LoadLogPort {
   readonly #clock: Clock;
-  /** Del más antiguo al más reciente; `listar` la invierte. */
   readonly #asientos: CargaRegistrada[] = [];
 
   constructor(clock: Clock) {

@@ -37,15 +37,6 @@ const ACTIONS = new Set([
 ]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 
-/**
- * Los estados que la macro contesta, traducidos a `comun.estado_acuse`.
- *
- * La macro nombra cada conflicto por su causa —EMPLOYEE_NOT_FOUND,
- * NAME_MISMATCH…— y la base sólo admite seis valores. Sin esta traducción el
- * `INSERT` fallaba con cualquier conflicto: el acuse se perdía, el lote seguía
- * «esperando a Excel» y nadie veía por qué. El código original no se pierde:
- * va al principio del detalle.
- */
 const ESTADO_DE_ACUSE: Readonly<Record<string, string>> = {
   APPLIED: "APPLIED",
   RECOVERED: "RECOVERED",
@@ -70,10 +61,6 @@ function detalleDeAcuse(estado: string, detalle: string): string {
   return `${estado}: ${detalle}`.slice(0, 500);
 }
 
-/**
- * Lo que puede llegar en partes: las acciones que suben datos. Las que sólo
- * preguntan no traen cuerpo que partir.
- */
 const PARTIBLES = new Set([
   "MATRIX_IMPORT_V1",
   "MATRIX_SCAN_V1",
@@ -81,10 +68,8 @@ const PARTIBLES = new Set([
   "RELEASE_ACK_V1",
   "DC3_REPORT_V1",
 ]);
-/** Techo de partes por envío: 64 de ~3 MB son casi 200 MB, muy por encima de cualquier libro. */
 const MAXIMO_DE_PARTES = 64;
 const LARGO_MAXIMO = 200_000_000;
-/** Las partes de un envío interrumpido se borran solas pasada una hora. */
 const VIGENCIA_DE_PARTES_MS = 3_600_000;
 const BASE64_WEB = /^[A-Za-z0-9_-]+$/;
 
@@ -109,10 +94,6 @@ function required(value: string, name: string, max = 300): string {
   return result;
 }
 
-/**
- * El padrón como lo manda Excel: nombre, huella y bytes en base64. Lo comparten
- * «Padrón de la semana» y «Clasificar faltantes», que reciben el mismo archivo.
- */
 function leerSobreDePadron(payload: string): { nombreArchivo: string; archivo: Buffer } {
   let sobre: { fileName?: unknown; sha256?: unknown; content?: unknown };
   try {
@@ -133,9 +114,6 @@ function leerSobreDePadron(payload: string): { nombreArchivo: string; archivo: B
   if (archivo.length === 0)
     throw new DomainError("INVALID_EXCEL_REQUEST", "El archivo del padrón llegó vacío.");
 
-  // La huella la calcula el cliente sobre el archivo en disco y el servidor
-  // sobre lo que recibió. Compararlas es lo que distingue «el libro cambió»
-  // de «el traslado lo corrompió», que se ven igual desde el extractor.
   if (typeof sobre.sha256 === "string" && SHA.test(sobre.sha256)) {
     const recibida = createHash("sha256").update(archivo).digest("hex");
     if (recibida !== sobre.sha256)
@@ -147,9 +125,6 @@ function leerSobreDePadron(payload: string): { nombreArchivo: string; archivo: B
   return { nombreArchivo, archivo };
 }
 
-/** El índice parcial de PostgreSQL impide dos credenciales vigentes para la
- * misma instalación. Traducirlo aquí evita que un conflicto esperado se vea
- * como caída 500 en la pantalla. */
 function isActiveCredentialConflict(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const databaseError = error as { code?: unknown; constraint?: unknown; message?: unknown };
@@ -176,10 +151,6 @@ function response(
   status: "OK" | "ERROR",
   fields: Record<string, string | number | boolean>,
 ): string {
-  // `status` es la segunda línea del protocolo y el cliente la registra con ese
-  // nombre antes de leer los pares. Un campo homónimo llega como clave repetida
-  // y el cliente aborta con "Respuesta VBA duplicada"; la guarda convierte ese
-  // choque en un fallo del servidor, que es donde puede corregirse.
   if (Object.hasOwn(fields, "status"))
     throw new Error("`status` es una clave reservada del protocolo del puente.");
   return [
@@ -226,20 +197,8 @@ export class ExcelIntegrationService {
   readonly #matrixRepository: MatrixRepositoryPort;
   readonly #imports: MatrixImportService;
   readonly #clock: Clock;
-  /**
-   * Barrido gobernado de la matriz. Es opcional para que una instalación que no
-   * lo use conserve el puente exactamente como estaba: sin él, `MATRIX_SCAN_V1`
-   * responde que la ruta no está habilitada en lugar de fallar por dentro.
-   */
   readonly #scans: MatrixScanService | undefined;
-  /** Padrón semanal. Opcional por el mismo motivo que el barrido de matriz. */
   readonly #roster: RosterIngestService | undefined;
-  /**
-   * Apagado de la plataforma local, pedido desde Excel. Sólo se entrega en la
-   * computadora del departamento: en la nube no existe y la acción se rechaza.
-   * Pasa por el puente para heredar su autenticación —credencial del equipo y
-   * nonce—, de modo que ninguna página web ni proceso ajeno puede apagarla.
-   */
   readonly #apagarLocal: (() => void) | undefined;
   readonly #logger:
     | {
@@ -380,11 +339,6 @@ export class ExcelIntegrationService {
           : await this.#dispatch(request, decodePayload(request.payload));
       return response("OK", { requestId: request.requestId, ...fields });
     } catch (error) {
-      // Un rechazo de dominio —credencial inválida, nonce repetido, acuse que no
-      // casa— no mejora al repetirlo y el cliente no debe insistir. Un fallo
-      // interno sí puede ser transitorio (base de datos, red), y el cliente ya
-      // sabe reintentar tres veces con el mismo `requestId`, que es un no-op si
-      // la primera llamada llegó a tener efecto.
       const esDeDominio = error instanceof DomainError;
       if (!esDeDominio) {
         this.#logger?.error(
@@ -409,25 +363,6 @@ export class ExcelIntegrationService {
     }
   }
 
-  /**
-   * Una parte de un envío grande.
-   *
-   * Cada parte se autentica como cualquier petición y se guarda; mientras falten
-   * partes la respuesta sólo dice cuántas van. Con la última se junta el envío,
-   * se comprueba que mida lo que anunció y se procesa con la acción y el
-   * `requestId` originales, así que el resultado es el mismo que si hubiera
-   * llegado de una vez. Las partes no se borran al juntarse: si la respuesta de
-   * la última se pierde y Excel la repite, el envío se vuelve a juntar y la
-   * acción, que ya es idempotente por `requestId`, responde lo mismo.
-   *
-   * Excel manda las partes en orden, así que la parte 1 siempre abre un envío.
-   * Lo que haya guardado con la misma llave es de uno anterior, interrumpido o
-   * ya procesado, y se descarta: un reenvío dentro de la hora no mezcla sus
-   * partes con las viejas ni se procesa antes de llegar completo.
-   *
-   * Mientras falten partes sólo se cuentan cuáles hay; el contenido se lee una
-   * vez, al juntar.
-   */
   async #receivePart(
     request: BridgeRequest,
     now: number,
@@ -492,10 +427,6 @@ export class ExcelIntegrationService {
     payload: string,
   ): Promise<Record<string, string | number | boolean>> {
     if (request.action === "RELEASE_PULL_V1") {
-      // Una sola lectura. `remaining` sale del mismo arreglo que ya se trajo:
-      // consultar de nuevo sólo para restarle el tamaño de la página duplicaba
-      // el costo de la operación más frecuente del puente, y en una base con
-      // presupuesto de lecturas eso se nota antes que cualquier otra cosa.
       const todas = await this.#repository.listPendingReleases();
       const pending = todas.slice(0, 500);
       const headers = [
@@ -525,9 +456,6 @@ export class ExcelIntegrationService {
       };
     }
     if (request.action === "RELEASE_SESSIONS_V1") {
-      // El mismo dato que `RELEASE_PULL_V1`, agrupado. Cuesta una lectura, la
-      // misma que costaría enumerar las filas, y evita que el panel del libro
-      // se descargue quinientos renglones para enseñar cuatro codigos.
       const sesiones = await this.pendingReleaseSessions();
       const headers = ["sessionId", "sessionCode", "trainingId", "completionDate", "pending"];
       return {
@@ -547,8 +475,6 @@ export class ExcelIntegrationService {
       };
     }
     if (request.action === "RELEASE_CONTEXT_V1") {
-      // Lo que Excel necesita para decidir si escribe y que `RELEASE_PULL_V1`
-      // no trae: su lector exige las columnas exactas, así que no se le agregan.
       const pendientes = await this.#repository.listPendingReleases();
       const headers = ["idempotencyKey", "workerName", "expectedPreviousDate"];
       return {
@@ -572,7 +498,6 @@ export class ExcelIntegrationService {
           "Esta acción sólo existe en la computadora del departamento.",
         );
       }
-      // El acuse sale antes del cierre: `apagarLocal` lo programa con margen.
       this.#apagarLocal();
       return { shutdown: true };
     }
@@ -587,12 +512,6 @@ export class ExcelIntegrationService {
         snapshot,
         `VBA_CLIENT_${request.clientId}`,
       );
-      // Una solicitud repetida ya viene confirmada: `receiveBatch` la reconoce por su
-      // `requestId`, que el cliente deriva del contenido de la matriz y por lo tanto no cambia
-      // mientras la matriz no cambie. Volver a aprobarla exigia la fase VALIDADO y fallaba con
-      // FASE_LOTE_INVALIDA, de modo que el ciclo programado se detenia cada vez que corria dos
-      // veces sobre la misma matriz, que es justo lo que hace un ciclo programado. Se devuelve
-      // el resultado anterior y se declara repetida: el campo ya existia en el protocolo.
       if (preview.phase === "CONFIRMADO") {
         return {
           importId: preview.importId,
@@ -609,7 +528,6 @@ export class ExcelIntegrationService {
       const result = await this.approveImport(preview.importId, `VBA_CLIENT_${request.clientId}`);
       return {
         importId: result.importId,
-        // No `status`: choca con la línea de estado del protocolo.
         importStatus: result.phase,
         repeated: false,
         inserted: result.inserted,
@@ -645,13 +563,6 @@ export class ExcelIntegrationService {
     };
   }
 
-  /**
-   * Barrido de la matriz. No escribe nada en el dominio.
-   *
-   * El cliente ya recorrió la hoja y entrega lo leído; el servidor lo confronta
-   * contra SQL y guarda la revisión. Aplicarla es un segundo acto y ocurre en
-   * la pantalla, no aquí.
-   */
   async #scan(
     request: BridgeRequest,
     payload: string,
@@ -682,8 +593,6 @@ export class ExcelIntegrationService {
       missingWorkers: informe.cuadre.trabajadoresAusentes,
       columns: informe.cuadre.columnasEnMatriz,
       newColumns: informe.cuadre.columnasNuevas,
-      // Nombre largo a propósito: `changes` a secas se confundiría con las
-      // fechas, que son el otro cambio que este barrido cuenta.
       attributionChanges:
         informe.cuadre.cambiosDePuesto +
         informe.cuadre.cambiosDeArea +
@@ -697,23 +606,6 @@ export class ExcelIntegrationService {
     };
   }
 
-  /**
-   * Barrido del padrón semanal. No escribe nada en el dominio.
-   *
-   * A diferencia de la matriz, aquí viajan los bytes del XLSX y el servidor
-   * lo lee con el mismo extractor que usa la subida manual y la línea de
-   * comandos. La alternativa —que la VBA interpretara el libro y mandara filas
-   * ya normalizadas— habría duplicado en Basic las reglas de encabezados, CURP,
-   * fechas y desduplicación entre hojas, y con ello el problema de paridad que
-   * la matriz sí tuvo que pagar. La matriz lo paga porque es un XLSB de decenas
-   * de megas que sólo Excel lee bien; el padrón es un XLSX de medio mega, así
-   * que no hay nada que ganar y sí una segunda interpretación que perder.
-   *
-   * El cuerpo es JSON y no los bytes crudos porque el transporte del puente
-   * mueve texto UTF-8 en todas sus acciones; envolver el archivo en base64
-   * dentro de ese JSON conserva esa invariante en lugar de abrirle una
-   * excepción binaria al protocolo.
-   */
   async #rosterScan(
     request: BridgeRequest,
     payload: string,
@@ -765,26 +657,10 @@ export class ExcelIntegrationService {
     });
   }
 
-  /**
-   * Liberaciones que Excel todavía no escribió. Es la misma lectura que sirve
-   * `RELEASE_PULL_V1`; existe como método propio para que la pantalla y
-   * cualquier transporte futuro no tengan que hablar el protocolo de texto del
-   * puente VBA.
-   */
   pendingReleases(): Promise<readonly PendingExcelRelease[]> {
     return this.#repository.listPendingReleases();
   }
 
-  /**
-   * Las mismas liberaciones pendientes, agrupadas por sesión.
-   *
-   * El agrupamiento vive aquí y no en SQL porque la lectura de pendientes ya
-   * está resuelta —con su mapeo vigente y su tope— y volver a consultarla desde
-   * otra consulta daría dos definiciones de «pendiente» que un día discreparían.
-   *
-   * El orden es el del código de sesión: es como se leen en la consola y como se
-   * buscan en una lista.
-   */
   async pendingReleaseSessions(): Promise<readonly PendingReleaseSession[]> {
     const porSesion = new Map<string, PendingReleaseSession>();
     for (const fila of await this.#repository.listPendingReleases()) {
@@ -800,13 +676,6 @@ export class ExcelIntegrationService {
     return [...porSesion.values()].sort((a, b) => a.sessionCode.localeCompare(b.sessionCode));
   }
 
-  /**
-   * Registra acuses de escritura. Único punto de validación, sin importar
-   * quién llegue: hoy el puente VBA con su TSV ya interpretado, mañana el
-   * transporte que sea. Que haya más de un transporte no puede significar más
-   * de un juego de reglas, porque entonces uno podría registrar un acuse
-   * efectivo que el otro rechazaría.
-   */
   async applyAcknowledgements(input: {
     readonly requestId: string;
     readonly clientId: string;

@@ -1,29 +1,3 @@
-/**
- * Quiosco de Registro (Función 1).
- *
- * Es una pantalla externa: corre en la computadora de la sala de
- * capacitación, no dentro de la consola. Por eso no lleva rail, ni encabezado
- * de plataforma, ni pie con navegación —no hay a dónde ir desde ahí— y por eso
- * no usa `renderLayout` ni `renderEscena`.
- *
- * El marcado se conserva literal, atributo por
- * atributo: el estilo de esa pantalla vive entero en atributos `style="…"` y en
- * un bloque `<style>` del encabezado, y calcarlo con clases daría un parecido,
- * no una copia. Aquí se copia. Las seis secciones —espera, no disponible,
- * arranque, PIN, lanzador y registro— viajan las seis en la respuesta, ocultas
- * con `hidden`, y el guion alterna entre ellas.
- *
- * Sólo tres cosas cambian respecto del original, y ninguna se ve:
- *
- * 1. El símbolo de marca sale de `/assets`, no de Drive. Es el mismo archivo,
- *    con las mismas medidas, servido desde este árbol para que la pantalla no
- *    dependa de que un tercero siga en línea.
- * 2. El guion se sirve como estático con su hash en vez de ir en línea, porque
- *    su shader GLSL está escrito con plantillas de plantilla.
- * 3. La escena no comparte estilos con el acceso. `.escena-*` de `base.css` se
- *    queda como estaba y sigue siendo de `/acceso`.
- */
-
 import { guionHaces, guionQuiosco, simboloKcm } from "../estaticos.ts";
 import { html, rawHtml, renderDocument } from "../kit/html.ts";
 
@@ -35,12 +9,6 @@ export interface KioskPageProps {
   readonly isUnlocked?: boolean;
 }
 
-/**
- * El bloque `<style>` del encabezado del original, sin una coma de diferencia.
- * Son las animaciones (pulso, sacudón del campo con error, giro del spinner) y
- * los pocos estados que un atributo `style` no puede expresar: `:hover`,
- * `:active`, `[hidden]` y el color de las opciones del desplegable.
- */
 const ESTILO_DEL_QUIOSCO = rawHtml(`
     body { margin: 0; background: #060607; color: #f5f6f8; font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif; overflow-x: hidden; }
     * { box-sizing: border-box; }
@@ -70,7 +38,6 @@ const ESTILO_DEL_QUIOSCO = rawHtml(`
     #kiosk-code-btn:hover, #kiosk-launch-btn:hover { background: rgba(63, 120, 180, 0.95) !important; }
   `);
 
-/** La familia tipográfica del original, con la misma lista y los mismos pesos. */
 const FUENTES =
   "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700" +
   "&family=Montserrat:wght@400;700;900&family=Manrope:wght@400;700" +
@@ -522,18 +489,6 @@ export function renderKioskPage(props: KioskPageProps): string {
               </button>
             </section>
 
-            <!--
-                Confirmación de sesión.
-
-                El código es un consecutivo que se dicta en voz alta, y en un
-                día con dos cursos en la misma sala equivocarse de uno no da
-                ninguna señal: el quiosco aceptaba el código y pasaba directo a
-                registrar. Las asistencias quedaban colgadas del curso ajeno y
-                eso no se descubría hasta la liberación. Esta pantalla es la
-                única oportunidad de notarlo, así que enseña el nombre del curso
-                en grande y obliga a un acto explícito antes de registrar a
-                nadie.
-              -->
             <section id="confirm" hidden>
               <div style="text-align:left;margin-bottom:20px">
                 <h2 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#f5f6f8">
@@ -624,12 +579,6 @@ export function renderKioskPage(props: KioskPageProps): string {
                 <p style="margin: 0; font-size: 15px; font-weight: 500; color: #FFFFFF">
                   El número de trabajador son cinco dígitos.
                 </p>
-                <!--
-                    El curso queda a la vista mientras dura el registro. Antes la
-                    única referencia era el código del encabezado, que nadie
-                    reconoce: si el quiosco quedó en la sesión equivocada, esto
-                    lo delata aunque la confirmación se haya aceptado de prisa.
-                  -->
                 <p
                   id="registration-training"
                   style="margin:12px 0 0;padding:8px 12px;border-radius:10px;background:rgba(91,141,196,0.16);border:1px solid rgba(91,141,196,0.35);font-size:14px;font-weight:700;color:#8fb6dd"

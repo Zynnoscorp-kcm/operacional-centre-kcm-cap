@@ -2,6 +2,18 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Código sin comentarios · 2026-09-30
+
+A petición del usuario se quitaron los comentarios y divisores del código de
+todo el proyecto (TypeScript, JavaScript, Apps Script, CSS, VBA, guiones y
+archivos de configuración). Quedan las directivas que las herramientas leen
+(`eslint-disable`, `prettier-ignore`), los comentarios de los dos `catch`
+vacíos que exige el linter y el hexadecimal de la paleta VBA que verifica su
+prueba. No se tocaron `docs/`, `database/migrations/`, `AGENTS.md` ni
+`PROMPT_MAESTRO.xml`. Verificado token por token contra el commit anterior y
+con toda la batería.
+Acta: `docs/actas/2026-09-30-codigo-sin-comentarios.md`.
+
 ## «Liberar de todos modos» no hacía nada · 2026-09-30
 
 El primer intento de KC-0004 dejó un lote en conflicto. `comun.fase_liberacion`

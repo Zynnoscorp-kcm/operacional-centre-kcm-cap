@@ -1,4 +1,3 @@
-/** Liberacion serializada e idempotente mediante una saga durable autenticada. */
 var KcmReleaseService = (function () {
   "use strict";
 
@@ -56,7 +55,7 @@ var KcmReleaseService = (function () {
     try {
       var parsed = value === "" || value === null || value === undefined ? [] : JSON.parse(String(value));
       if (Array.isArray(parsed)) return parsed;
-    } catch (ignored) { /* Se convierte a conflicto sanitizado. */ }
+    } catch (ignored) {  }
     KcmValidation.fail("RELEASE_CONFLICT", message);
   }
 
@@ -65,7 +64,7 @@ var KcmReleaseService = (function () {
     try {
       var parsed = JSON.parse(String(value || ""));
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
-    } catch (ignored) { /* Se convierte a conflicto sanitizado. */ }
+    } catch (ignored) {  }
     KcmValidation.fail("RELEASE_CONFLICT", message);
   }
 

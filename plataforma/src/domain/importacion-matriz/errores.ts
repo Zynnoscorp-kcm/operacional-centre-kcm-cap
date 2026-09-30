@@ -1,7 +1,3 @@
-/**
- * Errores específicos del dominio de importación y reconciliación de matriz.
- */
-
 import { DomainError } from "../comun/errores.ts";
 
 export class MatrixImportError extends DomainError {

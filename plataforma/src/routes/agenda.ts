@@ -1,19 +1,3 @@
-/**
- * Agenda pública de salas: la pantalla de los capacitadores externos.
- *
- * Vive fuera de la consola. El POST usa el mismo servicio de dominio que la
- * pantalla administrativa —misma validación, mismo candado por sala y fecha,
- * misma auditoría—, pero regresa a `/agenda` y no a `/salas`: quien reserva
- * desde aquí no tiene por qué aterrizar en la administración.
- *
- * Lleva la política del quiosco de sala, porque es la misma pantalla: el
- * fondo de haces necesita `three.min.js` y el guion propio, y la tipografía de
- * despliegue viene de Google Fonts. Antes respondía con la política de la
- * consola —sin `script-src` y sin orígenes externos—, así que el navegador
- * bloqueaba las dos cosas: la pantalla declaraba un fondo animado y una
- * tipografía que nunca llegaban, y se veía un rectángulo negro.
- */
-
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -23,18 +7,10 @@ import type { RoomReservationService } from "../domain/salas/reservaciones.ts";
 import { igualEnTiempoConstante } from "../server/sesion-consola.ts";
 import { renderAgendaPage } from "../web/pages/agenda.ts";
 
-/**
- * Quien reserva desde la agenda pública queda en la auditoría como
- * `CAPACITADOR`, no como `CAPACITACION`: es gente que imparte desde fuera del
- * departamento, y confundirla con el equipo administrador borraría de la
- * bitácora la diferencia entre una reservación de autoservicio y una hecha por
- * la administración en nombre de alguien.
- */
 const ACTOR = { actor: "AGENDA_PUBLICA", role: "CAPACITADOR" } as const;
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/u;
 const HORA = /^(?:[01]\d|2[0-3]):(?:00|30)$/u;
 
-/** La misma que declara `/quiosco`, salvo `'unsafe-inline'`: aquí no hace falta. */
 const POLITICA_DE_LA_AGENDA = [
   "default-src 'none'",
   "script-src 'self' https://cdnjs.cloudflare.com",
@@ -50,11 +26,6 @@ function texto(valor: unknown): string {
   return typeof valor === "string" || typeof valor === "number" ? String(valor).trim() : "";
 }
 
-/**
- * La hora de la planta, no la del proceso. `Intl` resuelve el huso sin traer una
- * biblioteca, y sin esto los bloques ya vencidos se atenuarían con seis horas de
- * error respecto de la sala.
- */
 function ahoraEnPlanta(clock: Clock): { fecha: string; minutos: number } {
   const partes = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Mexico_City",
@@ -70,7 +41,6 @@ function ahoraEnPlanta(clock: Clock): { fecha: string; minutos: number } {
   const hora = Number(buscar("hour"));
   return {
     fecha: `${buscar("year")}-${buscar("month")}-${buscar("day")}`,
-    // `en-CA` con `hour12:false` devuelve «24» a la medianoche; se normaliza.
     minutos: (hora === 24 ? 0 : hora) * 60 + Number(buscar("minute")),
   };
 }
@@ -83,11 +53,6 @@ export function registerAgendaRoutes(
     readonly clock: Clock;
   },
 ): void {
-  /**
-   * La misma contraseña de `/salas`, y por la misma razón: esta pantalla también
-   * está abierta a quien pase enfrente. Sin contraseña declarada —o con el
-   * acceso abierto del piloto— no se pide nada y el campo no se dibuja.
-   */
   const claveDeSala = deps.config.pilot.openAccess
     ? undefined
     : (deps.config.roomPassword ?? deps.config.pilot.roomPassword);
@@ -130,8 +95,6 @@ export function registerAgendaRoutes(
   app.post("/agenda", async (peticion: FastifyRequest, respuesta: FastifyReply) => {
     const cuerpo = (peticion.body ?? {}) as Record<string, unknown>;
 
-    // Lo capturado se devuelve a la pantalla cuando algo falla. La contraseña
-    // nunca entra aquí: volvería escrita dentro del HTML.
     const previo: Record<string, string> = {
       requesterName: texto(cuerpo.requesterName),
       requesterWorkerNumber: texto(cuerpo.requesterWorkerNumber),
@@ -178,9 +141,6 @@ export function registerAgendaRoutes(
         },
       );
     } catch (error) {
-      // El fallo se devuelve en la misma pantalla, con la agenda del día al
-      // lado: sin JavaScript, mandar a una página de error obligaría a capturar
-      // todo otra vez.
       peticion.log.warn({ err: error }, "reservación pública rechazada");
       const mensaje =
         error instanceof Error ? error.message : "No fue posible registrar la reservación.";

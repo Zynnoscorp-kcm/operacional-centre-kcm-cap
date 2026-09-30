@@ -1,31 +1,3 @@
-// Leyendas oficiales del formato DC-3.
-//
-// Son el texto fijo que la STPS imprime en el formato: titulo, encabezados de seccion, etiquetas de
-// campo, la protesta de decir verdad, los pies de firma, las instrucciones y el identificador. Se
-// transcribieron una sola vez desde el formato oficial y viven aqui, en el codigo.
-//
-// POR QUE AQUI Y NO EN UN ARCHIVO. Antes se releian de la hoja de calculo oficial en cada emision.
-// Esa hoja es un borrador de trabajo, no viaja con el repositorio y no existe en ningun servidor,
-// asi que la plataforma solo podia emitir constancias en la maquina donde alguien la tuviera a
-// mano; en cualquier otra fallaba con SIN_PLANTILLA_DC3. Horneadas aqui, emitir un DC-3 no depende
-// de ningun archivo externo.
-//
-// COMO SE VERIFICAN. `packages/dc3/testing` compara estas cadenas contra las de la hoja oficial
-// cuando la hoja esta presente, y se salta la comparacion cuando no. Asi, quien tenga el borrador
-// se entera si el formato oficial cambio, y quien no lo tenga puede emitir igual.
-//
-// TRES VALORES QUE NO SON ETIQUETAS. `taxId` es el RFC del patron, `templateSignatures` son los
-// nombres al pie y `employerName` es la razon social. Los tres se imprimen en la constancia.
-//
-// `employerName` es el unico valor que no se transcribe tal cual del formato oficial. La hoja
-// lo trae con errata ("KIMBERL- CLARK ... S.A.B DE C.V") y aqui va corregido, porque es la razon
-// social que se imprime y una errata en ella invalida la constancia. Por eso la prueba que compara
-// contra el borrador lo excluye a proposito: es la unica diferencia declarada.
-//
-// La consola imprime estos valores tal cual: la razon social y las firmas son las mismas en todas
-// las constancias y en cualquier equipo que emita. El compositor admite sustituirlas en los datos
-// de una constancia, y entonces el cambio entra en la huella del documento.
-
 export const LEYENDAS_DC3 = Object.freeze({
   title: "FORMATO DC-3 CONSTANCIA DE COMPETENCIAS O DE HABILIDADES LABORALES",
   workerSection: "DATOS DEL TRABAJADOR",

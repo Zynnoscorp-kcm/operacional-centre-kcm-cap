@@ -1,4 +1,3 @@
-/** Conciliacion explicita de examenes fisicos, incluida la recuperacion de parciales. */
 var KcmExamService = (function () {
   "use strict";
 

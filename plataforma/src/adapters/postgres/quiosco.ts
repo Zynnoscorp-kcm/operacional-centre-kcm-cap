@@ -1,18 +1,3 @@
-/**
- * Adaptador de repositorio para PostgreSQL / Supabase para Quiosco, Sesiones y Auditoría.
- *
- * Mapea a las tablas del esquema kcm:
- * - operacion.sesion
- * - operacion.asistencia
- * - operacion.quiosco_registro
- * - sistema.bitacora_auditoria
- * - seguridad.secreto
- * - seguridad.concesion
- * - organizacion.trabajador
- * - catalogo.capacitacion
- * - lectura.obtener_sesiones_operativas()
- */
-
 import { scryptSync, timingSafeEqual } from "node:crypto";
 
 import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
@@ -31,19 +16,6 @@ import type {
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
-/**
- * Formas de las filas que devuelve PostgreSQL, escritas una vez.
- *
- * Este adaptador consultaba con `query<any>` y mapeaba con `(r: any)`, así que
- * el compilador no comprobaba ni un solo nombre de columna: un `SELECT` que
- * dejara de traer una columna producía `undefined` en silencio en lugar de
- * fallar. Fue exactamente así como `listOperativeSessions` acabó devolviendo el
- * nombre del curso en `trainingId`. Declararlas cuesta este bloque y convierte
- * ese error en uno de compilación.
- *
- * Los instantes se declaran `Date | string` porque el controlador entrega
- * `timestamptz` como `Date` y `date` como texto; el mapeo ya contempla los dos.
- */
 type Instante = Date | string;
 
 interface SesionRow {
@@ -166,11 +138,6 @@ interface ConcesionRow {
   solicitud_id: string | null;
 }
 
-/**
- * La violación de unicidad de `codigo_sesion`. Se reconoce por la restricción
- * y no sólo por el código `23505`: la solicitud de creación también es única,
- * y ese choque no se arregla pidiendo otro número.
- */
 function esCodigoDuplicado(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const falla = error as { code?: unknown; constraint?: unknown };
@@ -188,12 +155,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     this.db = db;
   }
 
-  /**
-   * Resuelve el `actor_id` de un identificador de dominio, creándolo si aún no
-   * existe. El dominio trae al instructor como texto y la tabla exige una clave
-   * foránea: sin esta resolución, abrir una sesión con un capacitador nuevo
-   * fallaría por integridad referencial en lugar de registrarlo.
-   */
   private async resolveActorId(identificador: string): Promise<string> {
     const clave = (identificador || "SISTEMA").trim() || "SISTEMA";
     const res = await this.db.query<{ actor_id: string }>(
@@ -208,11 +169,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     return actorId;
   }
 
-  /**
-   * `trainingId` del dominio es la clave estable del curso (`QMS`), no el uuid.
-   * Un curso desconocido se rechaza aquí: darlo de alta en silencio crearía un
-   * catálogo paralelo al que la matriz nunca reconciliaría.
-   */
   private async resolveTrainingId(trainingId: string): Promise<string> {
     const res = await this.db.query<{ capacitacion_id: string }>(
       `SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $1 LIMIT 1;`,
@@ -223,14 +179,11 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     return id;
   }
 
-  // --- Sesiones ---
   async createSession(session: SessionRecord): Promise<SessionRecord> {
     const capacitacionId = await this.resolveTrainingId(session.trainingId);
     const capacitadorId = await this.resolveActorId(session.instructor);
     const creadorId = await this.resolveActorId(session.createdBy);
 
-    // `sesion_autorizacion_coherente` exige actor y momento cuando la sesión
-    // nace autorizada: una autorización sin responsable no es una autorización.
     const autorizadaPor = session.authorized
       ? await this.resolveActorId(session.authorizedBy ?? session.createdBy)
       : null;
@@ -273,8 +226,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
         autorizadaEn,
       ]);
     } catch (error) {
-      // Otra sesión creada al mismo tiempo se quedó con el consecutivo: el
-      // servicio pide el siguiente. Cualquier otra unicidad sigue siendo error.
       if (esCodigoDuplicado(error)) throw new SessionCodeTakenError();
       throw error;
     }
@@ -283,8 +234,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   }
 
   async getHighestSessionCodeNumber(): Promise<number> {
-    // Los códigos anteriores, `KCM-AAMMDD-XXXXXX`, no cuentan: no casan con
-    // el patrón y `MAX` ignora los nulos.
     const res = await this.db.query<{ mayor: number | null }>(
       `SELECT MAX(substring(codigo_sesion FROM '^KC-([0-9]{4})$')::int) AS mayor
          FROM operacion.sesion;`,
@@ -293,10 +242,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
   }
 
   async updateSession(sessionId: string, updates: Partial<SessionRecord>): Promise<SessionRecord> {
-    // La columna `autorizada_por` es una FK. Al autorizar desde el piloto el
-    // actor administrativo puede no existir todavía, por lo que debe
-    // resolverse igual que al crear una sesión; una subconsulta que no devuelve
-    // filas escribiría NULL y violaría `sesion_autorizacion_coherente`.
     const authorizedByActorId =
       updates.authorizedBy !== undefined
         ? await this.resolveActorId(updates.authorizedBy)
@@ -403,20 +348,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     return predicate ? sessions.filter(predicate) : sessions;
   }
 
-  /**
-   * Sesiones que la consola puede operar hoy.
-   *
-   * No usa `lectura.obtener_sesiones_operativas()`: esa función excluye
-   * `BORRADOR`, y una sesión recién creada nace precisamente ahí. El efecto era
-   * que `/sesiones` creaba la sesión, redirigía, y la lista se veía idéntica:
-   * la sesión existía en la base y la pantalla no la mostraba nunca, así que su
-   * botón «Abrir» no llegaba a dibujarse y no había forma de operarla.
-   *
-   * El resto del criterio se conserva tal cual: los estados vivos siempre, y
-   * `LIBERADA_TOTAL` sólo mientras siga siendo reciente. `cutoffDate` fija ese
-   * corte —y el de los borradores, para que uno olvidado hace un mes no vuelva
-   * a la pantalla— con catorce días por omisión.
-   */
   async listOperativeSessions(options?: {
     cutoffDate?: string;
   }): Promise<readonly OperativeSessionSummary[]> {
@@ -453,16 +384,8 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     return res.rows.map((r) => ({
       sessionId: r.sesion_id,
       sessionCode: r.codigo_sesion,
-      // `trainingId` es la identidad del curso —`clave_curso`, con el UUID como
-      // respaldo— y no su nombre. Traía el nombre en los dos campos porque la
-      // consulta no seleccionaba ninguna de las dos columnas de identidad: la
-      // lista quedaba con un rótulo donde el puerto promete un identificador, y
-      // el adaptador de memoria sí lo devolvía bien, así que ninguna prueba lo
-      // veía.
       trainingId: r.clave_curso ?? r.capacitacion_id,
       trainingName: r.capacitacion,
-      // El `LEFT JOIN` sobre `seguridad.actor` puede no traer nombre y el contrato
-      // promete texto: sin este respaldo la pantalla imprimía «null».
       instructor: r.capacitador ?? "",
       date:
         typeof r.fecha_sesion === "string"
@@ -505,7 +428,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     };
   }
 
-  // --- Asistencias ---
   async createAttendance(attendance: AttendanceRecord): Promise<AttendanceRecord> {
     const sql = `
       INSERT INTO operacion.asistencia (
@@ -595,7 +517,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     };
   }
 
-  // --- Journal Quiosco ---
   async createJournal(journal: KioskRegistrationJournal): Promise<KioskRegistrationJournal> {
     const sql = `
       INSERT INTO operacion.quiosco_registro (
@@ -608,9 +529,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
       )
       RETURNING *;
     `;
-    // `registro_quiosco_completado_coherente` ata la fase COMPLETADO a su
-    // momento: un registro completo sin fecha no permitiría reconstruir cuándo
-    // se cerró, que es justo lo que el journal existe para responder.
     const completadoEn =
       journal.phase === "COMPLETADO"
         ? (journal.completedAt ?? journal.updatedAt ?? new Date().toISOString())
@@ -711,15 +629,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     };
   }
 
-  // --- Auditoría ---
-
-  /**
-   * El enum `comun.rol` tiene cuatro valores y `KIOSK` no es uno: el equipo de la
-   * sala actúa con el rol del capacitador, que es quien responde por lo que ahí
-   * se registra. Sin esta traducción, `INSERT` en `sistema.bitacora_auditoria` abortaba y se
-   * llevaba consigo la operación entera —el PIN correcto respondía «error en el
-   * servidor»—, porque la bitácora es parte de la misma transacción.
-   */
   private static readonly ROL_EN_ESQUEMA: Readonly<Record<string, string>> = {
     KIOSK: "CAPACITADOR",
     SALA_QUIOSCO: "CAPACITADOR",
@@ -829,14 +738,12 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     }));
   }
 
-  // --- Padrón ---
   async isWorkerActive(workerNumber: WorkerNumber): Promise<boolean> {
     const sql = `SELECT activo FROM organizacion.trabajador WHERE numero_trabajador = $1 LIMIT 1;`;
     const res = await this.db.query<{ activo: boolean }>(sql, [String(workerNumber)]);
     return res.rows.length > 0 && Boolean(res.rows[0]?.activo);
   }
 
-  // --- Catálogo ---
   async listActiveTrainings(): Promise<readonly TrainingCatalogItem[]> {
     const sql = `SELECT c.capacitacion_id, c.clave_curso, c.nombre, c.activa, m.duracion_horas
        FROM catalogo.capacitacion c
@@ -847,8 +754,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
       trainingId: r.clave_curso ?? r.capacitacion_id,
       name: r.nombre,
       active: Boolean(r.activa),
-      // `metadato_curso_dc3` entra por `LEFT JOIN`: un curso sin metadatos da
-      // `null` y el contrato declara el campo opcional, no nulo.
       durationHours: r.duracion_horas ?? undefined,
     }));
   }
@@ -869,7 +774,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     };
   }
 
-  // --- Secretos ---
   async verifySecret(scope: SecretScope, candidate: string): Promise<boolean> {
     const sql = `
       SELECT secreto_hash, algoritmo
@@ -881,8 +785,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     const res = await this.db.query<{ secreto_hash: string; algoritmo: string }>(sql, [scope]);
     const row = res.rows[0];
     if (!row) return false;
-    // El esquema guarda el hash, nunca el secreto. Comparar en claro aceptaría
-    // como válido el propio hash y convertiría una fuga de lectura en un acceso.
     if (row.algoritmo !== "scrypt") {
       throw new Error(
         `El secreto de ${scope} está en ${row.algoritmo}; este adaptador sólo verifica scrypt.`,
@@ -896,7 +798,6 @@ export class SupabaseKioskSessionRepository implements KioskSessionRepositoryPor
     return calculado.length === referencia.length && timingSafeEqual(calculado, referencia);
   }
 
-  // --- Concesiones ---
   async createConcession(concession: ConcessionRecord): Promise<ConcessionRecord> {
     const sql = `
       INSERT INTO seguridad.concesion (

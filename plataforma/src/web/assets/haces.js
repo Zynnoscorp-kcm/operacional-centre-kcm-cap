@@ -1,16 +1,3 @@
-/*
- * Fondo de haces de la marca.
- *
- * Es el bloque de fondo del quiosco, movido a un archivo
- * propio porque ahora lo comparten dos pantallas: el quiosco de sala y la
- * puerta de la consola en `/acceso`. No se retocó ni una constante —velocidad,
- * ruido, escala, ancho y número de haces, color de la luz— para que el reflejo
- * se vea igual en las dos.
- *
- * Con Three.js disponible dibuja los quince haces con el shader; si el equipo
- * no da WebGL cae al lienzo 2D con las cinco bandas y su destello. Ninguna de
- * las dos rutas toca nada fuera del `<canvas id="beams-canvas">`.
- */
 (function () {
   "use strict";
 

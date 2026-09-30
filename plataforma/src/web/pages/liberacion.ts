@@ -1,13 +1,3 @@
-/**
- * Pantalla de Liberación a la matriz (Función 5).
- *
- * Es una vista de preflight y confirmación, no un formulario que escriba
- * directo: muestra qué se va a escribir, qué se va a sobrescribir y qué queda
- * fuera, antes de que alguien apriete nada. La sobrescritura pide su motivo
- * en la misma pantalla porque el motivo es parte del acto, no un trámite
- * posterior.
- */
-
 import type { EnvironmentName } from "../../config/environment.ts";
 import type {
   ExcludedEntry,
@@ -23,24 +13,12 @@ import { renderLayout } from "../layout.ts";
 export interface ReleasePageProps {
   readonly entorno: EnvironmentName;
   readonly preview?: ReleasePreview;
-  /** Clave idempotente entregada por el servidor para confirmar o reanudar. */
   readonly requestId?: string;
-  /** Sesiones que superaron preliberación y esperan la confirmación de liberar. */
   readonly sessions?: readonly SessionHeader[];
-  /**
-   * Lo ya liberado y su acuse de Excel. Ausente significa que no hay base
-   * conectada: entonces el tablero lo dice en vez de enseñar una bandeja vacía,
-   * que se leería como «no hay nada esperando».
-   */
   readonly deliveries?: readonly MatrixDelivery[];
-  /** El tablero viene desplegado. Lo pide la dirección para sobrevivir al refresco. */
   readonly entregasAbiertas?: boolean;
   readonly aviso?: string;
   readonly mensaje?: string;
-  /**
-   * Lo que la liberación encontró y no detiene: fechas previas, iguales o más
-   * recientes. Se enseña en un cuadro de confirmación antes de liberar.
-   */
   readonly advertencias?: readonly AdvertenciaDeLiberacion[];
 }
 
@@ -249,11 +227,6 @@ function renderPreview(
   `;
 }
 
-/**
- * El cuadro emergente de las advertencias: quién, qué encontró la plataforma y
- * dos botones. Liberar de todos modos asienta el motivo —el escrito o uno por
- * omisión— en el historial de cada fecha reemplazada.
- */
 function renderConfirmacionDeAdvertencias(
   preview: ReleasePreview,
   requestId: string | undefined,
@@ -373,29 +346,6 @@ function renderTablaExcluidos(filas: readonly ExcludedEntry[]): Html {
   `;
 }
 
-// -----------------------------------------------------------------------------
-// Tablero de entregas a la matriz
-// -----------------------------------------------------------------------------
-
-/**
- * Lo que pasa después de pulsar «Liberar».
- *
- * Liberar aquí no escribe en el XLSB: deja la fecha lista para que el cliente de
- * Excel la escriba en la PC donde vive el libro. Ese intervalo no se veía en
- * ninguna parte —la sesión salía de la lista de pendientes y no volvía a
- * aparecer—, así que la única forma de saber si la fecha ya estaba era abrir la
- * matriz a mirar.
- *
- * El tablero llena ese hueco y nada más: un renglón por lote liberado, con un
- * foco rojo mientras Excel no ha acusado y verde cuando ya lo hizo. Va plegado
- * porque no es lo primero que se hace en esta pantalla; se despliega y entonces
- * la dirección lo recuerda, para que el botón de actualizar no lo vuelva a
- * cerrar en cada consulta.
- *
- * Se actualiza pulsando y no solo: un reloj preguntando cada minuto son mil
- * cuatrocientas lecturas al día contra una base con presupuesto, y la respuesta
- * casi siempre sería la misma.
- */
 function renderTableroDeEntregas(props: ReleasePageProps): Html {
   const entregas = props.deliveries;
   const esperando = (entregas ?? []).filter((fila) => fila.state !== "ENTREGADA").length;
@@ -470,13 +420,6 @@ function renderTablaDeEntregas(entregas: readonly MatrixDelivery[]): Html {
   `;
 }
 
-/**
- * Los tres focos.
- *
- * El color no va solo: el título y el texto para lectores de pantalla dicen lo
- * mismo, porque un punto de color no lo lee quien no distingue los dos tonos ni
- * quien navega con lector.
- */
 const FOCOS: Readonly<Record<MatrixDelivery["state"], { clase: string; texto: string }>> = {
   PENDIENTE: { clase: "foco-rojo", texto: "Pendiente de escritura en Excel" },
   CON_CONFLICTO: { clase: "foco-ambar", texto: "Excel no pudo escribirla" },
@@ -532,7 +475,6 @@ function renderEntrega(entrega: MatrixDelivery): Html {
   </tr>`;
 }
 
-/** La equis, en línea: la política de contenido no admite iconos por CDN. */
 const ICONO_EQUIS = rawHtml(
   '<svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" ' +
     'stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">' +

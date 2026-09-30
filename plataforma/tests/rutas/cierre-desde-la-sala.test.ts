@@ -1,17 +1,3 @@
-/**
- * Cerrar desde la sala una sesión creada en la consola.
- *
- * Era el recorrido normal y estaba roto. `closeSession` rechaza a un
- * `CAPACITADOR` que no creó la sesión, y el equipo de la sala cerraba con ese
- * rol: como las sesiones se crean desde la consola —con actor
- * `USUARIO_CAPACITACION`—, el instructor oprimía «cerrar» en el quiosco, veía
- * «No fue posible cerrar la sesión desde este equipo», y alguien tenía que
- * volver a cerrarla desde la plataforma.
- *
- * La estación cierra ahora con el rol `KIOSK`. Su autoridad es el token firmado
- * para esa sesión, no haberla creado.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -43,10 +29,6 @@ async function servidor() {
   });
 }
 
-/**
- * El recorrido real: la consola crea y abre la sesión, y la sala se vincula a
- * ella con el vale y el código, como hace el quiosco de la pared.
- */
 async function sesionDeConsolaVinculadaALaSala() {
   const app = await servidor();
 
@@ -94,7 +76,6 @@ describe("Cierre desde la sala", () => {
     assert.equal(cierre.statusCode, 200, cierre.body);
     assert.equal(cierre.json().session.status, "CERRADA");
 
-    // Y la consola lo ve sin que nadie vuelva a cerrar nada.
     const lista = await app.inject({ method: "GET", url: "/api/sessions" });
     const enConsola = lista
       .json()

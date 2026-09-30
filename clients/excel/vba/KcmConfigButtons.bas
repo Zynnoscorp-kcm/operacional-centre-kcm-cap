@@ -1,30 +1,9 @@
 Attribute VB_Name = "KcmConfigButtons"
 Option Explicit
 
-' La hoja KCM_CONFIG como pagina de la consola.
-'
-' KCM_CONFIG es lo que leen todos los modulos: clave en la columna A desde la
-' fila 2, valor en la B. Eso no cambia y no puede cambiar: `KcmConfigMap` toma
-' como clave cualquier texto de la columna A y falla cerrado ante una repetida.
-' Por eso toda la pagina vive en dos lugares que el lector no mira:
-'
-' 1. LA FILA 1, MUY ALTA. Barra de marca, titulo, fichas y tarjetas son formas
-'    que flotan sobre ella; los rotulos de la tabla quedan abajo, pegados a la
-'    primera clave. La columna A no recibe ni un titulo de seccion.
-' 2. LAS COLUMNAS C Y D. Estado y descripcion de cada clave. Se reescriben en
-'    cada dibujo; lo que alguien escriba ahi a mano se pierde al redibujar.
-'
-' Lo que agrega sobre la tabla cruda es revision: cada clave dice si esta bien,
-' con las mismas reglas con que el panel valida al guardar, y las repetidas --lo
-' unico que impide leer la configuracion entera-- salen en rojo. Ademas un
-' respaldo de un paso antes de cambiar muchas claves a la vez.
-'
-' Editar sigue siendo cosa del panel: aqui se ve, se revisa y se respalda.
-
 Private Const BOTON_PREFIJO As String = "KCM_BTN_"
 Private Const KCM_CONFIG_RESPALDO_SHEET As String = "KCM_CONFIG_RESPALDO"
 
-' Geometria, en puntos. Todo lo de arriba cabe en la fila 1.
 Private Const CONFIG_IZQ As Double = 14
 Private Const CONFIG_FICHAS_ARRIBA As Double = 124
 Private Const CONFIG_TARJETAS_ARRIBA As Double = 184
@@ -33,23 +12,14 @@ Private Const CONFIG_HUECO As Double = 12
 Private Const CONFIG_HUECO_TARJETAS As Double = 16
 Private Const CONFIG_ALTO_CABECERA As Double = 330
 
-' Las que la verificacion de la matriz exige llenas. Entre barras para buscar
-' una clave entera y no un pedazo de otra.
 Private Const CONFIG_OBLIGATORIAS As String = _
     "|ENDPOINT|CLIENT_ID|MATRIX_SHEET|EMPLOYEE_COLUMN|FIRST_COURSE_COLUMN|LAST_COURSE_COLUMN|"
 
-' Lo que encontro la ultima revision. Lo llenan los renglones y lo leen las fichas.
 Private mClaves As Long
 Private mFallos As Long
 Private mAvisos As Long
 Private mPrimerProblema As Long
 
-' ---------------------------------------------------------------- entradas
-
-''' Redibuja KCM_CONFIG y revisa cada clave.
-'''
-''' Conserva su nombre de siempre porque la instalacion y el asistente lo llaman.
-''' Es idempotente: borra sus formas por prefijo y rehace las columnas C y D.
 Public Sub KcmInstallButtons()
     On Error GoTo InstallError
     Application.ScreenUpdating = False
@@ -63,7 +33,6 @@ InstallError:
     KcmAvisoFallo "Instalacion", "No se pudo preparar la hoja " & KCM_CONFIG_SHEET & ".", Err.Description
 End Sub
 
-''' Lo mismo que redibujar, y deja el cursor en la primera clave con problema.
 Public Sub KcmConfigRevisar()
     Dim sheet As Worksheet
 
@@ -86,11 +55,6 @@ RevisarError:
     KcmAvisoFallo "Revisar configuracion", "No se pudo revisar la configuracion.", Err.Description
 End Sub
 
-''' Agrega al final, vacias, las claves que el panel conoce y la hoja no tiene.
-'''
-''' Una instalacion vieja no trae las claves que se agregaron despues, y el panel
-''' las escribe solo al guardar. Aqui se ven de una vez, en su renglon, para que
-''' quien revisa sepa que existen antes de que algo las pida.
 Public Sub KcmConfigCompletar()
     Dim sheet As Worksheet
     Dim claves As Variant
@@ -131,7 +95,6 @@ CompletarError:
     KcmAvisoFallo "Completar claves", "No se agregaron las claves que faltan.", Err.Description
 End Sub
 
-''' Copia las claves a una hoja oculta. Hay un solo respaldo: el nuevo reemplaza al anterior.
 Public Sub KcmConfigRespaldar()
     Dim config As Worksheet
     Dim respaldo As Worksheet
@@ -159,8 +122,6 @@ Public Sub KcmConfigRespaldar()
     End If
 
     respaldo.Cells.Clear
-    ' Copiar el rango y no sus valores: una clave como 0001 guardada como texto
-    ' volveria como numero si pasara por Value2.
     config.Range(config.Cells(1, 1), config.Cells(ultima, 2)).Copy Destination:=respaldo.Range("A1")
     respaldo.Range("D1").Value2 = Format$(Now, "dd/mm/yyyy hh:nn")
 
@@ -172,7 +133,6 @@ RespaldarError:
     KcmAvisoFallo "Respaldo", "No se hizo el respaldo de la configuracion.", Err.Description
 End Sub
 
-''' Devuelve la configuracion al respaldo. Pregunta antes: lo de ahora se pierde.
 Public Sub KcmConfigRestaurar()
     Dim config As Worksheet
     Dim respaldo As Worksheet
@@ -214,8 +174,6 @@ RestaurarError:
     KcmAvisoFallo "Restaurar", "La configuracion no se restauro.", Err.Description
 End Sub
 
-' ---------------------------------------------------------------- el dibujo
-
 Private Sub KcmConfigDibujar()
     Dim sheet As Worksheet
     Dim ultima As Long
@@ -226,7 +184,6 @@ Private Sub KcmConfigDibujar()
     KcmPaginaBorrar sheet, BOTON_PREFIJO
     ultima = KcmConfigUltimaFila(sheet)
 
-    ' C y D son de la pagina: se limpian enteras antes de reescribirlas.
     sheet.Range(sheet.Cells(1, 3), sheet.Cells(ultima + 200, 4)).Clear
     sheet.Cells.Interior.Color = COLOR_LIENZO
     sheet.Cells.Font.Name = KcmPanelFuente()
@@ -236,8 +193,6 @@ Private Sub KcmConfigDibujar()
     sheet.Columns("D").ColumnWidth = 64
     sheet.Columns("E").ColumnWidth = 3
 
-    ' Los rotulos de la tabla, al pie de la fila 1. A1 conserva CLAVE: la
-    ' instalacion lo usa para saber que la hoja ya existe.
     sheet.Rows(1).RowHeight = CONFIG_ALTO_CABECERA
     sheet.Cells(1, 1).Value2 = "CLAVE"
     sheet.Cells(1, 2).Value2 = "VALOR"
@@ -277,11 +232,6 @@ Private Sub KcmConfigDibujar()
     KcmPaginaVentana sheet
 End Sub
 
-''' Da forma a un renglon y dice si la clave esta bien.
-'''
-''' El orden de las preguntas es el de la gravedad: una repetida impide leer toda
-''' la configuracion, un valor invalido rompe la accion que lo usa, y una clave
-''' vacia solo estorba cuando algo la pide.
 Private Sub KcmConfigRenglon(ByVal sheet As Worksheet, ByVal fila As Long, ByVal ultima As Long)
     Dim clave As String
     Dim valor As String
@@ -371,7 +321,6 @@ Private Sub KcmConfigRenglon(ByVal sheet As Worksheet, ByVal fila As Long, ByVal
 
     KcmPaginaEtiqueta sheet.Cells(fila, 3), estado, color
     sheet.Cells(fila, 4).Value2 = detalle
-    ' Lo que hay que hacer va en el color del estado; la ayuda sigue en gris.
     If resaltar > 0 Then
         With sheet.Cells(fila, 4).Characters(1, resaltar).Font
             .Color = color
@@ -384,7 +333,6 @@ Private Sub KcmConfigRenglon(ByVal sheet As Worksheet, ByVal fila As Long, ByVal
     If sheet.Rows(fila).RowHeight < 24 Then sheet.Rows(fila).RowHeight = 24
 End Sub
 
-''' A la derecha del titulo: a donde se va desde aqui.
 Private Sub KcmConfigNavegacion(ByVal sheet As Worksheet, ByVal anchoTotal As Double)
     Dim derecha As Double
 
@@ -397,7 +345,6 @@ Private Sub KcmConfigNavegacion(ByVal sheet As Worksheet, ByVal anchoTotal As Do
         "Ver liberaciones", "KcmEntradasAbrir"
 End Sub
 
-''' Cuatro fichas: cuantas claves, que encontro la revision, que falta y la credencial.
 Private Sub KcmConfigFichas(ByVal sheet As Worksheet, ByVal anchoTotal As Double, _
     ByVal ultima As Long)
     Dim ancho As Double
@@ -444,7 +391,6 @@ Private Sub KcmConfigFichas(ByVal sheet As Worksheet, ByVal anchoTotal As Double
     End If
 End Sub
 
-''' Tres tarjetas, una por tarea: revisar, respaldar y conectar.
 Private Sub KcmConfigTarjetas(ByVal sheet As Worksheet, ByVal anchoTotal As Double)
     Dim ancho As Double
     Dim x As Double
@@ -457,8 +403,6 @@ Private Sub KcmConfigTarjetas(ByVal sheet As Worksheet, ByVal anchoTotal As Doub
     Dim nota As String
 
     ancho = (anchoTotal - 2 * CONFIG_IZQ - 2 * CONFIG_HUECO_TARJETAS) / 3
-    ' Los dos botones de cada tarjeta se reparten su ancho: el de la derecha lleva
-    ' el rotulo mas largo.
     primero = Int((ancho - 46) * 0.44)
     segundo = Int(ancho - 46 - primero)
     y = CONFIG_TARJETAS_ARRIBA
@@ -495,9 +439,6 @@ Private Sub KcmConfigTarjetas(ByVal sheet As Worksheet, ByVal anchoTotal As Doub
         KcmAcentos("Verificar conexi{o}n"), "KcmVerificarConexion"
 End Sub
 
-' ---------------------------------------------------------------- utilidades
-
-''' Ultimo renglon con algo en la clave o en el valor.
 Private Function KcmConfigUltimaFila(ByVal sheet As Worksheet) As Long
     Dim ultima As Long
     Dim ultimaValor As Long
@@ -509,7 +450,6 @@ Private Function KcmConfigUltimaFila(ByVal sheet As Worksheet) As Long
     KcmConfigUltimaFila = ultima
 End Function
 
-''' Cuantas veces aparece una clave. Distingue mayusculas, como el lector.
 Private Function KcmConfigVeces(ByVal sheet As Worksheet, ByVal clave As String, _
     ByVal ultima As Long) As Long
     Dim fila As Long
@@ -521,7 +461,6 @@ Private Function KcmConfigVeces(ByVal sheet As Worksheet, ByVal clave As String,
     Next fila
 End Function
 
-''' La hoja del respaldo, muy oculta. Con `crear` la agrega si falta.
 Private Function KcmConfigRespaldoHoja(ByVal crear As Boolean) As Worksheet
     Dim candidata As Worksheet
 

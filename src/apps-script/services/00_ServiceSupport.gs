@@ -1,4 +1,3 @@
-/** Utilidades compartidas por servicios, sin exponer detalles de persistencia al cliente. */
 var KcmServiceSupport = (function () {
   "use strict";
 

@@ -15,12 +15,6 @@ function snapshot(courses) {
   return JSON.stringify({ schemaVersion: "HC_SNAPSHOT_V1", courses });
 }
 
-/**
- * Cada prueba trabaja en su propio subdirectorio privado y lo crea.
- * `referencias/privado/` esta ignorado por Git y no existe en un clon limpio: dar
- * por hecho que ya existe hacia que estas pruebas solo pasaran cuando otra suite
- * lo hubiera creado antes, es decir, dependiendo del orden de ejecucion.
- */
 async function withPrivateSnapshot(courses, body) {
   const dir = path.join(PRIVATE_DIR, `.pruebas-${crypto.randomUUID()}`);
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -44,8 +38,6 @@ test("deriva el trainingId con la misma regla que la importacion HC", async () =
   await withPrivateSnapshot([
     { sourceKey, sourceColumn: "J", displayName: "REINDUCCION A LA EMPRESA" }
   ], async (file) => {
-    // La version viaja explicita: fijar un mes concreto aqui volveria a romper la
-    // prueba al cambiar el mes, que es justo el defecto que esta linea corrige.
     const { stdout } = await build(file, ["--mapping-version", "matriz-prueba-01"]);
     const lines = stdout.trim().split("\n");
     assert.deepEqual(lines[0].split("\t"), [

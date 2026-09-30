@@ -9,42 +9,8 @@ const REQUIRED_HEADERS = Object.freeze({
   hireDate: ["FEC ALTA", "FECHA DE ALTA"]
 });
 
-/**
- * Encabezados que pueden faltar sin que el archivo deje de leerse.
- *
- * `cnoKey` es la clave del Catalogo Nacional de Ocupaciones, el ultimo dato que
- * le falta al recuadro «Ocupacion especifica» del DC-3. Se declara opcional a
- * proposito: los libros de semanas anteriores no la traen, y volverlos
- * ilegibles de golpe convertiria una mejora en una interrupcion. En cuanto la
- * columna exista en las dos hojas, se lee sola.
- *
- * El nombre de la columna admite varias formas porque nadie escribe dos veces
- * igual un encabezado largo. Cuidado al agregar alias: si uno de ellos coincide
- * —ya normalizado— con un alias de otro campo, `headerColumns` deja de resolver
- * un encabezado unico y rechaza el libro entero.
- */
 const OPTIONAL_HEADERS = Object.freeze({
-  /**
-   * La planta, aunque la columna del libro se llame `AREA`.
-   *
-   * Es una trampa que conviene dejar escrita. En `sem 29 CAP.xlsx` la columna
-   * rotulada AREA trae tres valores para las 1,686 filas —`ECATEPEC I`,
-   * `ECATEPEC II` y `MANTTO INGENIERIA`—, es decir el centro de trabajo. El
-   * `area` de la matriz es otra cosa: treinta y ocho valores operativos como
-   * `SERVILLETAS Y FACIALES` o `GERENCIA DE MANTTO. ELECTRICO`. Compararlas
-   * porque comparten rotulo produciria mil seiscientas divergencias falsas.
-   *
-   * Se lee como `plant` y se contrasta con `organizacion.trabajador.planta`, que es el
-   * campo que si significa lo mismo. Opcional, como la clave de ocupacion: un
-   * libro sin la columna se sigue leyendo.
-   */
   plant: ["AREA", "PLANTA", "CENTRO DE TRABAJO"],
-  // El primero es el rotulo declarado por el departamento el 2026-08-13:
-  // «Clave de ocupacion», provisional hasta que fijen el definitivo. Los demas
-  // son formas que se siguen aceptando; los libros anteriores traen `CLAVE CNO`
-  // y volverlos ilegibles al renombrar seria convertir una mejora en una
-  // interrupcion. La comparacion es sobre el rotulo ya normalizado, asi que
-  // acentos, mayusculas, puntos y espacios dan igual.
   cnoKey: [
     "CLAVE DE OCUPACION",
     "CLAVE OCUPACION",
@@ -54,16 +20,11 @@ const OPTIONAL_HEADERS = Object.freeze({
     "OCUPACION CNO",
     "CATALOGO NACIONAL DE OCUPACIONES",
     "CLAVE CATALOGO NACIONAL DE OCUPACIONES",
-    // Como el departamento la nombro al pedirla: «la clave del tipo de trabajo
-    // que desarrollan los trabajadores». Es el mismo dato.
     "TIPO DE TRABAJO",
     "CLAVE TIPO DE TRABAJO",
     "CLAVE DE TIPO DE TRABAJO",
     "CLAVE DEL TIPO DE TRABAJO"
   ],
-  // El resto del padrón, desde el 2026-09-25: el departamento pidió que el
-  // panel de cambios cubra todas las columnas. Opcionales como las anteriores:
-  // un libro que no las traiga se sigue leyendo.
   rfc: ["R F C", "RFC"],
   nss: ["I M S S", "IMSS", "NSS", "NUMERO DE SEGURO SOCIAL"],
   costCenterKey: ["CVE C COSTOS", "CLAVE C COSTOS", "CLAVE CENTRO DE COSTOS"],
@@ -74,24 +35,12 @@ const OPTIONAL_HEADERS = Object.freeze({
   sex: ["SEXO", "GENERO"]
 });
 
-/**
- * Hojas de bajas: `SND BAJAS` y `EMP BAJAS`. No hacen falta para leer el
- * padrón; si vienen, dan la fecha de baja de quien ya no está en activos.
- */
 const TERMINATION_SHEET_PATTERN = /BAJAS/;
 const TERMINATION_HEADERS = Object.freeze({
   employeeId: ["NUMERO", "NO", "NUMERO DE TRABAJADOR"],
   terminationDate: ["FEC BAJA", "FECHA DE BAJA"]
 });
 
-/**
- * La clave del CNO se guarda tal como la escribe el departamento, sin acentos ni
- * espacios de sobra y en mayusculas. No se valida su forma: el catalogo usa
- * claves numericas de cuatro digitos, pero mientras Capacitacion no declare por
- * escrito que ese es el formato obligatorio, rechazar aqui una clave con otra
- * forma seria inventar una regla. Lo que si se hace es no dejar pasar basura
- * evidente: mas de veinte caracteres no es una clave.
- */
 function normalizeCnoKey(value) {
   const clave = String(value ?? "")
     .normalize("NFKD")
@@ -123,15 +72,6 @@ function normalizeCurp(value) {
     : null;
 }
 
-/**
- * Resuelve los encabezados de la hoja y deja constancia de cual fue cada uno.
- *
- * Devuelve dos cosas por separado a proposito. `columns` es lo que la lectura
- * necesita —el indice numerico de cada campo— y no cambio de forma. `detected`
- * es para ensenar: el rotulo tal como esta escrito en el libro y la letra de su
- * columna, que es lo que permite ir a la hoja a mirar sin buscar a ojo, y el
- * campo opcional ausente dicho por su nombre en lugar de por su silencio.
- */
 function headerColumns(sheet) {
   const byLabel = new Map();
   for (const cell of sheet.cells.values()) {
@@ -157,9 +97,6 @@ function headerColumns(sheet) {
       present: true
     });
   }
-  // Un opcional ausente deja la columna en `null` y su valor sale vacio. Dos
-  // encabezados que apunten al mismo campo opcional si son un error: no hay
-  // forma de saber cual es el bueno, y elegir uno en silencio es peor que fallar.
   for (const [field, aliases] of Object.entries(OPTIONAL_HEADERS)) {
     const matches = resolveColumn(byLabel, aliases);
     if (matches.length > 1) {
@@ -200,17 +137,6 @@ function cellValue(row, column) {
   return !cell || cell.error ? null : cell.value;
 }
 
-/**
- * De que hoja salio el trabajador, traducido al tipo de nomina del dominio.
- *
- * El padron divide sindicalizados y personal de confianza por hoja, no por
- * columna: `SND ACTIVOS` y `EMP ACTIVOS`. Es la fuente que origina esa
- * clasificacion, asi que aqui se conserva; que la base la tome de la matriz es
- * una decision aparte, y justamente por eso hace falta poder compararlas.
- *
- * Una hoja con otro nombre devuelve cadena vacia en vez de adivinar: preferir
- * "no se" a una clasificacion inventada es la regla de todo este extractor.
- */
 function payrollTypeFromSheet(sheetName) {
   const normalized = normalizedLabel(sheetName);
   if (normalized.startsWith("SND")) return "NS";
@@ -270,11 +196,6 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
       if (!position) employeeIssues.push("MISSING_POSITION");
       if (!curp) employeeIssues.push("INVALID_OR_MISSING_CURP");
       if (!hireDate) employeeIssues.push("INVALID_OR_MISSING_HIRE_DATE");
-      // La clave del CNO sólo se reclama cuando la columna existe: en un libro
-      // que todavía no la trae, anotar mil setecientas incidencias no informaría
-      // de nada. Con columna presente y celda vacía, sí es un hueco real.
-      // Una celda con texto que no es clave (mas de veinte caracteres) no es un
-      // hueco: nadie debe escribir encima como si estuviera vacia.
       if (columns.cnoKey !== null && !cnoKey) {
         employeeIssues.push(normalizeText(claveEnCelda) ? "INVALID_CNO_KEY" : "MISSING_CNO_KEY");
       }
@@ -327,8 +248,6 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
     });
   }
 
-  // Las bajas: número y fecha, de las hojas que las traigan. Una hoja sin los
-  // dos encabezados se ignora; la baja es un dato de más, no un requisito.
   const terminations = new Map();
   for (const sheet of workbook.sheets) {
     if (!TERMINATION_SHEET_PATTERN.test(normalizedLabel(sheet.name))) continue;
@@ -348,7 +267,6 @@ export function extractActiveRosterFromBuffer(input, options = {}) {
       const employeeId = normalizeEmployeeId(cellValue(row, colNumero));
       const fecha = civilDateToIso(cellValue(row, colFecha), workbook.dateSystem);
       if (!employeeId || !fecha) continue;
-      // Si alguien tiene varias bajas, vale la más reciente.
       const previa = terminations.get(employeeId);
       if (!previa || fecha > previa) terminations.set(employeeId, fecha);
     }

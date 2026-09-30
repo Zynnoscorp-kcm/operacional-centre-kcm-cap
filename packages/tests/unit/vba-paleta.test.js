@@ -2,15 +2,6 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-/**
- * El libro de Excel y la consola son la misma plataforma y tienen que verse igual.
- *
- * La hoja de estilos manda. Esta prueba recalcula cada constante de KcmPanel desde
- * `tokens.css` y falla si se separan. Existe porque ya se habian separado: cuatro de las nueve
- * llevaban un numero que no correspondia a su propio comentario, y nadie podia notarlo mirando
- * el codigo --VBA guarda el color como azul-verde-rojo, asi que el numero no se parece al
- * hexadecimal--. Se veia en la pantalla, en un azul apenas distinto, y ahi nadie lo mide.
- */
 const TOKENS = {
   COLOR_MARCA: "--kcm-brand",
   COLOR_MARCA_OSCURA: "--kcm-brand-dark",
@@ -24,22 +15,18 @@ const TOKENS = {
   COLOR_MARCA_SUAVE: "--kcm-brand-sky-soft"
 };
 
-// Los modulos que pintan. Ninguno debe llevar un color suelto: si hace falta uno nuevo, se
-// agrega a la paleta y a `tokens.css`, no al sitio donde se usa.
 const MODULOS_QUE_PINTAN = ["KcmPanel.bas", "KcmConfigButtons.bas", "KcmMatrixPanel.bas"];
 
 const hojaDeEstilos = await readFile("plataforma/src/web/assets/tokens.css", "utf8");
 const panel = await readFile("clients/excel/vba/KcmPanel.bas", "utf8");
 
 function tokenHex(nombre) {
-  // Sólo el bloque claro: el tema oscuro redefine algunos y el libro no tiene tema.
   const claro = hojaDeEstilos.split("@media")[0];
   const encontrado = new RegExp(`${nombre}:\\s*(#[0-9a-fA-F]{6})`).exec(claro);
   assert.ok(encontrado, `tokens.css no declara ${nombre}`);
   return encontrado[1].toUpperCase();
 }
 
-// Excel guarda el color como entero en orden azul-verde-rojo.
 function aLargoDeVba(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);

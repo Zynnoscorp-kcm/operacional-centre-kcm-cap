@@ -1,13 +1,3 @@
-/**
- * Cobertura por curso: cuántos de los trabajadores a los que les aplica cada
- * curso lo tienen acreditado, por reforzar, programado o pendiente.
- *
- * Una barra por curso, ordenadas de menor a mayor avance: lo primero que se ve
- * es dónde está el rezago. La barra se dibuja en SVG con anchos como atributos
- * —la política de contenido no deja escribir estilos en línea— y va siempre con
- * la cuenta escrita al lado: el color acompaña, no es el único que lo dice.
- */
-
 import type { EnvironmentName } from "../../../config/environment.ts";
 import type { CourseCoverageSummaryItem } from "../../../domain/sistema-trabajador/tipos.ts";
 import { html, type Html } from "../../kit/html.ts";
@@ -24,7 +14,6 @@ export interface DatosCoberturaCursos {
   readonly entorno: EnvironmentName;
 }
 
-/** Suma una columna del catálogo. Los conteos ya vienen resueltos del dominio. */
 function sumar(
   courses: readonly CourseCoverageSummaryItem[],
   campo: (curso: CourseCoverageSummaryItem) => number,
@@ -130,8 +119,6 @@ function partesDelCurso(curso: CourseCoverageSummaryItem): PartesDeAvance {
     acreditados: curso.completadosCount,
     reforzar: curso.reforzarCount,
     programados: curso.programadosCount,
-    // Lo que no está acreditado, por reforzar ni programado, está pendiente:
-    // así la barra suma siempre la plantilla exigible del curso.
     pendientes: Math.max(
       0,
       curso.applicableWorkersCount -

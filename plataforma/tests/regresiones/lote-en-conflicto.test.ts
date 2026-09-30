@@ -1,12 +1,3 @@
-/**
- * Un lote de liberación en conflicto no puede leerse como abierto.
- *
- * `comun.fase_liberacion` no tiene CONFLICTO, así que el adaptador guarda
- * PENDIENTE con estado CONFLICTO. Leído tal cual, el lote parecía abierto y la
- * siguiente liberación de la sesión se rechazaba con «reintente con su
- * requestId original»: el botón «Liberar de todos modos» no hacía nada.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 

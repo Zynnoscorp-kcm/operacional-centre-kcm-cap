@@ -1,9 +1,3 @@
-# Lo que no sube a Vercel.
-#
-# La función sólo necesita lo que declara `includeFiles` en `vercel.json`, y lo
-# único que se sirve como archivo es `public/`. Esta lista es la segunda
-# barrera: el material con datos personales, las credenciales locales y lo que
-# sólo sirve en esta máquina no salen de aquí aunque se publique desde la raíz.
 referencias
 referencias 2
 artifacts

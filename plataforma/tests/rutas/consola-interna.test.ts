@@ -1,12 +1,3 @@
-/**
- * Consola interna: auditoría por secciones, campos declarados y explorador.
- *
- * Lo que estas pruebas cuidan no es que las pantallas pinten: es que las tres
- * piezas nuevas no puedan tocar lo que ya funciona. Por eso hay una prueba
- * que verifica que un repositorio falso registre cero escrituras, y otra que
- * comprueba que el previsualizador rechace una tabla que no salió del catálogo.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -223,15 +214,6 @@ describe("consola interna · explorador de la base", () => {
   });
 });
 
-/**
- * El adaptador de PostgreSQL contra un ejecutor falso.
- *
- * No prueba el SQL —eso se verifica corriéndolo contra la base—, prueba la
- * traducción, que es donde vive la regla que importa: el motivo de
- * sobrescritura del lote no se enseña cuando esa liberación no sustituyó
- * ninguna fecha. El lote lo trae aunque no haya pisado nada, y filtrarlo
- * haría leer «sobrescribió con motivo X» donde no hubo sobrescritura.
- */
 describe("consola interna · adaptador de PostgreSQL", () => {
   function ejecutorFalso(respuestas: (sql: string) => unknown[]): SqlExecutor {
     const ejecutor: SqlExecutor = {
@@ -440,10 +422,6 @@ describe("consola interna · rutas", () => {
           origen: "PLATAFORMA",
         }).toString(),
       });
-      // El guardia atiende antes que la ruta y manda a la puerta con el
-      // destino puesto: es una pantalla, no una API, y un JSON de error en el
-      // navegador no le sirve a nadie. Lo que se fija sigue siendo lo mismo:
-      // sin sesión no se escribe.
       assert.equal(respuesta.statusCode, 303);
       assert.equal(respuesta.headers.location, "/acceso?destino=%2Fcampos");
     } finally {

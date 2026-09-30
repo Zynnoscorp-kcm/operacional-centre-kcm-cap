@@ -33,12 +33,6 @@ export function registerRoomRoutes(
   app: FastifyInstance,
   deps: { readonly config: AppConfig; readonly service: RoomReservationService },
 ): void {
-  /**
-   * La contraseña de la agenda. Declarada, agendar y cancelar la exigen; ausente,
-   * la pantalla se comporta como antes del piloto y no pide nada. Cancelar
-   * también la pide porque borra el horario de alguien más desde una pantalla
-   * que está abierta a quien pase enfrente.
-   */
   const claveDeSala = deps.config.pilot.openAccess
     ? undefined
     : (deps.config.roomPassword ?? deps.config.pilot.roomPassword);
@@ -48,7 +42,6 @@ export function registerRoomRoutes(
     return igualEnTiempoConstante(text(body.clave), claveDeSala);
   }
 
-  /** Vuelve a `/salas` con el aviso ya redactado; el HTML no lo interpreta. */
   function volverASalas(reply: FastifyReply, date: string, aviso: string, esError: boolean) {
     const parametros = new URLSearchParams({ date, [esError ? "error" : "notice"]: aviso });
     return reply.redirect(`/salas?${parametros.toString()}`, 303);
@@ -108,9 +101,6 @@ export function registerRoomRoutes(
       origin: "AUTOSERVICIO",
     };
 
-    // Desde la pantalla, un dato mal capturado vuelve a la pantalla con el
-    // motivo escrito. Devolver el JSON del error dejaría a quien reserva ante
-    // una página de texto crudo, sin el formulario ni forma de corregir.
     let result;
     try {
       result = await deps.service.create(input, ACTOR);
@@ -139,8 +129,6 @@ export function registerRoomRoutes(
       return reply.code(401).send({ error: { code: "CLAVE_INVALIDA", message: CLAVE_INCORRECTA } });
     }
 
-    // El motivo es obligatorio en el dominio; el formulario ofrece uno por
-    // omisión para que cancelar desde la pantalla no falle por un campo vacío.
     const reason = text(body.reason) || (html ? "Cancelada desde la agenda" : "");
     const result = await deps.service.cancel(
       { reservationId, requestId: text(body.requestId) || randomUUID(), reason },

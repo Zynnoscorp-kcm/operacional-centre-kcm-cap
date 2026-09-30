@@ -1,18 +1,3 @@
-/**
- * Las dos pantallas de barrido, contra el sistema de diseño.
- *
- * `base.css` no tiene un solo color literal y todas las pantallas comparten los
- * mismos componentes; una clase inventada no rompe nada visible en la prueba de
- * ruta —el HTML sale igual de válido— y simplemente se ve sin estilo en la
- * consola. Esto lo convierte en falla: cada clase que una pantalla usa tiene que
- * existir en la hoja que se publica.
- *
- * Comprueba además lo que hace legible una tabla en esta consola: encabezado
- * declarado con `scope`, envoltura que permite el desplazamiento horizontal, y
- * el resumen en los mosaicos `kpi` que usan la auditoría, la consola interna y
- * los tableros de la Función 8.
- */
-
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
@@ -26,7 +11,6 @@ import { renderRosterPage } from "../../src/web/pages/padron.ts";
 
 const HOJAS = ["tokens.css", "base.css"] as const;
 
-/** Las clases declaradas en la hoja concatenada, en el mismo orden que se sirve. */
 const declaradas = new Set(
   [
     ...HOJAS.map((hoja) =>
@@ -44,8 +28,6 @@ function clasesDe(documento: string): string[] {
   }
   return [...usadas];
 }
-
-// ------------------------------------------------------------------ fixtures
 
 const INFORME: InformeDeBarrido = {
   barridoId: "b-1",
@@ -186,11 +168,6 @@ const PLAN: PlanDePadron = {
   sinCambios: false,
 };
 
-/**
- * Dos asientos del historial: uno con efecto y uno rechazado, que son los dos
- * que pintan distinto. El historial es hermano de las dos revisiones y comparte
- * su hoja, así que se sujeta a las mismas reglas.
- */
 const ASIENTOS: readonly CargaRegistrada[] = [
   {
     asientoId: "1",
@@ -215,13 +192,11 @@ const ASIENTOS: readonly CargaRegistrada[] = [
   },
 ];
 
-/** Las dos revisiones, que son las que llevan resumen y tablas. */
 const REVISIONES: readonly (readonly [string, string])[] = [
   ["barrido de matriz", renderMatrixScanPage({ entorno: "development", informe: INFORME })],
   ["barrido de padrón", renderRosterPage({ entorno: "development", plan: PLAN })],
 ];
 
-/** Todas, incluida la pantalla de encargo, que no tiene datos que presentar. */
 const PANTALLAS: readonly (readonly [string, string])[] = [
   ...REVISIONES,
   ["padrón sin revisión", renderRosterPage({ entorno: "development" })],
@@ -234,8 +209,6 @@ const PANTALLAS: readonly (readonly [string, string])[] = [
     renderLoadHistoryPage({ entorno: "development", asientos: [], enMemoria: true }),
   ],
 ];
-
-// -------------------------------------------------------------------- pruebas
 
 describe("Barridos · estilo de la consola", () => {
   it("no usa ninguna clase que la hoja no declare", () => {
@@ -284,8 +257,6 @@ describe("Barridos · estilo de la consola", () => {
 
   it("no filtra nombres de campo internos", () => {
     for (const [nombre, documento] of PANTALLAS) {
-      // El nombre de la persona sí se enseña desde el 2026-09-25; lo que nunca
-      // debe asomar es el nombre de la columna o de la propiedad que lo trae.
       assert.doesNotMatch(
         documento,
         /nombre_completo|displayName/u,

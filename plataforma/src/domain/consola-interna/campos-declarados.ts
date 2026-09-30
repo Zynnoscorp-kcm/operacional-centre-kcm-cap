@@ -1,30 +1,3 @@
-/**
- * Alta de campos nuevos.
- *
- * Qué agrega un campo aquí y qué no
- *
- * No ejecuta DDL. Declarar un campo no corre `ALTER TABLE`, no crea
- * columnas y no toca el esquema. Una pantalla que emitiera DDL contra la base
- * de operación podría dejar una tabla a medio migrar mientras el puente VBA
- * está escribiendo, y no hay `ROLLBACK` que devuelva eso.
- *
- * Lo que hace es lo que el esquema ya tenía previsto para esto: agrega un
- * renglón a `organizacion.atributo_definicion`, el registro de campos que existe justamente
- * para incorporar un dato nuevo sin desplegar código. Los valores de ese campo
- * viven después en `organizacion.trabajador_atributo`, uno por trabajador, con
- * procedencia y vigencia.
- *
- * La aprobación es un acto aparte
- *
- * Un campo recién declarado nace con `aprobado_para_reglas = false`. Se puede
- * capturar y consultar, pero no alimenta ninguna regla DNC ni ningún
- * porcentaje de cobertura hasta que alguien lo autoriza por su nombre. Eso
- * impide que un campo capturado a medias mueva un número que Recursos Humanos
- * ya reportó.
- *
- * Ambas operaciones dejan evento en `sistema.bitacora_auditoria`, que es de sólo agregado.
- */
-
 import type { DeclaredFieldPort } from "../../ports/consola-interna.port.ts";
 import { DomainError } from "../comun/errores.ts";
 import {
@@ -36,13 +9,6 @@ import {
   type TipoDeCampo,
 } from "./tipos.ts";
 
-/**
- * Un nombre de campo se escribe como identificador: minúsculas, dígitos y guión
- * bajo, empezando por letra. No es capricho de estilo —es lo que permite que el
- * mismo nombre sirva de clave en `atributo_declarado`, de encabezado en una
- * exportación y de referencia en una regla sin necesitar comillas ni escapes en
- * ninguno de los tres lugares.
- */
 const NOMBRE_VALIDO = /^[a-z][a-z0-9_]{2,59}$/u;
 
 const LARGO_MAXIMO_DESCRIPCION = 500;
@@ -93,9 +59,6 @@ export class DeclaredFieldService {
       );
     }
 
-    // El nombre es UNIQUE en el esquema, así que la carrera entre dos altas
-    // simultáneas la resuelve la base. Comprobarlo antes es para dar el mensaje
-    // legible en el caso normal, no para sostener el invariante.
     const existentes = await this.#repository.listDeclaredFields();
     if (existentes.some((campo) => campo.name === name)) {
       throw new DomainError(
@@ -115,13 +78,6 @@ export class DeclaredFieldService {
     );
   }
 
-  /**
-   * Aprobar es irreversible desde esta pantalla, y lo es a propósito: el
-   * esquema no ofrece un camino de regreso porque retirar la aprobación
-   * dejaría reglas que ya corrieron apoyadas en un campo que después se declaró
-   * no apto. Si un campo aprobado resulta equivocado, lo que se corrige es la
-   * regla que lo usa.
-   */
   async approve(fieldId: string, actor: string): Promise<DeclaredField> {
     if (fieldId.trim() === "") {
       throw new DomainError("CAMPO_REQUERIDO", "Falta el identificador del campo.");
@@ -133,7 +89,6 @@ export class DeclaredFieldService {
       throw new DomainError("CAMPO_NO_ENCONTRADO", "Ese campo no está declarado.");
     }
     if (campo.approvedForRules) {
-      // Idempotente: reaprobar no vuelve a escribir ni vuelve a auditar.
       return campo;
     }
 
@@ -141,7 +96,6 @@ export class DeclaredFieldService {
   }
 }
 
-/** Acepta el valor en cualquier caja y lo devuelve canónico, o `undefined`. */
 function normalizar(valor: string, permitidos: readonly string[]): string | undefined {
   const buscado = valor.trim().toUpperCase();
   return permitidos.find((permitido) => permitido === buscado);

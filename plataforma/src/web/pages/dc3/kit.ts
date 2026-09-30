@@ -1,14 +1,3 @@
-/**
- * Piezas comunes del módulo DC-3.
- *
- * El módulo es una plataforma dentro de la plataforma: tiene su propia barra
- * —con sus secciones, la cuenta de lo que falta emitir y un buscador de
- * trabajadores que lleva directo al expediente— y la misma forma de enseñar un
- * curso, una fecha o una emisión en todas sus pantallas. Lo que se repite se
- * escribe aquí una vez: escrito por pantalla es como acabaron discrepando, en
- * otras consolas, dos listas que decían salir del mismo padrón.
- */
-
 import { sumarDiasIso } from "../../../../../packages/dc3/fechas.js";
 import { etiquetaCortaDeCurso } from "../../../domain/dc3/constancia.ts";
 import { CORTE_DE_CONSTANCIAS } from "../../../domain/dc3/corte.ts";
@@ -25,18 +14,14 @@ import { html, type Html, rawHtml } from "../../kit/html.ts";
 
 export { etiquetaCortaDeCurso, fechaCorta };
 
-/** Lo que la bandeja pide a la bitácora. Sin valor en la dirección: sólo lo que falta. */
 export type VistaDeEmision = "pendientes" | "emitidas" | "parciales" | "todas";
 
-/** Los filtros tal como viajan por la dirección. */
 export interface FiltrosDc3 {
   readonly courseKey?: string | undefined;
   readonly area?: string | undefined;
   readonly payrollType?: string | undefined;
   readonly query?: string | undefined;
-  /** Sin valor, sólo lo que falta emitir: la bandeja es de pendientes. */
   readonly emission?: VistaDeEmision | undefined;
-  /** Sin valor, los cursos desde el corte; `anteriores`, los de años anteriores. */
   readonly period?: "anteriores" | undefined;
 }
 
@@ -44,25 +29,13 @@ export interface DestinoDeEmision {
   readonly pestana?: Dc3PlanTab;
   readonly orden?: Dc3CandidateOrder;
   readonly pagina?: number;
-  /** Con `false`, el enlace no lleva al ancla de la lista. */
   readonly ancla?: boolean;
 }
 
-/** El orden de la bandeja cuando nadie pide otro. */
 export const ORDEN_POR_OMISION: Dc3CandidateOrder = "nombre";
 
-/** El año del corte, para los rótulos: «Desde 2026». */
 export const ANIO_DEL_CORTE = CORTE_DE_CONSTANCIAS.slice(0, 4);
 
-/**
- * El enlace de la bandeja con todo su estado.
- *
- * Los valores de omisión no se escriben —`pestana=listos`, `orden=nombre`,
- * `pagina=1`, `emision=pendientes`, el periodo desde el corte—, y no es por estética: así la dirección de
- * la bandeja recién abierta es `/dc3` a secas, los marcadores guardados siguen
- * valiendo y las pruebas que comparan direcciones no cambian de forma cada vez
- * que se añade un control.
- */
 export function enlaceDeEmision(filtros: FiltrosDc3, destino: DestinoDeEmision = {}): string {
   const parametros = new URLSearchParams();
   if (destino.pestana && destino.pestana !== "listos") parametros.set("pestana", destino.pestana);
@@ -81,7 +54,6 @@ export function enlaceDeEmision(filtros: FiltrosDc3, destino: DestinoDeEmision =
   return `/dc3${cola ? `?${cola}` : ""}${ancla}`;
 }
 
-/** Las tres situaciones del plan, en el orden del trabajo. */
 export const SITUACIONES = [
   {
     clave: "listos" as const,
@@ -110,7 +82,6 @@ export function situacion(clave: Dc3PlanTab): (typeof SITUACIONES)[number] {
   return SITUACIONES.find((s) => s.clave === clave) ?? SITUACIONES[0];
 }
 
-/** Las cuatro vistas de la bitácora, con el rótulo con que se ofrecen. */
 export const VISTAS_DE_EMISION: readonly {
   readonly clave: VistaDeEmision;
   readonly titulo: string;
@@ -121,14 +92,6 @@ export const VISTAS_DE_EMISION: readonly {
   { clave: "todas", titulo: "Todas" },
 ];
 
-/**
- * Los filtros puestos, uno por chip y cada uno con su aspa.
- *
- * Antes sólo existía «Limpiar filtros», que es todo o nada: para pasar de
- * «QMS + FLEXOGRAFICA + sindicalizados» a «QMS + sindicalizados» había que
- * limpiar los tres y volver a poner dos. Cada chip quita el suyo y deja los
- * demás, que es como se recorre un padrón cuando se busca a alguien.
- */
 export function chipsDeFiltro(
   filtros: FiltrosDc3,
   destino: DestinoDeEmision,
@@ -185,20 +148,6 @@ export function chipsDeFiltro(
   </p>`;
 }
 
-/**
- * La barra de cobertura de un curso.
- *
- * Es un `<progress>` y no tres tramos de colores con anchos calculados, y la
- * razón es la política de contenido: `style-src 'self'` sin `'unsafe-inline'`
- * descarta el atributo `style`, así que un ancho proporcional tendría que salir
- * de una escala de clases —«cinco por ciento», «diez por ciento»— que nadie
- * mantiene sin equivocarse. El elemento nativo recibe el valor como atributo,
- * lo dibuja exacto y lo anuncia solo a los lectores de pantalla.
- *
- * Mide una cosa: cuántas constancias están listas del total obligado. Lo que
- * falta para ese total —datos por capturar o el curso sin tomar— se lee en sus
- * columnas, al lado, y no en tramos de color que exigirían su propia leyenda.
- */
 export function barraDeCobertura(curso: Dc3CourseCoverage): Html {
   const rotulo =
     `${String(curso.ready)} de ${String(curso.total)} listos; ` +
@@ -215,7 +164,6 @@ export function barraDeCobertura(curso: Dc3CourseCoverage): Html {
   </progress>`;
 }
 
-/** Porcentaje entero y honesto en los extremos: ni 100 % con uno pendiente. */
 export function porcentaje(parte: number, total: number): string {
   if (total <= 0) return "—";
   if (parte >= total) return "100 %";
@@ -223,7 +171,6 @@ export function porcentaje(parte: number, total: number): string {
   return `${Math.min(99, Math.max(1, Math.round((parte / total) * 100))).toFixed(0)} %`;
 }
 
-/** Las mismas etiquetas del directorio: la clave sola no la lee nadie. */
 export function etiquetaNomina(tipo: string | null): string {
   const clave = (tipo ?? "").trim().toUpperCase();
   if (clave === "NS") return "Sindicalizado";
@@ -231,33 +178,24 @@ export function etiquetaNomina(tipo: string | null): string {
   return clave || "—";
 }
 
-/** El nombre DC-3 de LOTO tiene 150 caracteres y rompe cualquier columna. */
 export function acortar(nombre: string, tope = 44): string {
   return nombre.length > tope ? `${nombre.slice(0, tope - 1)}…` : nombre;
 }
 
-/** La clave con la que viaja un renglón: nómina y curso, como en la bitácora. */
 export function claveDeRenglon(fila: { workerNumber: string; courseKey: string }): string {
   return `${fila.workerNumber}:${fila.courseKey}`;
 }
 
-/** Identificador de elemento a partir de una clave: sin dos puntos ni símbolos. */
 export function idDeClave(prefijo: string, clave: string): string {
   return `${prefijo}-${clave.replace(/[^A-Za-z0-9_-]/gu, "-")}`;
 }
 
-/**
- * El último día del curso, como lo imprime la constancia: la fecha registrada
- * más los días del periodo. La inducción son tres jornadas y cierra dos días
- * después; los cursos de un día empiezan y terminan el mismo.
- */
 export function terminoDe(
   curso: Pick<Dc3Candidate, "completionDate" | "periodDays">,
 ): string | null {
   return curso.completionDate ? sumarDiasIso(curso.completionDate, curso.periodDays) : null;
 }
 
-/** El día y la hora de un instante, en la hora de la planta. */
 export function enPlanta(iso: string): { readonly dia: string; readonly hora: string } {
   const partes = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Mexico_City",
@@ -276,7 +214,6 @@ export function enPlanta(iso: string): { readonly dia: string; readonly hora: st
   };
 }
 
-/** Lo que dice la bitácora de una constancia, en una ficha. */
 export function fichaDeEmision(resumen: Dc3EmissionSummary | undefined): Html {
   if (!resumen) return html``;
   const dia = fechaCorta(enPlanta(resumen.lastAt).dia);
@@ -289,11 +226,6 @@ export function fichaDeEmision(resumen: Dc3EmissionSummary | undefined): Html {
       >`;
 }
 
-/**
- * La palomita verde junto al nombre: ya salió al menos una constancia suya.
- * Va en todas las vistas del módulo para que no haga falta abrir el historial
- * para saberlo.
- */
 export function marcaDeEmitida(emitida: boolean, detalle = "Constancia DC-3 ya emitida"): Html {
   if (!emitida) return html``;
   return html`<span class="marca-emitida" title="${detalle}" role="img" aria-label="${detalle}"
@@ -301,15 +233,9 @@ export function marcaDeEmitida(emitida: boolean, detalle = "Constancia DC-3 ya e
   >`;
 }
 
-/** Ficha con la etiqueta corta del curso y su nombre completo al pasar el puntero. */
 export function fichaDeCurso(nombre: string): Html {
   return html`<span class="curso-ficha" title="${nombre}">${etiquetaCortaDeCurso(nombre)}</span>`;
 }
-
-// ── Iconos ─────────────────────────────────────────────────────────────────
-// Trazos de 20×20 en `currentColor`, en línea: la política de contenido no
-// admite un paquete de iconos por CDN, y un `<svg>` en el marcado no es un
-// guion ni una hoja externa.
 
 function icono(trazo: string, tamano = 15): Html {
   return rawHtml(
@@ -324,11 +250,6 @@ export const ICONO_OJO = icono(
     '<circle cx="10" cy="10" r="2.4"/>',
 );
 
-/**
- * El símbolo de combinar: dos círculos que se traslapan. Va en línea y con el
- * mismo trazo que el ojo, porque la política de contenido no admite un paquete
- * de iconos por CDN.
- */
 export const ICONO_COMBINAR = icono(
   '<circle cx="7.6" cy="10" r="4.9"/><circle cx="12.4" cy="10" r="4.9"/>',
 );
@@ -369,7 +290,6 @@ const ICONO_PERSONA = icono(
   16,
 );
 
-/** Las secciones del módulo, en el orden del trabajo. */
 export type SeccionDc3 = "bandeja" | "historial" | "cobertura" | "datos" | "trabajador";
 
 const SECCIONES: readonly {
@@ -386,27 +306,11 @@ const SECCIONES: readonly {
 
 export interface BarraDeModulo {
   readonly activa: SeccionDc3;
-  /** Constancias con fecha del curso y sin asentar: la cifra de la bandeja. */
   readonly porEmitir?: number | undefined;
-  /** Lo que quedó escrito en el buscador. */
   readonly busqueda?: string | undefined;
-  /** En el expediente, a quién se está viendo. */
   readonly trabajador?: { readonly numero: string; readonly nombre: string } | undefined;
 }
 
-/**
- * La barra del módulo.
- *
- * Sustituye a la tira genérica de sub-pestañas en las pantallas DC-3, y es lo
- * que las hace sentirse una sola aplicación: las secciones con su icono, la
- * cifra de lo que falta emitir siempre a la vista, y un buscador de
- * trabajadores que contesta desde cualquier pantalla la pregunta de la
- * ventanilla —«¿qué constancias tiene esta persona?»—.
- *
- * Lleva su propio nombre de transición de vista, distinto del de la tira
- * genérica: al moverse entre pantallas del módulo la barra se queda quieta y la
- * píldora se desliza; al llegar desde otra sección, la tira se funde en ella.
- */
 export function renderBarraDeModulo(barra: BarraDeModulo): Html {
   return html`<nav class="modulo" aria-label="Secciones de constancias DC-3">
     <ul class="modulo-secciones">
@@ -460,7 +364,6 @@ export function renderBarraDeModulo(barra: BarraDeModulo): Html {
   </nav>`;
 }
 
-/** El ojo de vista previa: compone la constancia sin asentarla, en otra pestaña. */
 export function ojoDeVistaPrevia(destino: string): Html {
   return html`<a
     class="boton-pequeno boton-icono"
@@ -473,7 +376,6 @@ export function ojoDeVistaPrevia(destino: string): Html {
   >`;
 }
 
-/** Por qué no salió una constancia de la tanda, en palabras de la ventanilla. */
 export function motivoDeFallo(codigo: string): string {
   switch (codigo) {
     case "CANDIDATO_DC3_NO_ENCONTRADO":
@@ -487,26 +389,16 @@ export function motivoDeFallo(codigo: string): string {
   }
 }
 
-/** El acuse de una emisión: lo que salió, lo que no, y la descarga. */
 export interface AcuseDeEmision {
   readonly emitidas: number;
   readonly blancos: number;
   readonly fallidas: readonly { readonly clave: string; readonly codigo: string }[];
-  /** Cuántas fallaron en total, cuando son más de las que se nombran. */
   readonly fallidasTotal?: number | undefined;
-  /** A quién, cuando fue una sola. */
   readonly una?: { readonly workerName: string; readonly courseName: string } | undefined;
-  /** El documento de lo emitido, sin volver a asentarlo. */
   readonly descarga?: string | undefined;
   readonly formato: "pdf" | "zip";
 }
 
-/**
- * El acuse arriba de la pantalla, después de emitir.
- *
- * La emisión vuelve a la misma lista, con los mismos filtros y en la misma
- * página: lo emitido sale de la bandeja y el documento baja solo.
- */
 export function renderAcuse(acuse: AcuseDeEmision): Html {
   const titulo =
     acuse.emitidas === 0

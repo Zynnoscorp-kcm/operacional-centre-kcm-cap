@@ -1,19 +1,3 @@
-/**
- * Envío en partes: lo que no cabe en una petición llega igual que si cupiera.
- *
- * La nube corta cada petición en 4.5 MB. Excel parte lo que pase de ~3 MB y
- * manda las partes una tras otra; la plataforma las guarda hasta que llega la
- * última y procesa el envío completo con la acción y el `requestId` originales.
- *
- * Lo que se fija aquí es lo que no se ve en la pantalla: que el resultado sea
- * idéntico al de un envío entero, que repetir la última parte no duplique nada,
- * que sin todas las partes no se procese nada, que dos equipos no mezclen sus
- * partes y que una parte que no cuadra se rechace sin tocar la base.
- *
- * El envío de ejemplo es el reporte DC-3 porque su efecto se cuenta sin
- * preparar una matriz: cada renglón es un evento, y repetirlo se reconoce.
- */
-
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
@@ -53,7 +37,6 @@ const CABECERAS = [
   "errorCode",
 ];
 
-/** Un reporte DC-3 sintético de `renglones` eventos, ya en base64 web-safe. */
 function reporte(renglones: number, prefijo = "DC3-SINTETICO-"): string {
   const filas = Array.from({ length: renglones }, (_, i) =>
     [
@@ -76,7 +59,6 @@ function partir(texto: string, partes: number): string[] {
   return Array.from({ length: partes }, (_, i) => texto.slice(i * tamano, (i + 1) * tamano));
 }
 
-/** Los pares `clave=valor` de una respuesta del protocolo. */
 function campos(respuesta: string): Record<string, string> {
   const [, estado, ...pares] = respuesta.split("\n");
   const salida: Record<string, string> = { estado: estado ?? "" };
@@ -173,7 +155,6 @@ describe("Envío en partes · UPLOAD_PART_V1", () => {
 
     await parte(completo, trozos, 1);
     await parte(completo, trozos, 2);
-    // La respuesta se perdió y Excel la repite, con otro nonce.
     const repetida = campos(await parte(completo, trozos, 2));
 
     assert.equal(repetida.estado, "OK");
@@ -183,7 +164,6 @@ describe("Envío en partes · UPLOAD_PART_V1", () => {
 
   it("reenviar con la misma llave empieza de cero: no mezcla partes ni se procesa antes", async () => {
     const primero = reporte(12);
-    // Mismo largo y misma llave, otro contenido: como un segundo barrido del mismo libro.
     const segundo = reporte(12, "DC3-SINTETICA-");
     assert.equal(segundo.length, primero.length);
     const { parte, reloj, repository } = await puente();
@@ -192,7 +172,6 @@ describe("Envío en partes · UPLOAD_PART_V1", () => {
     assert.equal(campos(await parte(primero, partir(primero, 2), 2)).uploadComplete, "true");
     reloj.avanzarMinutos(20);
 
-    // Con las partes viejas guardadas, la primera del reenvío ya no completa nada.
     assert.equal(campos(await parte(segundo, partir(segundo, 2), 1)).uploadComplete, "false");
     assert.equal(campos(await parte(segundo, partir(segundo, 2), 2)).uploadComplete, "true");
     const claves = (await repository.listDc3Events()).map((evento) => evento.dc3Key);

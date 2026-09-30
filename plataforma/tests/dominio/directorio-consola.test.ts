@@ -1,12 +1,3 @@
-/**
- * Directorio de acceso a la consola (`database/migrations/0038`).
- *
- * Lo que se comprueba aquí no es que se pueda entrar —eso es lo fácil— sino lo
- * que la puerta no debe hacer: aceptar una cuenta revocada, decir cuál de los
- * dos campos falló, o dejar que la credencial del entorno siga siendo válida
- * cuando ya hay un directorio detrás.
- */
-
 import assert from "node:assert/strict";
 import { randomBytes, scryptSync, randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
@@ -22,7 +13,6 @@ import { hojaDeEstilos } from "../../src/web/estaticos.ts";
 const FECHA_FIJA = new Date("2026-08-06T12:00:00.000Z");
 const clock = { now: () => FECHA_FIJA, nowIso: () => FECHA_FIJA.toISOString() };
 
-/** El mismo esquema de la tabla: scrypt de 32 bytes sobre una sal hexadecimal. */
 function alta(usuario: string, clave: string): CuentaDeConsola {
   const sal = randomBytes(16).toString("hex");
   return {
@@ -54,7 +44,6 @@ class DirectorioEnMemoria implements ConsoleDirectoryPort {
   }
 }
 
-/** Las tres cuentas del departamento, con las contraseñas de la prueba. */
 function directorio(): DirectorioEnMemoria {
   return new DirectorioEnMemoria([
     alta("Maricela0000", "Kimberly1"),
@@ -72,8 +61,6 @@ function formulario(campos: Record<string, string>) {
 
 async function servidor(consoleDirectory: ConsoleDirectoryPort | undefined) {
   return buildServer({
-    // La credencial del entorno queda declarada a propósito: con directorio
-    // presente debe dejar de servir.
     config: loadConfig({
       KCM_ENV: "development",
       KCM_PILOT_CONSOLE_USER: "Maricela0000",
@@ -107,7 +94,6 @@ describe("Acceso · directorio de cuentas de consola", () => {
       assert.match(cookie, /HttpOnly/u);
     }
 
-    // Una entrada aceptada, y sólo entonces, deja la hora en el directorio.
     assert.equal(puerta.accesos.length, 3);
     assert.deepEqual(
       puerta.accesos.map((acceso) => acceso.cuando),
@@ -186,12 +172,6 @@ describe("Acceso · directorio de cuentas de consola", () => {
   });
 });
 
-/**
- * La puerta dejó de ser la pantalla del quiosco de sala. Era el mismo negro,
- * los mismos haces de WebGL desde un CDN y las mismas tipografías de Google; es
- * ahora la portada de la consola —dos hojas, la azul con la marca y la blanca
- * con las credenciales— hecha con la hoja de estilos de la consola.
- */
 describe("Acceso · la puerta de la consola", () => {
   it("son dos hojas, con la hoja de estilos de la consola y nada de fuera", async () => {
     const app = await servidor(directorio());
@@ -202,7 +182,6 @@ describe("Acceso · la puerta de la consola", () => {
     assert.match(res.body, /class="puerta-hoja puerta-forma"/u);
     assert.match(res.body, /class="puerta-fondo"/u, "falta la silueta que la puerta descubre");
 
-    // Nada de lo que traía la pantalla del quiosco sobrevive aquí.
     assert.doesNotMatch(res.body, /beams-canvas|three\.min\.js|fonts\.googleapis/u);
     assert.doesNotMatch(res.body, /<style/u, "el estilo vive en la hoja, no en la pantalla");
     assert.doesNotMatch(res.body, /\sstyle="/u, "un estilo en línea no pasaría la política");
@@ -237,7 +216,6 @@ describe("Acceso · la puerta de la consola", () => {
 
     assert.match(res.body, /class="campo-rechazado"/u);
     assert.match(res.body, /class="puerta-ayuda puerta-ayuda-error"/u);
-    // El sacudón es de la hoja de estilos y no de un guion.
     assert.match(hojaDeEstilos.contenido, /animation: puertaSacudon 0\.4s ease/u);
   });
 });

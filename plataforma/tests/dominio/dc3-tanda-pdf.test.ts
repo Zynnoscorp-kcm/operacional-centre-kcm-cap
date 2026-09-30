@@ -1,18 +1,3 @@
-/**
- * El PDF de una tanda de constancias.
- *
- * Una tanda baja en un solo archivo para imprimirse de una vez. Tres cosas
- * tienen que ser ciertas para que eso funcione, y ninguna se ve en la pantalla:
- *
- * 1. El logotipo que se repite en cada hoja se guarda una sola vez. Sin eso,
- *    sesenta constancias de personal sindicalizado pasan de diez megas y la nube
- *    corta la respuesta.
- * 2. Los recuadros escribibles de cada hoja son campos distintos. En un PDF dos
- *    campos con el mismo nombre son el mismo campo: escribir la ocupación en la
- *    primera constancia la escribiría en todas.
- * 3. La hoja de entrega se parte en hojas y dice cuántas son.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -103,7 +88,6 @@ describe("DC-3 · el PDF de una tanda", () => {
     assert.match(pdf, /Hoja 1 de 3/u);
     assert.match(pdf, /Hoja 3 de 3/u);
     assert.match(pdf, /emitidas el 6 de agosto de 2026 por Maricela0000/u);
-    // La nota de los blancos va una vez, en la última hoja.
     assert.equal(cuantas(Buffer.from(pdf, "latin1"), /Sale con alg\\372n recuadro en blanco/gu), 1);
   });
 });

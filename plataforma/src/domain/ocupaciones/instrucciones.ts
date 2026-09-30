@@ -1,23 +1,3 @@
-/**
- * Lo que se le dice al modelo en cada paso, y la forma exacta de lo que debe
- * contestar.
- *
- * Tres decisiones que conviene no deshacer sin volver a evaluar:
- *
- * - **Sin nombre de empresa ni de planta.** El contexto es «una planta de
- *   papel tisú», que basta para razonar y no identifica a nadie. Un puesto
- *   único junto al nombre de la empresa sí apuntaría a una persona.
- * - **Sin ejemplos del padrón.** Cada caso se evalúa desde cero: el modelo no ve
- *   cómo se clasificó a otros trabajadores.
- * - **Dos pasos.** Primero la subárea entre 55; después la ocupación entre las
- *   de esa subárea (46 en la mediana). Así cada llamada cabe en el tope por
- *   minuto de los planes gratuitos y el modelo compara pocas opciones a la vez.
- *
- * Los criterios son del departamento y se corrigen aquí. Cualquier cambio de
- * texto cambia la huella de configuración, y con ella queda marcado en cada
- * sugerencia con qué instrucciones se hizo.
- */
-
 import { z } from "zod";
 
 import type { SolicitudJson } from "../../ports/modelo-de-lenguaje.port.ts";
@@ -79,7 +59,6 @@ export const INSTRUCCIONES_DE_OCUPACION = [
   '{"codigo": "552081900", "alternativa": "552090402", "confianza": "alta", "motivo": "una o dos frases"}',
 ].join("\n");
 
-/** Lo que el modelo debe devolver en el primer paso. Se valida siempre, aunque el proveedor prometa el esquema. */
 export const RespuestaDeSubareas = z.object({
   subareas: z.array(z.string()),
   motivo: z.string(),
@@ -162,19 +141,6 @@ export function solicitudDeOcupacion(
   };
 }
 
-// ------------------------------------------------------------------ en lote
-//
-// Las mismas preguntas, con varios casos por petición. El plan gratuito da 50
-// peticiones al día y un caso suelto gasta cuatro; en lote, 50 trabajadores
-// caben en unas quince. Lo que se cuida para que el lote no cueste precisión:
-//
-// - cada caso lleva su identificador y se contesta por separado;
-// - las instrucciones piden resolverlos de forma independiente, porque el
-//   riesgo propio del lote es contagiar la respuesta de un caso al siguiente;
-// - la ocupación se pregunta en grupos chicos que comparten subárea, de modo
-//   que el modelo compara pocas opciones y pocos casos a la vez.
-
-/** Un caso dentro de un lote. El identificador es corto y no dice nada de la persona. */
 export interface CasoEnLote extends CasoDeOcupacion {
   readonly id: string;
 }
@@ -272,10 +238,6 @@ export function solicitudDeSubareasEnLote(casos: readonly CasoEnLote[]): Solicit
   };
 }
 
-/**
- * La ocupación de un grupo de casos que comparten opciones. `avisos` lleva, por
- * identificador, por qué no sirvió la respuesta anterior de ese caso.
- */
 export function solicitudDeOcupacionEnLote(
   casos: readonly CasoEnLote[],
   bloques: readonly BloqueDeOpciones[],
@@ -304,10 +266,6 @@ export function solicitudDeOcupacionEnLote(
   };
 }
 
-/**
- * Todo el texto fijo que el agente le manda a un modelo, para la huella:
- * cambiar una instrucción o un esquema cambia la huella de las sugerencias.
- */
 export const TEXTOS_DEL_AGENTE = {
   instrucciones: [
     INSTRUCCIONES_DE_SUBAREA,

@@ -1,22 +1,3 @@
-/**
- * Rutas de la consola interna.
- *
- * Cinco pantallas y sus gemelas en JSON: tres de auditoría, una de campos
- * declarados y una de exploración de la base.
- *
- * Quién puede escribir
- *
- * Leer no pide nada, como el resto de la consola. Declarar y aprobar un campo
- * sí, y piden lo único que la corrida piloto tiene: haber entrado por
- * `/acceso`. No es un control de acceso —la cookie no distingue roles y ninguna
- * otra pantalla la exige—; es que estas dos operaciones dejan un evento firmado
- * con un nombre en la bitácora, y ese nombre tiene que venir de algún lado.
- *
- * Sin credenciales de piloto declaradas no hay sesión posible, así que tampoco
- * hay exigencia: la pantalla se comporta como antes de la prueba y firma como
- * `CONSOLA_INTERNA`. Es la misma regla que sigue `/salas` con su contraseña.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
@@ -64,12 +45,8 @@ export function registerInternalConsoleRoutes(
 ): void {
   const { config, clock, sessions, auditService, fieldService, previewService } = deps;
 
-  // Sin base, las tres secciones de auditoría y el explorador quedan vacíos. Se
-  // marca aquí para que la pantalla diga «no hay base» en vez de dejar creer
-  // que no pasó nada en la semana.
   const sinBase = config.databaseUrl === undefined || config.databaseUrl === "";
 
-  /** Requiere sesión sólo si la corrida declaró credenciales con las que abrirla. */
   const exigeSesion = config.pilot.consoleUser !== undefined && !config.pilot.openAccess;
 
   function actorDe(peticion: FastifyRequest): string | undefined {
@@ -81,16 +58,11 @@ export function registerInternalConsoleRoutes(
   const html = (respuesta: FastifyReply, cuerpo: string): FastifyReply =>
     respuesta.type("text/html; charset=utf-8").send(cuerpo);
 
-  /** Vuelve a `/campos` con el aviso ya redactado; el HTML no lo interpreta. */
   const volverACampos = (respuesta: FastifyReply, aviso: string, esError: boolean): FastifyReply =>
     respuesta.redirect(
       `/campos?${new URLSearchParams({ [esError ? "error" : "notice"]: aviso }).toString()}`,
       303,
     );
-
-  // ---------------------------------------------------------------------------
-  // Auditoría
-  // ---------------------------------------------------------------------------
 
   app.get("/auditoria/sesiones", async (_peticion, respuesta) =>
     html(
@@ -134,10 +106,6 @@ export function registerInternalConsoleRoutes(
   app.get("/api/auditoria/liberaciones", async (_peticion, respuesta) =>
     respuesta.send({ releases: await auditService.releases() }),
   );
-
-  // ---------------------------------------------------------------------------
-  // Campos declarados
-  // ---------------------------------------------------------------------------
 
   app.get("/campos", async (peticion, respuesta) => {
     const consulta = peticion.query as { notice?: string; error?: string };
@@ -229,10 +197,6 @@ export function registerInternalConsoleRoutes(
       return volverACampos(respuesta, error.message, true);
     }
   });
-
-  // ---------------------------------------------------------------------------
-  // Explorador de la base
-  // ---------------------------------------------------------------------------
 
   app.get("/base", async (_peticion, respuesta) =>
     html(

@@ -24,10 +24,6 @@ export class DncEngine {
 
 export const UNIFIED_COURSES: readonly { readonly trainingId: string; readonly canonicalName: string; readonly isTechnical: boolean }[];
 
-/**
- * Resuelve un identificador de curso —trainingId, nombre canónico o alias
- * aprobado— contra el catálogo unificado. `null` cuando no lo reconoce.
- */
 export function resolveCourse(
   identifier: string,
   options?: { readonly sourceKey?: string },

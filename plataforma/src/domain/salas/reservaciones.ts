@@ -49,17 +49,6 @@ function minutes(value: string): number {
   return Number(hours) * 60 + Number(mins);
 }
 
-/**
- * Quien reserva tiene que quedar identificado. No es una preferencia de la
- * pantalla: la base lo exige en la restricción `reserva_solicitante_identificado`
- * (migración 0021), que pide nómina o dato de contacto. Comprobarlo aquí
- * convierte lo que era un 500 sin explicación —la restricción saltando en el
- * INSERT— en un error de captura con nombre, y vale igual para la persistencia
- * en memoria, que no tiene restricciones que lo delaten.
- *
- * El adaptador reparte este valor en dos columnas según su forma: cinco dígitos
- * son la nómina; cualquier otra cosa, el contacto de quien no la tiene.
- */
 function identificarSolicitante(input: CreateReservationInput): string {
   const nomina = (input.requesterWorkerNumber ?? "").trim();
   if (nomina) {
@@ -72,8 +61,6 @@ function identificarSolicitante(input: CreateReservationInput): string {
     return nomina;
   }
 
-  // La agenda ya no pide nómina: sin nómina ni contacto, el nombre de quien
-  // reserva cumple el dato de contacto que exige la base.
   const contacto = (input.requesterContact ?? "").trim() || (input.requesterName ?? "").trim();
   if (!contacto) {
     throw new DomainError("INVALID_ROOM_RESERVATION", "Falta el nombre de quien reserva.");

@@ -1,16 +1,3 @@
-/**
- * Motor de reconciliación por procedencia para la ingesta de matriz HC.
- *
- * Reglas que implementa:
- * 1. Autoridad compartida: XLSB para historial, SQL para operación (quiosco/sesiones).
- * 2. Una fecha liberada por la plataforma (`SESSION_RELEASE`) NUNCA es alterada ni retirada por una importación.
- * 3. Si el maestro contradice una fecha liberada de plataforma, se genera un CONFLICTO y se detiene la aplicación.
- * 4. Si el maestro corrige una fecha propia (`XLSB_IMPORT`), se actualiza en el registro y se guarda en el historial.
- * 5. Si el maestro retira una fecha propia (`XLSB_IMPORT`), se marca como RETIRADA en el registro y se guarda en el historial.
- * 6. Si una fecha previamente retirada reaparece en el maestro, se REACTIVA en la misma fila sin duplicar identidad.
- * 7. Ausencia en un extracto (DELTA o FULL) no equivale a baja laboral.
- */
-
 import { createHash, randomUUID } from "node:crypto";
 import { isWorkerNumber, parseWorkerNumber } from "../comun/numero-trabajador.ts";
 import {
@@ -64,7 +51,6 @@ export function validateSnapshot(
     throw new InvalidSnapshotError("La fecha de extracción es inválida");
   }
 
-  // Comprobar que no sea un snapshot obsoleto
   if (latestExtractedAt) {
     const currentMs = new Date(snapshot.extractedAt).getTime();
     const latestMs = new Date(latestExtractedAt).getTime();
@@ -75,7 +61,6 @@ export function validateSnapshot(
     }
   }
 
-  // Comprobar diagnósticos bloqueantes
   const diag = snapshot.diagnostics;
   if (diag?.counts) {
     if (diag.counts.skippedCompletionCount > 0) {
@@ -93,7 +78,6 @@ export function validateSnapshot(
     }
   }
 
-  // Validar empleados
   if (!snapshot.employees || typeof snapshot.employees !== "object") {
     throw new InvalidSnapshotError("La lista de empleados no es válida");
   }
@@ -118,7 +102,6 @@ export function validateSnapshot(
     }
   }
 
-  // Validar cursos
   if (!snapshot.courses || typeof snapshot.courses !== "object") {
     throw new InvalidSnapshotError("La lista de cursos no es válida");
   }
@@ -129,7 +112,6 @@ export function validateSnapshot(
     }
   }
 
-  // Validar fechas
   if (!snapshot.completions || typeof snapshot.completions !== "object") {
     throw new InvalidSnapshotError("La lista de capacitaciones no es válida");
   }
@@ -159,9 +141,6 @@ export function normalizeText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
-/**
- * Resuelve el mapa de cursos entre la fuente XLSB y el catálogo canónico.
- */
 export function resolveCourseMappings(
   snapshotCourses: readonly SnapshotCourse[],
   existingCourses: readonly CourseCatalogEntry[],
@@ -182,7 +161,6 @@ export function resolveCourseMappings(
   const existingByNormName = new Map(existingCourses.map((c) => [c.normalizedName, c]));
 
   for (const sc of snapshotCourses) {
-    // 1. Mapeo explícito
     const mappedTrainingId = mappingMap.get(sc.sourceKey);
     if (mappedTrainingId) {
       const existing = existingByTrainingId.get(mappedTrainingId);
@@ -203,7 +181,6 @@ export function resolveCourseMappings(
       }
     }
 
-    // 2. Coincidencia directa por sourceKey
     const byKey = existingBySourceKey.get(sc.sourceKey);
     if (byKey) {
       sourceKeyToTrainingId.set(sc.sourceKey, byKey.trainingId);
@@ -220,7 +197,6 @@ export function resolveCourseMappings(
       continue;
     }
 
-    // 3. Coincidencia por nombre normalizado (si ya existe un curso con ese nombre)
     const normName = normalizeText(sc.displayName);
     const byName = existingByNormName.get(normName);
     if (byName) {
@@ -239,14 +215,12 @@ export function resolveCourseMappings(
       continue;
     }
 
-    // 4. Si es catálogo previo no vacío y no hubo mapeo para un curso desconocido
     if (existingCourses.length > 0 && !allowNewCourses) {
       throw new UnmappedCourseError(
         `El curso '${sc.displayName}' (${sc.sourceKey}) no tiene mapeo a un trainingId del catálogo`,
       );
     }
 
-    // 5. Creación de nuevo curso
     const newTrainingId = generateTrainingId(sc.sourceKey);
     sourceKeyToTrainingId.set(sc.sourceKey, newTrainingId);
     newCourses.push({
@@ -265,9 +239,6 @@ export function resolveCourseMappings(
   return { sourceKeyToTrainingId, updatedCourses, newCourses };
 }
 
-/**
- * Reconcilia un snapshot contra los registros HC y el catálogo existente.
- */
 export function reconcileSnapshot({
   snapshot,
   existingWorkers,
@@ -291,7 +262,6 @@ export function reconcileSnapshot({
 }): ReconciledOperations {
   validateSnapshot(snapshot);
 
-  // 1. Resolver cursos
   const { sourceKeyToTrainingId, updatedCourses, newCourses } = resolveCourseMappings(
     snapshot.courses,
     existingCourses,
@@ -310,7 +280,6 @@ export function reconcileSnapshot({
     });
   }
 
-  // Actualizar lastSeenImportId en todos los cursos presentes en el snapshot
   const coursesToUpsert: CourseCatalogEntry[] = [];
   const seenTrainingIds = new Set<string>();
 
@@ -327,7 +296,6 @@ export function reconcileSnapshot({
     }
   }
 
-  // 2. Reconciliar trabajadores
   const existingWorkersMap = new Map(existingWorkers.map((w) => [w.workerNumber, w]));
   const workersToUpsert: WorkerCatalogEntry[] = [];
   const snapshotWorkerIds = new Set<string>();
@@ -351,7 +319,6 @@ export function reconcileSnapshot({
         updatedAt: nowIso,
       });
     } else {
-      // Actualizar si cambiaron atributos laborales
       const changed =
         existing.displayName !== emp.displayName ||
         existing.hireDate !== emp.hireDate ||
@@ -380,7 +347,6 @@ export function reconcileSnapshot({
     }
   }
 
-  // 3. Mapear completions del snapshot por par (workerNumber, trainingId)
   const snapshotCompletionsMap = new Map<string, SnapshotCompletion>();
   for (const comp of snapshot.completions) {
     const trainingId = sourceKeyToTrainingId.get(comp.sourceKey);
@@ -390,7 +356,6 @@ export function reconcileSnapshot({
     }
   }
 
-  // Mapear registros HC existentes por par (workerNumber, trainingId)
   const recordsByPair = new Map<string, HcRecord[]>();
   for (const rec of existingRecords) {
     const pairKey = `${rec.workerNumber}|${rec.trainingId}`;
@@ -414,7 +379,6 @@ export function reconcileSnapshot({
   const processedPairKeys = new Set<string>();
   const nowIso = new Date().toISOString();
 
-  // 4. Reconciliar cada completion traído por el snapshot
   for (const [pairKey, comp] of snapshotCompletionsMap.entries()) {
     processedPairKeys.add(pairKey);
     const parts = pairKey.split("|");
@@ -429,10 +393,8 @@ export function reconcileSnapshot({
     if (activeRecord) {
       if (activeRecord.provenance === "SESSION_RELEASE") {
         if (activeRecord.completionDate === comp.completionDate) {
-          // Coincide exactamente con la sesión liberada: NO-OP
           continue;
         } else {
-          // El maestro contradice una fecha liberada de plataforma
           conflictCount += 1;
           conflicts.push({
             workerNumber: workerNum,
@@ -444,12 +406,9 @@ export function reconcileSnapshot({
           });
         }
       } else {
-        // Procedencia XLSB_IMPORT
         if (activeRecord.completionDate === comp.completionDate) {
-          // Mismo valor: NO-OP
           continue;
         } else {
-          // Fecha corregida en el maestro
           correctedCount += 1;
           const previousDate = activeRecord.completionDate;
           const updated: HcRecord = {
@@ -481,10 +440,8 @@ export function reconcileSnapshot({
         }
       }
     } else {
-      // No hay registro VIGENTE. ¿Hay un registro RETIRADO de este par?
       const retiredRecord = pairRecords.find((r) => r.status === "RETIRADO");
       if (retiredRecord && retiredRecord.provenance === "XLSB_IMPORT") {
-        // Reactivación en la misma fila técnica
         reactivatedCount += 1;
         const updated: HcRecord = {
           ...retiredRecord,
@@ -514,7 +471,6 @@ export function reconcileSnapshot({
           recordedAt: nowIso,
         });
       } else {
-        // ALTA nueva
         insertedCount += 1;
         const recordId = randomUUID();
         const newRecord: HcRecord = {
@@ -558,7 +514,6 @@ export function reconcileSnapshot({
     }
   }
 
-  // 5. Reconciliar registros VIGENTES existentes ausentes en el snapshot
   if (scope === "FULL") {
     for (const [pairKey, pairRecords] of recordsByPair.entries()) {
       if (processedPairKeys.has(pairKey)) continue;
@@ -573,12 +528,10 @@ export function reconcileSnapshot({
       const workerNum = parseWorkerNumber(workerNumStr);
 
       if (activeRecord.provenance === "SESSION_RELEASE") {
-        // Invariante de plataforma: una sesión liberada no se borra si el XLSB aún no la incluye
         pendingMasterCount += 1;
         continue;
       }
 
-      // Procedencia XLSB_IMPORT: si el empleado y el curso existen en el snapshot pero la celda quedó vacía
       if (snapshotWorkerIds.has(workerNum) && seenTrainingIds.has(trainingId)) {
         retiredCount += 1;
         const previousDate = activeRecord.completionDate;

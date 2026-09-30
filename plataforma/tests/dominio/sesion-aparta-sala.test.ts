@@ -1,19 +1,3 @@
-/**
- * Crear una sesión con sala aparta el aula en la agenda.
- *
- * Lo que se comprueba no es que el formulario tenga un desplegable —eso se ve
- * mirando la pantalla— sino las tres cosas que no se ven:
- *
- * 1. La reservación existe y la agenda pública la publica como ocupada, que
- *    es el punto de todo el cambio: que nadie agende encima.
- * 2. El tramo se redondea hacia afuera al bloque de treinta minutos. Una
- *    sesión de 09:10 a 09:55 aparta de 09:00 a 10:00; redondear al más cercano
- *    dejaría a dos grupos compartiendo aula media hora.
- * 3. Cuando la sala ya está tomada no se crea la sesión. Es la razón por la
- *    que la reservación va primero: si fuera al revés quedaría una sesión
- *    apuntando a un aula que es de alguien más.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -40,7 +24,6 @@ async function servidor() {
   });
 }
 
-/** El curso que trae el repositorio en memoria. */
 const CURSO = "CAP-SINT-001";
 
 interface CuerpoDeSesion {
@@ -109,7 +92,6 @@ describe("Crear sesión con sala · la agenda se entera", () => {
   it("el tramo se redondea hacia afuera, nunca de menos", async () => {
     const app = await servidor();
 
-    // 09:10 + 45 min = 09:55. La sala se aparta de 09:00 a 10:00.
     const res = await crear(app, {
       roomId: "KLEENEX",
       startTime: "09:10",
@@ -120,7 +102,6 @@ describe("Crear sesión con sala · la agenda se entera", () => {
     const { reservation, session } = res.json();
     assert.equal(reservation.startTime, "09:00");
     assert.equal(reservation.endTime, "10:00");
-    // La sesión conserva su hora real: el redondeo es de la sala, no del curso.
     assert.equal(session.startTime, "09:10");
     assert.equal(session.durationMinutes, 45);
   });
@@ -134,7 +115,6 @@ describe("Crear sesión con sala · la agenda se entera", () => {
     assert.equal(choque.statusCode, 409);
     assert.match(choque.json().error.message, /ya está reservado/u);
 
-    // La sesión que chocó no quedó a medias.
     const sesiones = await app.inject({ method: "GET", url: "/api/sessions" });
     assert.equal(sesiones.json().sessions.length, 1, "se creó una sesión sin sala apartada");
 

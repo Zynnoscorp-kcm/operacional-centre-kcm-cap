@@ -1,14 +1,3 @@
-/**
- * Adaptador PostgreSQL para el Sistema General por Trabajador (Función 8).
- *
- * Tablas que consume:
- * - `organizacion.trabajador`, `organizacion.departamento`, `organizacion.area`, `organizacion.puesto`
- * - `organizacion.trabajador_atributo` (escolaridad declarada, con su procedencia)
- * - `operacion.historial_capacitacion` y `catalogo.capacitacion` (trayectoria acreditada)
- * - `operacion.sesion` y `operacion.asistencia` (cursos ya programados)
- * - `dc3.constancia` y `dc3.curso_configuracion` (constancias y sus bloqueos)
- */
-
 import { parseWorkerNumber, type WorkerNumber } from "../../domain/comun/numero-trabajador.ts";
 import type {
   WorkerSystemRepositoryPort,
@@ -44,11 +33,6 @@ interface FilaTrabajador {
   escolaridad: string | null;
 }
 
-/**
- * La ficha laboral se arma con los mismos `JOIN` en todas las consultas. La
- * escolaridad sólo se toma de su atributo vigente; una cerrada describe el
- * pasado y no debe aparecer como el valor actual.
- */
 const SELECCION_TRABAJADOR = `
   SELECT
     t.numero_trabajador,
@@ -142,10 +126,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     return row ? aWorkerRecord(row) : null;
   }
 
-  /**
-   * Trayectoria acreditada: la réplica consultable de la matriz. Sólo cuenta el
-   * registro vigente; un retirado dejó de ser un hecho del trabajador.
-   */
   async getWorkerTrainingHistory(
     workerNumber: WorkerNumber,
   ): Promise<readonly CourseTrajectoryEntry[]> {
@@ -180,11 +160,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }));
   }
 
-  /**
-   * Cursos ya programados: sesiones abiertas donde el trabajador tiene
-   * asistencia y todavía no se libera. Sirve para que la pantalla distinga
-   * `PROGRAMADO` de `PENDIENTE`.
-   */
   async getWorkerScheduledSessions(workerNumber: WorkerNumber): Promise<Record<string, string>> {
     const { rows } = await this.sqlClient.query<{
       clave_curso: string;
@@ -203,16 +178,10 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     );
 
     const map: Record<string, string> = {};
-    // La primera fila de cada curso gana: viene de la sesión más reciente.
     for (const r of rows) map[r.clave_curso] ??= r.codigo_sesion;
     return map;
   }
 
-  /**
-   * Última fecha por trabajador y curso, para toda la planta en una consulta.
-   * El `max` lo resuelve la base: traer las decenas de miles de filas del
-   * historial para quedarse con una por par sería mover el problema de sitio.
-   */
   async getLatestTrainingByWorker(): Promise<ReadonlyMap<string, Record<string, string>>> {
     const { rows } = await this.sqlClient.query<{
       numero_trabajador: string;
@@ -241,17 +210,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     return mapa;
   }
 
-  /**
-   * Resumen DNC por departamento y por curso, sumado por la base.
-   *
-   * `lectura.cobertura_dnc` ya resuelve a quién le toca cada curso y con
-   * qué fecha lo cumplió; lo que falta para llegar a los cinco estados del motor
-   * es la vigencia, que vive en `dnc.regla`. Se vuelve a unir contra la
-   * regla porque la vista no publica `meses_recurrencia`, y se toma una sola
-   * regla por par con `DISTINCT ON`: si un curso estuviera declarado a la vez
-   * por área y por departamento, gana el área —la más específica—, que es lo que
-   * hace el registro de reglas en JavaScript.
-   */
   readonly #EVALUACION_DNC = `
     WITH programado AS (
       SELECT DISTINCT asi.trabajador_id, s.capacitacion_id
@@ -380,11 +338,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }));
   }
 
-  /**
-   * Los cursos exigibles en el área de una persona y cuántos de sus compañeros
-   * los tienen vigentes. Reutiliza la evaluación de los resúmenes —la misma
-   * derivación de estados que el motor— y sólo acota por el área de la persona.
-   */
   async getAreaCourseCompletion(
     workerNumber: WorkerNumber,
   ): Promise<readonly AreaCourseCompletionRow[]> {
@@ -415,7 +368,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     }));
   }
 
-  /** Sesiones pendientes de liberar por trabajador y curso, en una consulta. */
   async getScheduledSessionsByWorker(): Promise<ReadonlyMap<string, Record<string, string>>> {
     const { rows } = await this.sqlClient.query<{
       numero_trabajador: string;
@@ -435,23 +387,12 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     const mapa = new Map<string, Record<string, string>>();
     for (const r of rows) {
       const porCurso = mapa.get(r.numero_trabajador) ?? {};
-      // La primera fila de cada curso gana: viene de la sesión más reciente.
       porCurso[r.clave_curso] ??= r.codigo_sesion;
       mapa.set(r.numero_trabajador, porCurso);
     }
     return mapa;
   }
 
-  /**
-   * Constancias DC-3. Un curso es elegible cuando sus metadatos legales están
-   * aprobados; mientras no lo estén, el motivo del bloqueo se nombra en vez de
-   * dejar la fila muda.
-   *
-   * Lo emitido sale de dos sitios. `dc3.constancia` es el contrato del lote;
-   * la emisión desde la consola —que es como sale casi todo— se asienta en
-   * `sistema.bitacora_auditoria`. Leer sólo el primero dejaba la ficha diciendo «pendiente de
-   * emisión» de constancias que el módulo DC-3 ya había entregado.
-   */
   async getWorkerDc3Records(workerNumber: WorkerNumber): Promise<readonly Dc3WorkerLogEntry[]> {
     const { rows } = await this.sqlClient.query<{
       clave_curso: string;
@@ -519,12 +460,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     return rows.map((r) => r.nombre);
   }
 
-  /**
-   * Tablero DNC. Se apoya en `lectura.resumen_dnc_trabajador`, que ya
-   * resuelve la regla por área subiendo al departamento; filtrar por curso o
-   * por estado obliga a bajar al detalle, porque «trabajadores a los que les
-   * falta BPM» no se contesta con el resumen.
-   */
   async listDncCoverage(filter?: DncCoverageFilter): Promise<readonly DncCoverageRow[]> {
     const params: unknown[] = [];
     const donde: string[] = ["r.activo = true"];
@@ -600,11 +535,6 @@ export class SupabaseWorkerSystemRepository implements WorkerSystemRepositoryPor
     return rows.map((r) => r.nombre);
   }
 
-  /**
-   * Una sola consulta con subconsultas escalares. Podrían ser nueve viajes y no
-   * lo son: este tablero se mira después de cada carga y multiplicarlo por
-   * nueve es exactamente el gasto que la base no tiene presupuestado.
-   */
   async getDncReconciliation(): Promise<DncReconciliation> {
     const { rows } = await this.sqlClient.query<{
       activos: number;

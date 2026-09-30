@@ -54,7 +54,6 @@ function otsuThreshold(grayscale) {
       bestThreshold = threshold;
     }
   }
-  // Un umbral extremo suele significar fondo uniforme; 210 conserva trazos tenues.
   return Math.max(70, Math.min(210, bestThreshold));
 }
 
@@ -119,8 +118,6 @@ function encodeThresholdedCrop(image, rect, { scale, padding, blankInkRatio }) {
   const binary = Uint8Array.from(grayscale, (value) => (value <= threshold ? 0 : 255));
   const scaledWidth = rect.width * scale;
   const scaledHeight = rect.height * scale;
-  // La interpolacion bilineal evita convertir cada pixel manuscrito en un bloque
-  // grueso; Tesseract conserva mejor curvas como 0, 2, 6, 8 y 9.
   for (let outputY = 0; outputY < scaledHeight; outputY += 1) {
     const sourceY = ((outputY + 0.5) / scale) - 0.5;
     const y0 = Math.max(0, Math.min(rect.height - 1, Math.floor(sourceY)));
@@ -178,10 +175,6 @@ function encodeVisualCrop(image, rect, scale) {
   });
 }
 
-/**
- * Extrae y prepara cada casilla ya alineada. La funcion no escribe en disco;
- * devuelve PNGs binarios que pueden mostrarse en revision o enviarse al OCR.
- */
 export function extractDigitCrops({ imageBytes, segmentation, options = {} }) {
   if (!Buffer.isBuffer(imageBytes) && !(imageBytes instanceof Uint8Array)) {
     throw new TypeError("imageBytes debe ser Buffer o Uint8Array");
@@ -249,7 +242,6 @@ export function extractDigitCrops({ imageBytes, segmentation, options = {} }) {
   });
 }
 
-/** Escribe artefactos anonimizados sólo cuando el llamador lo solicita. */
 export function writeCropArtifacts(extraction, { directory }) {
   if (!extraction?.crops || !Array.isArray(extraction.crops)) throw new TypeError("La extraccion de recortes es obligatoria");
   if (typeof directory !== "string" || directory.trim() === "") throw new TypeError("directory es obligatorio");

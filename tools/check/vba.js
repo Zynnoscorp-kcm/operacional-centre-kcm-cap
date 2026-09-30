@@ -1,28 +1,4 @@
 #!/usr/bin/env node
-/**
- * Analisis estatico de las fuentes `.bas` del cliente Excel.
- *
- * El editor VBA solo existe en Windows, asi que este proyecto no puede compilar los modulos aqui.
- * Sin una comprobacion lexica propia, un literal de cadena mal escapado pasa `npm test` intacto y
- * recien falla al compilar el libro, cuando ya no hay evidencia local. El linter reproduce las
- * reglas del lexer de VBA que si pueden verificarse fuera de Excel:
- *
- * - literales de cadena cerrados, con `""` como unica forma de comillas internas;
- * - continuaciones ` _` validas y por debajo del limite del editor;
- * - ausencia de caracteres que VBA nunca acepta fuera de una cadena o comentario;
- * - bloques `Sub`/`Function`/`If`/`For`/`Do`/`With`/`Select`/`Type`/`#If` balanceados;
- * - `Option Explicit` presente y variables declaradas realmente usadas;
- * - toda referencia `Kcm*` resuelta contra una declaracion del propio cliente;
- * - la frontera de plataforma: `#If Mac` solo puede aparecer en el puerto.
- *
- * Esa ultima regla es la que sostiene la estrategia "Mac primero, Windows en paralelo". El
- * compilador de cada sistema compila SOLO su rama de un `#If`, de modo que un error escrito dentro
- * de `#If Mac` no se manifiesta al compilar en Windows ni al reves. La unica defensa disponible sin
- * Excel es mantener esa superficie chica y verificable: el linter analiza el texto completo de las
- * dos ramas, y ademas exige que vivan donde estan declaradas.
- *
- * No sustituye a la compilacion en Excel; acota la clase de fallo que si es detectable sin Excel.
- */
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -30,12 +6,8 @@ const VBA_DIR = "clients/excel/vba";
 const MAX_CONTINUATIONS = 24;
 const VBA_EXTENSIONS = [".bas", ".cls"];
 
-/**
- * El unico modulo autorizado a compilar codigo distinto por sistema: `KcmPlataforma`, el puerto.
- */
 const PLATFORM_FILES = new Set(["KcmPlataforma.bas"]);
 
-/** VBA solo admite `""` dentro de una cadena; una comilla suelta la termina. */
 const STRING_FOLLOWERS = new Set([
   "&", ")", ",", ":", "=", "<", ">", "+", "-", "*", "/", "\\", "^", ".", ";", "'", " ", ""
 ]);
@@ -62,10 +34,6 @@ const BLOCK_OPENERS = [
   { name: "#If", open: /^#if\b/, close: /^#end\s+if\b/ }
 ];
 
-/**
- * Recorre una linea fisica separando codigo, cadenas y comentario.
- * Devuelve los hallazgos lexicos y si la linea termina en continuacion.
- */
 function scanPhysicalLine(text) {
   const issues = [];
   let inString = false;
@@ -117,7 +85,6 @@ function scanPhysicalLine(text) {
   return { issues, code: continued ? code.replace(/\s_$/, " ") : code, continued, comment };
 }
 
-/** Une continuaciones para obtener sentencias completas sin perder la linea de origen. */
 function logicalLines(source) {
   const statements = [];
   const physical = source.split(/\r?\n/);
@@ -148,16 +115,11 @@ function logicalLines(source) {
   return { statements, lexical, maxRun };
 }
 
-/** `If ... Then` abre bloque solo cuando `Then` cierra la sentencia. */
 function opensIfBlock(text) {
   if (!/^if\b/i.test(text)) return false;
   return /\bthen$/i.test(text.replace(/\s*''.*$/, "").trim());
 }
 
-/**
- * `#If Mac` fuera del puerto rompe la garantia de que probar en un sistema dice algo del otro.
- * Se senala la directiva, no su contenido: basta con impedir que la frontera se mueva.
- */
 function checkPlatformBoundary(statements, file) {
   if (PLATFORM_FILES.has(file)) return [];
   return statements
@@ -200,11 +162,8 @@ function checkBlocks(statements, file) {
       stack.push({ name: "If", line });
       continue;
     }
-    // `Exit Sub` y `Exit Function` no cierran el bloque; `End` a secas si terminaria la ejecucion.
     const salida = /^exit\s+(sub|function|property)\b/.exec(lower);
     if (salida) {
-      // Salir con la palabra del procedimiento equivocado no compila, y es facil de escribir al
-      // convertir un Sub en Function o al mover codigo de un procedimiento a otro.
       const dentro = [...stack].reverse().find((entry) =>
         ["Sub", "Function", "Property"].includes(entry.name),
       );
@@ -220,9 +179,7 @@ function checkBlocks(statements, file) {
     if (/^exit\s+(for|do)\b/.test(lower)) continue;
     for (const block of BLOCK_OPENERS) {
       if (block.open && block.open.test(lower)) {
-        // Un `For ... : Next` de una sola linea no deja bloque abierto.
         if (block.name === "For" && /(?:^|:)\s*next\b/.test(lower)) break;
-        // VBA no admite procedimientos anidados: si uno abre dentro de otro, falta un `End`.
         if (["Sub", "Function", "Property"].includes(block.name)) {
           const open = stack.find((entry) => ["Sub", "Function", "Property"].includes(entry.name));
           if (open) {
@@ -249,15 +206,11 @@ const DECLARATION = /^(?:public\s+|private\s+|friend\s+)?(?:static\s+)?(sub|func
 
 function declaredNames(statements, source) {
   const names = new Set();
-  // `Attribute VB_Name` bautiza al modulo. En un `.cls` ese nombre ES el tipo: `New KcmDiccionario`
-  // no se resuelve contra ninguna declaracion `Sub` ni `Function`, sino contra esta linea. Se lee
-  // del texto original porque el analizador lexico vacia los literales de cadena.
   const moduleName = /^\s*Attribute\s+VB_Name\s*=\s*"(Kcm[A-Za-z0-9_]*)"/m.exec(source ?? "");
   if (moduleName) names.add(moduleName[1].toLowerCase());
   for (const { text } of statements) {
     const match = DECLARATION.exec(text);
     if (match) names.add(match[2].toLowerCase());
-    // `Declare` importa una API externa; su nombre tambien queda disponible en el modulo.
     const external = /\bdeclare\s+(?:ptrsafe\s+)?(?:sub|function)\s+(kcm[a-z0-9_]*)/i.exec(text);
     if (external) names.add(external[1].toLowerCase());
   }
@@ -277,7 +230,6 @@ function referencedNames(statements) {
   return references;
 }
 
-/** Detecta `Dim` sin ningun uso posterior: casi siempre un resto de una version anterior. */
 function unusedLocals(statements, file) {
   const findings = [];
   let scope = null;
@@ -326,9 +278,6 @@ async function main() {
     const { statements, lexical, maxRun } = logicalLines(source);
     modules.set(file, { statements, source });
     lexical.forEach((issue) => findings.push({ file, line: issue.line, message: issue.message }));
-    // `File > Import File` del editor VBA interpreta el `.bas` con la pagina de codigos de Windows,
-    // no como UTF-8: una vocal acentuada literal llegaria corrompida al modulo compilado. Los
-    // caracteres no ASCII que el codigo necesita se construyen con `ChrW$`.
     source.split(/\r?\n/).forEach((text, offset) => {
       const match = /[^\x00-\x7F]/.exec(text);
       if (match) {
@@ -346,12 +295,9 @@ async function main() {
     if (!statements.some(({ text }) => /^option\s+explicit$/i.test(text))) {
       findings.push({ file, line: 1, message: "falta Option Explicit" });
     }
-    // Un `.cls` sin su encabezado de clase se importa como modulo normal y `New` deja de compilar.
     if (file.endsWith(".cls") && !/^VERSION\s+[\d.]+\s+CLASS/m.test(source)) {
       findings.push({ file, line: 1, message: "falta el encabezado VERSION ... CLASS del modulo de clase" });
     }
-    // VBA no admite un procedimiento con el mismo nombre que su modulo: el proyecto deja de
-    // compilar con "Name conflicts with existing module". Es un fallo que solo aparece en Excel.
     const owner = /^\s*Attribute\s+VB_Name\s*=\s*"([^"]*)"/m.exec(source);
     if (owner) {
       const clash = statements.find(({ text }) =>

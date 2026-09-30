@@ -2,15 +2,8 @@ Attribute VB_Name = "KcmMatrixSync"
 Option Explicit
 Option Private Module
 
-' Modulo interno: sus rutinas las llaman otros modulos del cliente y no aparecen
-' en Herramientas > Macros, donde solo quedan las que se usan a mano.
-
-' Numero maximo de caracteres que el servidor acepta en `sourceKey`.
 Private Const KCM_SOURCE_KEY_LIMIT As Long = 200
 
-''' Construye `HC_SNAPSHOT_V1` con la misma semantica que `scripts/extract-hc-xlsb.js`.
-''' Toda lectura de la hoja se hace en bloque: una matriz de 1,686 filas por 34 columnas costaba
-''' mas de noventa mil llamadas COM al leer celda por celda.
 Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As String) As String
     Dim sheet As Worksheet
     Dim sheetName As String
@@ -59,7 +52,6 @@ Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As
     lastCourseColumn = KcmColumnNumber(KcmConfigValue("LAST_COURSE_COLUMN"))
     If lastCourseColumn < firstCourseColumn Then Err.Raise vbObjectError + 7303, _
         "KcmBuildHcSnapshot", "El rango de cursos es invalido"
-    ' Los ocho atributos laborales viven inmediatamente a la derecha del numero de trabajador.
     If employeeColumn + 7 >= firstCourseColumn Then Err.Raise vbObjectError + 7313, _
         "KcmBuildHcSnapshot", "Los atributos del trabajador se traslapan con el rango de cursos"
 
@@ -77,11 +69,6 @@ Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As
     formulas = KcmRangeFormulas(sheet, firstEmployeeRow, employeeColumn, lastEmployeeRow, lastCourseColumn)
     Set employeeIds = KcmNuevoDiccionario()
 
-    ' Una celda de error no se puede leer: llega como error y tratarla como vacia perderia el
-    ' dato en silencio, tenga formula o no. Antes eso detenia la transmision entera. Sigue siendo
-    ' motivo de alto, pero ya no de alto forzoso: las formulas de la matriz vienen de libros
-    ' ajenos y quien opera el cliente no siempre puede repararlas. Se nombran las celdas, se
-    ' decide, y lo que se decide queda en los diagnosticos del snapshot.
     Set filasConError = KcmNuevoDiccionario()
     For rowIndex = 1 To UBound(values, 1)
         For columnIndex = 1 To UBound(values, 2)
@@ -105,9 +92,6 @@ Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As
         End If
     End If
 
-    ' Las formulas se cuentan despues de saber que filas se van: el conteo describe lo que se
-    ' manda, no lo que se leyo. Contar las de una fila omitida dejaria un formulaCellCount que
-    ' no corresponde con ningun trabajador del snapshot.
     For rowIndex = 1 To UBound(values, 1)
         If Not filasConError.Exists(CStr(rowIndex)) Then
             For columnIndex = 1 To UBound(values, 2)
@@ -121,9 +105,6 @@ Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As
     For rowIndex = 1 To UBound(values, 1)
         cellValue = values(rowIndex, 1)
         If filasConError.Exists(CStr(rowIndex)) Then
-            ' La fila se omite completa. Omitir solo la celda rota dejaria al trabajador en la
-            ' plataforma con un atributo en blanco que nadie escribio, o con una capacitacion de
-            ' menos: un dato falso es peor que un trabajador ausente y declarado.
             skippedEmployeeCount = skippedEmployeeCount + 1
         ElseIf Not IsError(cellValue) And Len(Trim$(KcmCellText(cellValue))) > 0 Then
             employeeId = KcmNormalizeEmployeeId(cellValue)
@@ -176,10 +157,6 @@ Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As
     countMembers.Add KcmJsonNumber("skippedEmployeeCount", skippedEmployeeCount)
     countMembers.Add KcmJsonNumber("skippedCourseCount", 0)
     countMembers.Add KcmJsonNumber("skippedCompletionCount", 0)
-    ' Los conteos describen lo que se manda. Las filas con celdas de error quedaron fuera, asi
-    ' que dentro del snapshot toda formula tiene su valor almacenado y no hay ningun error: el
-    ' servidor rechaza un lote que declare lo contrario, y con razon. Cuantos trabajadores se
-    ' quedaron fuera y por que se lee en `skippedEmployeeCount` y en `issues`.
     countMembers.Add KcmJsonNumber("formulaCellCount", formulaCount)
     countMembers.Add KcmJsonNumber("formulaCachedValueCount", formulaCount)
     countMembers.Add KcmJsonNumber("formulaErrorCount", 0)
@@ -206,13 +183,6 @@ Public Function KcmBuildHcSnapshot(ByVal master As Workbook, ByVal sourceHash As
     KcmBuildHcSnapshot = KcmJsonObject(members)
 End Function
 
-''' Que hacer con las celdas de error del rango importado. True para transmitir omitiendo
-''' las filas afectadas; False para detenerse, que es lo que el cliente hacia siempre.
-'''
-''' La clave `MATRIX_CELDAS_ERROR` de `KCM_CONFIG` fija la respuesta sin preguntar y existe
-''' por el ciclo desatendido: un cuadro de dialogo en una corrida programada la deja colgada
-''' hasta que alguien pase por la maquina. `OMITIR` o `DETENER` la resuelven de antemano;
-''' vacia o `PREGUNTAR` abre el cuadro, que es lo correcto cuando hay alguien mirando.
 Private Function KcmDecidirCeldasConError(ByVal totalCeldas As Long, ByVal totalFilas As Long, _
     ByVal direcciones As Collection, ByVal truncada As Boolean) As Boolean
     Dim politica As String
@@ -232,8 +202,6 @@ Private Function KcmDecidirCeldasConError(ByVal totalCeldas As Long, ByVal total
         "No: no se envia nada.")
 End Function
 
-''' Las direcciones en una linea, separadas por coma. Se listan hasta veinte: la lista existe
-''' para poder ir a corregirlas, y pasada esa cantidad ya no se corrigen una por una.
 Private Function KcmListaDirecciones(ByVal direcciones As Collection, ByVal truncada As Boolean) As String
     Dim indice As Long
     Dim lista As String
@@ -246,8 +214,6 @@ Private Function KcmListaDirecciones(ByVal direcciones As Collection, ByVal trun
     KcmListaDirecciones = lista
 End Function
 
-''' El bloque de datos no admite celdas combinadas: una sola de ellas desplazaria valores completos
-''' al leer el rango en bloque. Una unica consulta resuelve las tres respuestas posibles.
 Private Sub KcmAssertUnmergedBlock(ByVal sheet As Worksheet, ByVal firstRow As Long, _
     ByVal firstColumn As Long, ByVal lastRow As Long, ByVal lastColumn As Long)
     Dim state As Variant
@@ -262,9 +228,6 @@ Private Sub KcmAssertUnmergedBlock(ByVal sheet As Worksheet, ByVal firstRow As L
     End If
 End Sub
 
-''' Reproduce `COURSE_RANGE_TRUNCATED` del extractor: un encabezado despues del limite autorizado
-''' bloquea el snapshot. Sin esta guarda, insertar una columna desplazaria el ultimo curso fuera
-''' del rango y el servidor lo desactivaria en silencio.
 Private Sub KcmAssertNoCoursesBeyondLimit(ByVal sheet As Worksheet, ByVal firstEmployeeRow As Long, _
     ByVal firstCourseColumn As Long, ByVal lastCourseColumn As Long)
     Dim used As Range
@@ -295,16 +258,12 @@ Private Function KcmExternalLinkCount(ByVal master As Workbook) As Long
     If IsArray(links) Then KcmExternalLinkCount = UBound(links) - LBound(links) + 1
 End Function
 
-''' Cuenta areas combinadas distintas en la banda de encabezados. El bloque de datos ya se verifico
-''' libre de combinaciones, por lo que el conteo cubre la region que el snapshot interpreta.
 Private Function KcmCountHeaderMerges(ByVal sheet As Worksheet, ByVal firstEmployeeRow As Long, _
     ByVal firstColumn As Long, ByVal lastColumn As Long) As Long
     Dim areas As KcmDiccionario
     Dim rowNumber As Long
     Dim columnNumber As Long
     Dim cell As Range
-    ' No se llama `address`: una variable local con el nombre de la propiedad `Range.Address`
-    ' hace que el compilador resuelva `address(True, True)` contra la variable y pida una matriz.
     Dim mergedAddress As String
     Set areas = KcmNuevoDiccionario()
     For rowNumber = 1 To firstEmployeeRow - 1
@@ -319,8 +278,6 @@ Private Function KcmCountHeaderMerges(ByVal sheet As Worksheet, ByVal firstEmplo
     KcmCountHeaderMerges = areas.Count
 End Function
 
-''' Los ocho atributos se leen por desplazamiento desde el numero de trabajador, no por letras
-''' fijas: asi `EMPLOYEE_COLUMN` sigue siendo la unica coordenada configurada.
 Private Function KcmEmployeeJson(ByVal values As Variant, ByVal rowIndex As Long, _
     ByVal employeeId As String, ByVal firstEmployeeRow As Long, ByVal employeeColumn As Long) As String
     Dim displayName As String
@@ -337,13 +294,6 @@ Private Function KcmEmployeeJson(ByVal values As Variant, ByVal rowIndex As Long
     If Not IsError(values(rowIndex, 3)) Then
         If Len(Trim$(KcmCellText(values(rowIndex, 3)))) > 0 Then
             hireDate = KcmIsoDate(values(rowIndex, 3))
-            ' El mensaje lleva lo que la celda trae de verdad. Sin eso, quien opera el cliente sabe
-            ' que fila revisar pero no que tiene de malo, y la unica salida es abrir la matriz y
-            ' adivinar. Se recorta a 40 caracteres: es un aviso, no un volcado.
-            ' El mensaje nombra la celda exacta y lo que contiene. Sin eso, un mensaje que solo
-            ' dice la fila no distingue entre una fecha mal capturada y la columna equivocada, que
-            ' es lo que pasa cuando la matriz no tiene los atributos en el orden esperado: falla en
-            ' la primera fila de trabajadores y parece un dato malo cuando es una coordenada mala.
             If Len(hireDate) = 0 Then Err.Raise vbObjectError + 7309, "KcmEmployeeJson", _
                 "La celda " & KcmColumnLetters(employeeColumn + 2) & CStr(sheetRow) & _
                 " no tiene una fecha de ingreso valida; contiene: " & _
@@ -365,8 +315,6 @@ Private Function KcmEmployeeJson(ByVal values As Variant, ByVal rowIndex As Long
     KcmEmployeeJson = KcmJsonObject(members)
 End Function
 
-''' Un valor de error nunca debe convertirse con `CStr`: produciria un error de tipo opaco en lugar
-''' de senalar la celda responsable.
 Private Function KcmEmployeeText(ByVal values As Variant, ByVal rowIndex As Long, _
     ByVal columnIndex As Long, ByVal sheetRow As Long, ByVal fieldName As String) As String
     If IsError(values(rowIndex, columnIndex)) Then Err.Raise vbObjectError + 7317, _
@@ -407,9 +355,6 @@ Public Function KcmBuildCourseCatalog(ByVal sheet As Worksheet, ByVal firstEmplo
                 ", que el cliente y el extractor no normalizan igual; el texto de HC tiene que corregirse"
             slug = KcmSourceSlug(text)
             If Len(slug) > 0 Then
-                ' `Or` en VBA no hace corto circuito: evalua las dos ramas siempre. Escrito en una
-                ' sola condicion, `slugs(slugs.Count)` se resolvia como `slugs(0)` con la coleccion
-                ' vacia, y una Collection es 1-based: error 5 en la primera columna, siempre.
                 repetido = False
                 If slugs.Count > 0 Then repetido = (CStr(slugs(slugs.Count)) = slug)
                 If Not repetido Then
@@ -438,9 +383,6 @@ Public Function KcmBuildCourseCatalog(ByVal sheet As Worksheet, ByVal firstEmplo
     Set KcmBuildCourseCatalog = courses
 End Function
 
-''' Segmento del camino de encabezados. Cuando la celda esta vacia o es un error, hereda el valor
-''' del area combinada, y descarta la combinacion que nace antes del rango de cursos: esa es la
-''' regla exacta de `mergedCellAt` en el extractor.
 Private Function KcmHeaderSegment(ByVal sheet As Worksheet, ByVal rowNumber As Long, _
     ByVal columnNumber As Long, ByVal firstCourseColumn As Long, ByVal headerValues As Variant, _
     ByVal headerFirstColumn As Long) As String
@@ -461,7 +403,6 @@ Private Function KcmHeaderSegment(ByVal sheet As Worksheet, ByVal rowNumber As L
     KcmHeaderSegment = Trim$(KcmCellText(area.Cells(1, 1).Value))
 End Function
 
-''' Slug del extractor: minusculas, `&` como " y " y cualquier otro separador como un guion.
 Public Function KcmSourceSlug(ByVal value As String) As String
     Dim normalized As String
     normalized = LCase$(KcmNormalizeLabel(Replace$(value, "&", " y ")))

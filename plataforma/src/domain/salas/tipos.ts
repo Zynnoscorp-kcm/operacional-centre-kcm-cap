@@ -1,23 +1,5 @@
 import type { ActorIdentity, AuditEventRecord } from "../quiosco/tipos.ts";
 
-/**
- * Las siete salas.
- *
- * `roomId` es la clave estable —es lo que viaja en formularios, en la
- * disponibilidad pública y en `catalogo.sala.clave_sala`— y `name` es sólo lo que se
- * lee en pantalla. Por eso renombrar una sala se hace aquí y en ningún otro
- * lado: la clave no se mueve, así que ninguna reservación existente pierde su
- * vínculo.
- *
- * Los nombres son los de las marcas, escritos como la empresa las escribe:
- * «Marli» sin acento, y Gerencia y Dragones sin el prefijo «Sala», que sobraba
- * al ir dentro de una lista que ya se llama salas.
- *
- * Esta constante es la única fuente de los nombres visibles. `catalogo.sala`
- * conserva los suyos en `nombre_visible` para lo que se consulte directo contra
- * la base, y donde la plataforma los muestra resuelve por `clave_sala` contra
- * esta lista.
- */
 export const ROOMS = [
   { roomId: "VOGUE", name: "Vogue" },
   { roomId: "KLEENEX", name: "Kleenex" },
@@ -64,15 +46,7 @@ export interface CreateReservationInput {
   readonly requesterName: string;
   readonly requesterPosition?: string;
   readonly requesterArea?: string;
-  /**
-   * Nómina de quien reserva. Es lo que el formulario pide para identificarla:
-   * dentro de planta el número basta y evita guardar un dato de contacto más.
-   */
   readonly requesterWorkerNumber?: string;
-  /**
-   * Ya no se pide en ningún formulario; se conserva para lo ya capturado y para
-   * quien reserva sin nómina —un proveedor o un visitante—.
-   */
   readonly requesterContact?: string;
   readonly reason: string;
   readonly estimatedAttendees: number;

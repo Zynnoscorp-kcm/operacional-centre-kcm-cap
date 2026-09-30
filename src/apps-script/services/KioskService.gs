@@ -1,4 +1,3 @@
-/** Ruta digital: captura minima y convergencia a Attendance v1. */
 var KcmKioskService = (function () {
   "use strict";
 
@@ -212,7 +211,6 @@ var KcmKioskService = (function () {
     return journals.length;
   }
 
-  /** Reconciliacion interna; el llamador debe conservar el ScriptLock. */
   function reconcileSession(identity, repo, sessionId) {
     return repairSessionJournals(identity, repo, KcmValidation.identifier(sessionId, "sessionId"));
   }

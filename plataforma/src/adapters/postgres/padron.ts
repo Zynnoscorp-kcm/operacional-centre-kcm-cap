@@ -1,18 +1,3 @@
-/**
- * Padrón semanal sobre PostgreSQL.
- *
- * Las tres sentencias de escritura son las mismas de
- * `scripts/ingest-roster.js`, con `unnest` para que mil setecientos cambios
- * viajen en tres consultas y no en tres mil. Van dentro de una transacción:
- * media carga aplicada sería peor que ninguna, porque la CURP escrita sin su
- * registro de inducción no se nota hasta que alguien intenta emitir el DC-3.
- *
- * La identidad del curso de Inducción se resuelve en la consulta, por su
- * clave. El script la trae como UUID literal; aquí no, porque un identificador
- * a mano en el código de la aplicación es una bomba de tiempo el día que la
- * base se reconstruya.
- */
-
 import type {
   EscriturasDePadron,
   FilaDePadronBase,
@@ -24,7 +9,6 @@ import type {
 import { DATOS_DEL_PADRON } from "../../ports/padron.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
-/** Se resuelve por clave dentro de cada consulta; nunca por UUID a mano. */
 const INDUCCION =
   "(SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = 'INDUCCION_EMPRESA')";
 
@@ -60,9 +44,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
 
   async leerPadronBase(): Promise<readonly FilaDePadronBase[]> {
     const { rows } = await this.#db.query<FilaTrabajador>(
-      // El área entra en esta consulta —no en una segunda— porque sólo sirve
-      // para agrupar la clave de ocupación por `(puesto, área)` en la revisión,
-      // y un viaje más por eso no se justifica.
       `SELECT t.trabajador_id, t.numero_trabajador, t.nombre_completo, t.curp,
               t.fecha_alta::text AS fecha_alta, p.nombre AS puesto,
               a.nombre AS area, t.clave_ocupacion, t.tipo_nomina, t.planta, t.activo,
@@ -103,12 +84,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
     return rows.map((fila) => ({ nombre: fila.nombre, claveCno: fila.clave_cno }));
   }
 
-  /**
-   * La comparación se hace en la base: van los pares propuestos y vuelven
-   * dos enteros. Traerse el ledger de inducciones para compararlo en Node sería
-   * un cuarto de mega de egreso por cada revisión, y la respuesta cabe en dos
-   * números.
-   */
   async revisarInducciones(
     propuestas: readonly InduccionPropuesta[],
   ): Promise<{ nuevas: number; divergentes: number }> {
@@ -158,12 +133,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
 
       let inducciones = 0;
       if (escrituras.inducciones.length) {
-        // El `NOT EXISTS` es la mitad importante de esta sentencia: sin él, un
-        // trabajador con inducción vigente y fecha corregida viola
-        // `registro_hc_vigente_unico` y tumba la transacción completa. Con él,
-        // sólo entra quien no tiene registro; la fecha distinta se informa en la
-        // revisión y la decide el departamento, que es lo correcto para un
-        // registro que sostiene un documento oficial.
         const { rows } = await cliente.query<{ clave_idempotencia: string }>(
           `INSERT INTO operacion.historial_capacitacion
              (clave_idempotencia, trabajador_id, capacitacion_id, fecha_capacitacion,
@@ -190,12 +159,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
         inducciones = rows.length;
       }
 
-      // La clave de ocupación va al trabajador desde la migración `0041`:
-      // varía según su puesto y su área, y consolidarla por puesto rechazaba las
-      // dos claves de un puesto presente en dos áreas. La restricción
-      // `trabajador_ocupacion_coherente` exige que la clave y su actor
-      // aprobador existan o falten juntos —una clasificación legal la firma
-      // alguien—, y el actor de la carga es ese alguien.
       let ocupaciones = 0;
       if (escrituras.ocupaciones.length) {
         const aprobador = await resolverActor(cliente, "padron.semanal");
@@ -219,8 +182,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
         ocupaciones = rows.length;
       }
 
-      // Las columnas personales, una sentencia por columna. El nombre de la
-      // columna sale de una lista cerrada (DATOS_DEL_PADRON), nunca del archivo.
       const datos = escrituras.datos ?? [];
       for (const columna of DATOS_DEL_PADRON) {
         const deEsta = datos.filter(([, campo]) => campo === columna);
@@ -244,8 +205,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
         );
       }
 
-      // Quién estuvo en este padrón, y la baja de quien no está ni aquí ni en
-      // la última matriz (0046).
       let bajas = 0;
       if (escrituras.enArchivo) {
         await cliente.query(
@@ -286,7 +245,6 @@ export class SupabaseRosterRepository implements RosterRepositoryPort {
   }
 }
 
-/** Misma resolución que usa el resto del árbol: el actor se crea si no existe. */
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {
   const { rows } = await tx.query<{ actor_id: string }>(
     `INSERT INTO seguridad.actor (identificador, nombre_visible)

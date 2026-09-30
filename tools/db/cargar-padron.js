@@ -1,46 +1,12 @@
 #!/usr/bin/env node
-/**
- * Ingesta del padrón semanal (`sem NN CAP.xlsx`) hacia `organizacion.trabajador`.
- *
- * El archivo cambia cada lunes, así que la ruta es un argumento y nunca una
- * constante: la única cosa declarada es la *forma* —las hojas `SND ACTIVOS` y
- * `EMP ACTIVOS` y sus encabezados—, igual que la VBA declara la geometría de la
- * matriz en `KCM_CONFIG` en lugar de adivinarla. Un archivo nuevo con la misma
- * forma entra sin tocar código; uno con otra forma falla cerrado y dice cuál
- * encabezado no resolvió, que es justo lo que debe pasar.
- *
- * Aporta dos cosas que ninguna otra fuente tiene:
- *
- * 1. CURP. El DC-3 es documento oficial de la STPS y sin CURP no se emite.
- *    La matriz no la trae.
- * 2. Fecha de alta, que por regla del departamento es la fecha en que el
- *    trabajador tomó INDUCCIÓN A LA EMPRESA. De ahí salen los registros de
- *    inducción, con procedencia `ROSTER_ALTA` para que jamás se confundan con
- *    una fecha capturada en la matriz.
- *
- * Es idempotente: correrlo dos veces con el mismo archivo no cambia nada. No
- * borra ni da de baja a nadie —las bajas viven en otras hojas y su tratamiento
- * es una decisión del departamento, no un efecto colateral de una lectura—.
- *
- *   npm run db:padron -- <ruta.xlsx> [--aplicar]
- *
- * Sin `--aplicar` sólo reporta lo que haría.
- */
 
 import { readFileSync } from "node:fs";
 import pg from "pg";
 
 import { extractActiveRosterFromBuffer } from "../../packages/dc3/roster-extractor.js";
 
-/** Identidad del curso de inducción, ya unificada por la migración 0034. */
 const INDUCCION_ID = "8be38c4f-c328-459e-9ddc-ddcd12ad4072";
 
-/**
- * Igual que en `postgres-executor.ts`: una columna `date` llega como `Date` y
- * al formatearla se desplaza con la zona local. Aquí además rompía la
- * comparación contra la fecha del padrón, que es texto ISO, y hacía parecer que
- * el archivo corregía las 1 684 altas cuando no cambiaba ninguna.
- */
 pg.types.setTypeParser(1082, (value) => value);
 
 function parseArgs(argv) {
@@ -77,9 +43,6 @@ async function main() {
   });
 
   try {
-    // El padrón entero cabe de sobra en memoria (menos de 2 000 filas) y una
-    // sola lectura evita 1 686 viajes de ida y vuelta contra un presupuesto de
-    // consultas que no los admite.
     const { rows: padron } = await pool.query(
       "SELECT trabajador_id, numero_trabajador, curp, fecha_alta FROM organizacion.trabajador",
     );
@@ -103,8 +66,6 @@ async function main() {
         cambiosAlta.push([actual.trabajador_id, e.hireDate]);
       }
       if (e.hireDate) {
-        // La clave lleva trabajador y fecha: si el departamento corrige un alta,
-        // entra un registro nuevo en vez de sobrescribir en silencio el anterior.
         induccion.push([
           `roster-alta:${e.employeeId}:${e.hireDate}`,
           actual.trabajador_id,
@@ -134,7 +95,6 @@ async function main() {
     try {
       await cliente.query("BEGIN");
 
-      // `unnest` manda los tres lotes en tres sentencias en vez de en miles.
       if (cambiosCurp.length) {
         await cliente.query(
           `UPDATE organizacion.trabajador t
@@ -153,13 +113,6 @@ async function main() {
           [cambiosAlta.map((c) => c[0]), cambiosAlta.map((c) => c[1])],
         );
       }
-      // `registro_hc` lleva además un índice único
-      // `(trabajador_id, capacitacion_id) WHERE VIGENTE`. La primera corrida no
-      // lo notó porque no había ninguna inducción registrada; en cuanto el
-      // departamento corrija una fecha de alta, la clave de idempotencia es
-      // otra, el `ON CONFLICT` no aplica y la carga entera aborta. El
-      // `NOT EXISTS` deja pasar sólo a quien no tiene registro vigente; la
-      // fecha distinta se revisa aparte, en `/padron`.
       const { rowCount: inducidos } = await cliente.query(
         `INSERT INTO operacion.historial_capacitacion
            (clave_idempotencia, trabajador_id, capacitacion_id, fecha_capacitacion,

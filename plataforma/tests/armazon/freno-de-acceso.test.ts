@@ -1,13 +1,3 @@
-/**
- * El freno por intentos de `/acceso` y la dirección con la que cuenta.
- *
- * Las dos cosas son una sola: el freno vale lo que valga la identidad del que
- * llama. Publicada por túnel y sin `KCM_TRUST_PROXY`, esa identidad era la del
- * túnel —una para toda la planta—, y una llave por IP convertía diez
- * contraseñas mal escritas en cinco minutos de puerta cerrada para todos,
- * incluido el departamento. Lo que se comprueba aquí es que ya no.
- */
-
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { describe, it } from "node:test";
@@ -69,7 +59,6 @@ async function servidor() {
   });
 }
 
-/** Todos los `inject` salen de la misma dirección; es justo el caso a probar. */
 async function intentar(
   app: Awaited<ReturnType<typeof servidor>>,
   usuario: string,
@@ -99,7 +88,6 @@ describe("Acceso · el freno cuenta por equipo y por cuenta", () => {
       await intentar(app, "Pablo0000", "equivocada");
     }
 
-    // Misma dirección, otra persona, credencial correcta: entra.
     assert.equal(await intentar(app, "Maricela0000", "Kimberly1"), 303);
   });
 
@@ -110,18 +98,10 @@ describe("Acceso · el freno cuenta por equipo y por cuenta", () => {
     }
     assert.equal(await intentar(app, "Pablo0000", "Kimberly3"), 303);
 
-    // Si el acierto no hubiera limpiado el contador, este fallo sería el
-    // undécimo y respondería 429 en vez de rechazar la credencial.
     assert.equal(await intentar(app, "Pablo0000", "equivocada"), 401);
   });
 });
 
-/**
- * De dónde sale `request.ip`. Se comprueba sobre una ruta registrada en la
- * prueba —`buildServer` devuelve la instancia sin `ready()` justo para esto— y
- * con el acceso abierto declarado, porque lo que se mide es la dirección, no el
- * guardia.
- */
 describe("Acceso · la dirección que ve la plataforma", () => {
   async function servidorConEco(entorno: Record<string, string>) {
     const app = await buildServer({
@@ -157,8 +137,6 @@ describe("Acceso · la dirección que ve la plataforma", () => {
     const res = await app.inject({
       method: "GET",
       url: "/eco-de-ip",
-      // Dos direcciones: la primera la escribió el cliente, la segunda la
-      // agregó el túnel. Con un solo salto de confianza sólo la segunda cuenta.
       headers: { "x-forwarded-for": "198.51.100.7, 203.0.113.9" },
     });
     assert.equal(res.json<{ ip: string }>().ip, "203.0.113.9");

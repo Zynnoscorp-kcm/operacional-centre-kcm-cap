@@ -1,4 +1,3 @@
-/** Cotejo fisico y contrato comun ParticipantAttendance v1 para ambas rutas. */
 var KcmPreReleaseService = (function () {
   "use strict";
 
@@ -14,7 +13,7 @@ var KcmPreReleaseService = (function () {
     try {
       var parsed = value === undefined || value === null || value === "" ? [] : JSON.parse(String(value));
       if (Array.isArray(parsed)) return parsed;
-    } catch (ignored) { /* Se transforma en un error de dominio sanitizado. */ }
+    } catch (ignored) {  }
     invalidOcrState(message);
   }
 

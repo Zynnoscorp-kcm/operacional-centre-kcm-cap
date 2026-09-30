@@ -1,8 +1,3 @@
-/**
- * Tipos de dominio para Quiosco, Sesiones y Vista Operativa (Funciones 1, 2 y 3).
- * Fuente: MODELO_DATOS.md hojas SESIONES, ASISTENCIAS, KIOSK_REGISTROS, AUDITORIA, ACCESOS.
- */
-
 import type { WorkerNumber } from "../comun/numero-trabajador.ts";
 
 export type SessionStatus =
@@ -51,12 +46,6 @@ export interface TrainingCatalogItem {
   readonly trainingId: string;
   readonly name: string;
   readonly active: boolean;
-  /**
-   * Opcional de verdad: `metadato_curso_dc3` entra por `LEFT JOIN` y un curso
-   * sin metadatos no tiene duración. Se escribe `| undefined` como el resto
-   * de los opcionales del contrato, que es lo que exige
-   * `exactOptionalPropertyTypes`.
-   */
   readonly durationHours?: number | undefined;
 }
 
@@ -65,7 +54,7 @@ export interface SessionRecord {
   readonly sessionCode: string;
   readonly trainingId: string;
   readonly instructor: string;
-  readonly date: string; // YYYY-MM-DD
+  readonly date: string;
   readonly durationMinutes: number;
   readonly room?: string | undefined;
   readonly startTime?: string | undefined;
@@ -183,9 +172,7 @@ export interface KioskBootstrapState {
   readonly trainingId: string;
   readonly trainingName: string;
   readonly date: string;
-  /** Hora de inicio en `HH:mm`. Vacía en lo capturado antes de que se pidiera. */
   readonly startTime: string;
-  /** Vacía cuando la sesión se abrió desde el quiosco sin agendar sala. */
   readonly room: string;
   readonly instructor: string;
   readonly availability: {
@@ -203,25 +190,14 @@ export interface OperativeSessionSummary {
   readonly trainingName: string;
   readonly instructor: string;
   readonly date: string;
-  /** Hora de inicio en `HH:mm`. Vacía en lo capturado antes de que se pidiera. */
   readonly startTime?: string | undefined;
   readonly durationMinutes: number;
   readonly status: SessionStatus;
   readonly authorized: boolean;
   readonly totalAttendances: number;
-  /** La cuenta que dio de alta la sesión. */
   readonly createdBy?: string | undefined;
 }
 
-/**
- * Ficha de una sesión para confirmarla en el quiosco antes de registrar.
- *
- * No es `OperativeSessionSummary` con otro nombre: aquélla alimenta la lista de
- * la consola y trae el conteo de asistencias, que ahí sirve y aquí costaría una
- * consulta más en la pantalla que la sala mira con gente esperando. Ésta trae
- * en cambio sala y tipo de evento, que son justamente lo que distingue dos
- * cursos del mismo día cuando alguien duda de si está en el sitio correcto.
- */
 export interface KioskSessionBrief {
   readonly sessionId: string;
   readonly sessionCode: string;
@@ -229,10 +205,8 @@ export interface KioskSessionBrief {
   readonly trainingName: string;
   readonly instructor: string;
   readonly date: string;
-  /** Hora de inicio en `HH:mm`. Vacía en lo capturado antes de que se pidiera. */
   readonly startTime: string;
   readonly durationMinutes: number;
-  /** Vacía cuando la sesión se abrió desde el quiosco sin agendar sala. */
   readonly room: string;
   readonly eventType: string;
   readonly status: SessionStatus;

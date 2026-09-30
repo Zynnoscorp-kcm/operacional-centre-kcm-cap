@@ -1,4 +1,3 @@
-/** MatrixGateway configurable; nunca recibe IDs de destino desde el cliente. */
 var KcmMatrixGateway = (function () {
   "use strict";
 

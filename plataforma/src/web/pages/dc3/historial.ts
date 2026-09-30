@@ -1,16 +1,3 @@
-/**
- * Emitidas: el historial de constancias DC-3.
- *
- * Una constancia DC-3 es un documento legal con datos personales, y la pregunta
- * que llega después de emitirla es siempre de este tipo: «¿qué salió hoy?»,
- * «¿qué emitió tal cuenta la semana pasada?», «¿ya se le entregó la de LOTO a
- * este trabajador?», «necesito otra copia».
- *
- * Lee `sistema.bitacora_auditoria`, la fuente que no se reescribe, y la enseña agrupada por
- * día de la planta. Reimprimir compone de nuevo lo ya asentado sin asentarlo
- * otra vez: aquí no se emite ni se borra nada.
- */
-
 import type { AppConfig } from "../../../config/environment.ts";
 import type { Dc3EmissionRecord, Dc3EmissionTotals } from "../../../ports/dc3-constancia.port.ts";
 import { html, type Html } from "../../kit/html.ts";
@@ -26,7 +13,6 @@ import {
   renderBarraDeModulo,
 } from "./kit.ts";
 
-/** Los periodos que se ofrecen como opción de un clic. */
 export type PeriodoDeHistorial = "hoy" | "semana" | "mes" | "todo";
 
 export interface FiltrosDeHistorial {
@@ -64,7 +50,6 @@ const PERIODOS: readonly {
   { clave: "todo", titulo: "Todo", cuenta: (t) => t.total },
 ];
 
-/** La dirección del historial con sus filtros; los de omisión no se escriben. */
 export function enlaceDeHistorial(filtros: FiltrosDeHistorial, pagina = 1): string {
   const parametros = new URLSearchParams();
   if (filtros.periodo !== "todo") parametros.set("periodo", filtros.periodo);
@@ -77,7 +62,6 @@ export function enlaceDeHistorial(filtros: FiltrosDeHistorial, pagina = 1): stri
   return `/dc3/historial${cola ? `?${cola}` : ""}`;
 }
 
-/** «Hoy», «Ayer» o la fecha, para los encabezados de día. */
 function nombreDelDia(dia: string, hoy: string): string {
   const ayer = new Date(new Date(`${hoy}T12:00:00Z`).getTime() - 86_400_000)
     .toISOString()
@@ -87,7 +71,6 @@ function nombreDelDia(dia: string, hoy: string): string {
   return fechaCorta(dia);
 }
 
-/** Los asientos, en grupos por día de la planta y en el orden en que llegaron. */
 function porDia(emisiones: readonly Dc3EmissionRecord[]): [string, Dc3EmissionRecord[]][] {
   const grupos = new Map<string, Dc3EmissionRecord[]>();
   for (const emision of emisiones) {

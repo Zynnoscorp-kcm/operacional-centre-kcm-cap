@@ -1,12 +1,3 @@
-/**
- * La barra de avance de la capacitación: acreditados, por reforzar, programados
- * y pendientes, apilados sobre el total de obligaciones.
- *
- * Se dibuja en SVG con los anchos como atributos —la política de contenido no
- * deja escribir estilos en línea— y se estira al ancho de su celda. Va siempre
- * con la cuenta escrita al lado: el color acompaña, no es el único que lo dice.
- */
-
 import { html, rawHtml, type Html } from "../../kit/html.ts";
 
 export interface PartesDeAvance {
@@ -27,13 +18,11 @@ export function totalDeAvance(partes: PartesDeAvance): number {
   return partes.acreditados + partes.reforzar + partes.programados + partes.pendientes;
 }
 
-/** La proporción acreditada, para ordenar: de menor a mayor avance. */
 export function proporcionAcreditada(partes: PartesDeAvance): number {
   const total = totalDeAvance(partes);
   return total === 0 ? 0 : partes.acreditados / total;
 }
 
-/** Las cuatro cuentas en una frase, para el globo y los lectores de pantalla. */
 export function resumenDeAvance(partes: PartesDeAvance): string {
   return (
     `${String(partes.acreditados)} acreditados, ${String(partes.reforzar)} por reforzar, ` +
@@ -54,7 +43,6 @@ export function renderLeyendaDeAvance(): Html {
   </p>`;
 }
 
-/** La barra y la cuenta, como dos celdas de una fila de avance. */
 export function renderBarraDeAvance(partes: PartesDeAvance): Html {
   const total = totalDeAvance(partes);
   if (total === 0) {
@@ -70,11 +58,6 @@ export function renderBarraDeAvance(partes: PartesDeAvance): Html {
     >`;
 }
 
-/**
- * Los anchos van en unidades del `viewBox` —de 0 a 100— y el dibujo se estira
- * a su celda; la separación entre tramos es un trazo del color de la tarjeta
- * que no se estira con él.
- */
 function barraApilada(partes: PartesDeAvance, total: number): Html {
   if (total === 0) return html``;
   let inicio = 0;

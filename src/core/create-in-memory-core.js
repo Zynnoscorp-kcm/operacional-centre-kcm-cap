@@ -9,17 +9,6 @@ import {
   InMemoryReleaseRepository
 } from "./repositories.js";
 
-/**
- * Ensambla la vertical local sin credenciales ni servicios Google.
- *
- * API principal:
- * - `capture.registerDigital(input)` y `capture.registerOcr(input)` convergen a
- *   ParticipantAttendance.
- * - `capture.confirmAttendance(input)` coteja la evidencia fisica.
- * - `exams.reconcile(input)` concilia el conteo y faltantes.
- * - `release.preview(input)` genera incluidos/excluidos sin escribir.
- * - `release.release(input)` aplica la liberacion bajo bloqueo local.
- */
 export function createInMemoryCore({ employees = [], clock, idFactory, mutex } = {}) {
   const employeeRepository = new InMemoryEmployeeRepository(employees);
   const attendanceRepository = new InMemoryAttendanceRepository();

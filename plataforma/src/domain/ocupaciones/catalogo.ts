@@ -1,42 +1,15 @@
-/**
- * Catálogo Nacional de Ocupaciones, tal como lo usa el agente de ocupaciones.
- *
- * Dos niveles y una regla que los une:
- *
- * - Las **55 subáreas** del reverso del formato DC-3 («Claves y denominaciones
- *   de áreas y subáreas del Catálogo Nacional de Ocupaciones»), transcritas
- *   aquí a mano porque son el marco oficial y no cambian con el catálogo.
- * - Las **4 737 ocupaciones** del catálogo que mandó la STPS, con código de
- *   nueve o diez dígitos, leídas de `catalogo-cno.tsv`.
- *
- * La regla: el prefijo del código es la subárea. `552081900` empieza con `5` y
- * `5` → 05.5; `1034070202` empieza con `10` y `3` → 10.3. Se comprobó contra el
- * catálogo completo el 2026-09-26: las 4 737 caen en alguna de las 55 y no
- * sobra ninguna. Por eso la subárea nunca se le pregunta al modelo para
- * anotarla: se deriva del código, y lo que el modelo diga de ella sólo sirve
- * para cotejar.
- *
- * El consecutivo del libro («Clave», 1 a 4 739) se conserva porque algún
- * sistema de la STPS podría pedirlo, pero no identifica nada por sí solo.
- */
-
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 export interface Subarea {
-  /** `05.5` */
   readonly clave: string;
-  /** `Materia orgánica` */
   readonly denominacion: string;
-  /** `05` */
   readonly area: string;
-  /** `Procesamiento y fabricación` */
   readonly denominacionDelArea: string;
 }
 
 export interface Ocupacion {
   readonly consecutivo: string;
-  /** Nueve o diez dígitos, como texto: un cero a la izquierda no existe hoy, pero no se regala. */
   readonly codigo: string;
   readonly descripcion: string;
   readonly subarea: string;
@@ -114,7 +87,6 @@ const DENOMINACIONES: readonly (readonly [string, string])[] = [
   ["11.3", "Difusión cultural"],
 ];
 
-/** Las 55 subáreas del reverso del DC-3, en su orden oficial. */
 export const SUBAREAS_CNO: readonly Subarea[] = DENOMINACIONES.map(([clave, denominacion]) => {
   const area = clave.slice(0, 2);
   return { clave, denominacion, area, denominacionDelArea: AREAS[area] ?? "" };
@@ -124,7 +96,6 @@ const SUBAREA_POR_CLAVE: ReadonlyMap<string, Subarea> = new Map(
   SUBAREAS_CNO.map((subarea) => [subarea.clave, subarea]),
 );
 
-/** La subárea que declara el prefijo de un código, o `null` si el código no tiene forma de código. */
 export function subareaDelCodigo(codigo: string): string | null {
   if (/^\d{9}$/u.test(codigo)) return `0${codigo.charAt(0)}.${codigo.charAt(1)}`;
   if (/^\d{10}$/u.test(codigo)) return `${codigo.slice(0, 2)}.${codigo.charAt(2)}`;
@@ -132,7 +103,6 @@ export function subareaDelCodigo(codigo: string): string | null {
 }
 
 export class CatalogoDeOcupaciones {
-  /** sha256 del archivo de datos: la versión del catálogo que queda en cada traza. */
   readonly huella: string;
   readonly #porCodigo: ReadonlyMap<string, Ocupacion>;
   readonly #porSubarea: ReadonlyMap<string, readonly Ocupacion[]>;
@@ -149,10 +119,6 @@ export class CatalogoDeOcupaciones {
     this.#porSubarea = porSubarea;
   }
 
-  /**
-   * Lee el TSV. Falla entero ante la primera fila rara: un catálogo a medias
-   * haría que el agente eligiera entre menos opciones sin que nadie lo notara.
-   */
   static desdeTexto(texto: string): CatalogoDeOcupaciones {
     const ocupaciones: Ocupacion[] = [];
     const vistos = new Set<string>();
@@ -193,7 +159,6 @@ export class CatalogoDeOcupaciones {
     return this.#porCodigo.get(codigo);
   }
 
-  /** Las ocupaciones de una subárea, en el orden del catálogo. */
   deSubarea(clave: string): readonly Ocupacion[] {
     return this.#porSubarea.get(clave) ?? [];
   }
@@ -202,12 +167,6 @@ export class CatalogoDeOcupaciones {
     return SUBAREA_POR_CLAVE.get(clave);
   }
 
-  /**
-   * Busca por palabras, por el comienzo de la clave o por subárea, sin
-   * distinguir acentos ni mayúsculas. Tienen que aparecer todas las palabras.
-   * Devuelve las primeras `limite` en el orden del catálogo y cuántas
-   * coincidieron en total, para poder decir «60 de 230».
-   */
   buscar(consulta: {
     readonly texto?: string;
     readonly subarea?: string;
@@ -242,7 +201,6 @@ export class CatalogoDeOcupaciones {
   }
 }
 
-/** Mayúsculas, sin acentos y con un solo espacio entre palabras: «mecánico» encuentra «MECÁNICO». */
 function normalizarParaBuscar(texto: string): string {
   return texto
     .normalize("NFD")
@@ -254,10 +212,6 @@ function normalizarParaBuscar(texto: string): string {
 
 let cargado: CatalogoDeOcupaciones | undefined;
 
-/**
- * El catálogo que viaja con la plataforma. Se lee una vez por proceso y sólo
- * cuando alguien pide una sugerencia: las demás pantallas no pagan su lectura.
- */
 export function catalogoDeLaPlataforma(): CatalogoDeOcupaciones {
   cargado ??= CatalogoDeOcupaciones.desdeTexto(
     readFileSync(new URL("./catalogo-cno.tsv", import.meta.url), "utf8"),

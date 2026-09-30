@@ -154,8 +154,6 @@ test("dos liberaciones concurrentes producen un solo resultado efectivo", async 
     actor: "operador@example.invalid", requestId: "request-exams"
   });
 
-  // Segunda instancia para simular dos ejecuciones independientes compartiendo
-  // persistencia; ambas usan el bloqueo local global equivalente a LockService.
   const secondReleaseService = new ReleaseService({
     attendances: flow.attendances,
     releases: flow.releases,

@@ -1,10 +1,3 @@
-/**
- * Marcador de posición (placeholder) visual para la foto del trabajador.
- *
- * Genera iniciales y paleta cromática basada en el número de trabajador,
- * cumpliendo con la política de seguridad CSP estricta (sin imágenes externas).
- */
-
 import type { PhotoPlaceholder } from "./tipos.ts";
 
 const PALETTE = [
@@ -30,7 +23,6 @@ export function generatePhotoPlaceholder(name: string, employeeId: string): Phot
     initials = parts[0].slice(0, 2).toUpperCase();
   }
 
-  // Hash simple para color determinista
   let hash = 0;
   for (let i = 0; i < employeeId.length; i++) {
     hash = (hash * 31 + employeeId.charCodeAt(i)) & 0xffffffff;

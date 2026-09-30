@@ -35,7 +35,6 @@ describe("Ocupaciones · la puerta del agente", () => {
       { puesto: "*OPERADOR", centroDeCostos: "AGUA", area: "ECATEPEC I" },
       "CASO_CON_CAMPOS_DE_MAS",
     );
-    // Los nombres que todo objeto hereda tampoco cuentan como campos permitidos.
     rechaza(
       { puesto: "*OPERADOR", centroDeCostos: "AGUA", toString: "28392" },
       "CASO_CON_CAMPOS_DE_MAS",
@@ -47,9 +46,7 @@ describe("Ocupaciones · la puerta del agente", () => {
     rechaza({ puesto: "TODC680621HMCRLR04", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
     rechaza({ puesto: "*OPERADOR", centroDeCostos: "a@b.mx" }, "CASO_CON_DATO_PERSONAL");
     rechaza({ puesto: "TORRES,DELGADO,CARLOS", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
-    // Dígitos de ancho completo, como los que deja copiar de algunos sistemas.
     rechaza({ puesto: "２８３９２", centroDeCostos: "AGUA" }, "CASO_CON_DATO_PERSONAL");
-    // Números en grupos: un NSS, un teléfono.
     for (const numero of ["1234-56-7890-1", "12 34 56 7890 1", "55 1234 5678", "283.92"]) {
       rechaza({ puesto: "*OPERADOR", centroDeCostos: numero }, "CASO_CON_DATO_PERSONAL");
     }

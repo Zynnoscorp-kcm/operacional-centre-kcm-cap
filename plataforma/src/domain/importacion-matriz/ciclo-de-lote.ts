@@ -1,18 +1,3 @@
-/**
- * Máquina de estados para el ciclo de vida de lotes de importación de matriz.
- *
- * Fases:
- * 1. RECIBIDO: Se recibe el archivo o snapshot y se calculan hashes de integridad.
- * 2. PREPARADO: Se parsea el contenido y se extraen entidades y diagnósticos.
- * 3. VALIDADO: Se corre el preflight de conciliación, detectando candidatos, novedades y conflictos.
- * 4. APROBADO: Un actor autorizado aprueba el lote y sus mapeos.
- * 5. CONFIRMADO: Se aplican los cambios a las tablas de forma atómica.
- *
- * Terminales:
- * - RECHAZADO: Rechazado explícitamente por el operador o por fallo irrecuperable.
- * - CONFLICTO: Detecta contradicciones con fechas de plataforma o catálogo sin resolver.
- */
-
 import { InvalidBatchPhaseError, MatrixConflictError } from "./errores.ts";
 import type { ImportBatch, ImportBatchCounts, ImportScope, SnapshotDiagnostics } from "./tipos.ts";
 

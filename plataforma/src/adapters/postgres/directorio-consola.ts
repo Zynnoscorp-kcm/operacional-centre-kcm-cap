@@ -1,13 +1,3 @@
-/**
- * Directorio de consola sobre PostgreSQL (`database/migrations/0038`).
- *
- * Dos cosas viven en la consulta y no en el servicio, a propósito: que la
- * comparación del nombre ignore mayúsculas y que una cuenta revocada
- * simplemente no exista. Son reglas de la tabla —el índice único parcial está
- * escrito sobre `lower(usuario)` con el mismo filtro— y repetirlas aquí es lo
- * que hace que no puedan divergir.
- */
-
 import type { ConsoleDirectoryPort, CuentaDeConsola } from "../../ports/directorio-consola.port.ts";
 import type { SqlExecutor } from "./matriz.ts";
 

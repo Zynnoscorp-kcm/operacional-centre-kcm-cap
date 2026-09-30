@@ -1,11 +1,3 @@
-/**
- * Servicio de Quiosco de Registro de Participantes (Función 1).
- * Implementa el journal transaccional de 3 fases (RESERVADO -> ASISTENCIA_CREADA -> COMPLETADO),
- * auto-reparación en el arranque, acuse indistinguible y cupo máximo de 40 registros.
- *
- * Fuente: MODELO_DATOS.md hojas KIOSK_REGISTROS, ASISTENCIAS, AUDITORIA.
- */
-
 import { randomUUID } from "node:crypto";
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
@@ -45,13 +37,9 @@ export class KioskService {
     this.clock = deps.clock;
   }
 
-  /**
-   * Repara un journal individual inconcluso.
-   */
   private async repairJournal(journal: KioskRegistrationJournal): Promise<void> {
     const nowIso = this.clock.now().toISOString();
 
-    // Si está en RESERVADO, creamos la asistencia si aún no existe
     let attendanceId = journal.attendanceId;
     if (!attendanceId || journal.phase === "RESERVADO") {
       let existingAttendance = await this.repo.getAttendanceBySessionAndWorker(
@@ -89,7 +77,6 @@ export class KioskService {
       });
     }
 
-    // Si falta la auditoría, la aseguramos
     const audits = await this.repo.listAuditEvents({
       sessionId: journal.sessionId,
       requestId: journal.requestId,
@@ -113,7 +100,6 @@ export class KioskService {
       });
     }
 
-    // Finalizar el journal en COMPLETADO
     await this.repo.updateJournal(journal.registrationId, {
       phase: "COMPLETADO",
       attendanceId,
@@ -122,9 +108,6 @@ export class KioskService {
     });
   }
 
-  /**
-   * Repara en tiempo lineal todos los journals incompletos de una sesión sin reabrir los ya terminados.
-   */
   async repairSessionJournals(sessionId: string): Promise<void> {
     const incomplete = await this.repo.listIncompleteJournalsBySession(sessionId);
     for (const journal of incomplete) {
@@ -132,10 +115,6 @@ export class KioskService {
     }
   }
 
-  /**
-   * Registra a un participante en el quiosco físico con reserva durable previa (3 fases),
-   * cupo máximo de 40 y acuse indistinguible.
-   */
   async register(input: RegisterParticipantInput): Promise<KioskParticipantReceipt> {
     if (!input || typeof input !== "object") {
       throw new InvalidInputError("Solicitud de registro inválida");
@@ -160,7 +139,6 @@ export class KioskService {
         throw new InvalidSessionStateError("La sesión ya no acepta registros");
       }
 
-      // Idempotencia por requestId
       const requestJournal = await this.repo.getJournalByRequest(opRequestId);
       if (requestJournal) {
         if (requestJournal.phase !== "COMPLETADO") {
@@ -169,7 +147,6 @@ export class KioskService {
         return GENERIC_KIOSK_RECEIPT;
       }
 
-      // Idempotencia por (sessionId, workerNumber)
       const existingAttendance = await this.repo.getAttendanceBySessionAndWorker(
         sessionId,
         workerNumber,
@@ -178,16 +155,13 @@ export class KioskService {
         return GENERIC_KIOSK_RECEIPT;
       }
 
-      // Comprobación de cupo máximo de 40 registros
       const currentAttendanceCount = await this.repo.countAttendancesBySession(sessionId);
       if (currentAttendanceCount >= MAX_REGISTRATIONS_PER_SESSION) {
-        // No se inserta sobre cupo lleno, pero se devuelve el acuse genérico indistinguible
         return GENERIC_KIOSK_RECEIPT;
       }
 
       const nowIso = this.clock.now().toISOString();
 
-      // FASE 1: RESERVADO en Journal
       const journalRecord: KioskRegistrationJournal = {
         registrationId: randomUUID(),
         sessionId,
@@ -200,7 +174,6 @@ export class KioskService {
       };
       await this.repo.createJournal(journalRecord);
 
-      // FASE 2: ASISTENCIA_CREADA
       const isActive = await this.repo.isWorkerActive(workerNumber);
       const attendanceId = randomUUID();
 
@@ -230,7 +203,6 @@ export class KioskService {
         updatedAt: nowIso,
       });
 
-      // FASE 3: AUDITORIA Y COMPLETADO
       await this.repo.recordAudit({
         actor: "KIOSK",
         role: "KIOSK",
@@ -257,15 +229,11 @@ export class KioskService {
     });
   }
 
-  /**
-   * Consulta el estado del quiosco, repara journals huérfanos y expone cupo y disponibilidad sin fugar PII.
-   */
   async bootstrap(token: string): Promise<KioskBootstrapState> {
     const payload = this.auth.verifyKioskToken(token);
     const { sessionId, stationLabel, expiresAt } = payload;
 
     return this.repo.withLock(`kiosk:session:${sessionId}`, async () => {
-      // Auto-reparación en el arranque
       await this.repairSessionJournals(sessionId);
 
       const session = await this.repo.getSessionById(sessionId);
@@ -277,10 +245,6 @@ export class KioskService {
       const isAvailable = attendanceCount < MAX_REGISTRATIONS_PER_SESSION;
       const isAccepting = session.status === "ABIERTA" && isAvailable;
 
-      // El nombre del curso acompaña a la pantalla de registro mientras dura la
-      // sesión. Cuesta una lectura por arranque de quiosco, no por registro, y
-      // evita que la única referencia visible sea un código que nadie puede
-      // reconocer.
       const training = await this.repo.getTrainingById(session.trainingId);
 
       return {
@@ -304,9 +268,6 @@ export class KioskService {
     });
   }
 
-  /**
-   * Reconciliación explícita invocada al cerrar la sesión.
-   */
   async reconcileSession(_identity: ActorIdentity, sessionId: string): Promise<void> {
     await this.repairSessionJournals(sessionId);
   }

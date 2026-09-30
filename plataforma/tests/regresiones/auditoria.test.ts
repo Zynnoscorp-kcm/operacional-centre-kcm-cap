@@ -1,11 +1,3 @@
-/**
- * Regresiones de auditoría.
- *
- * Congelan defectos que ninguna otra prueba veía. Están juntas, y no repartidas
- * entre las suites existentes, para que su motivo quede a la vista: cada bloque
- * nombra el defecto que fija.
- */
-
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
@@ -34,7 +26,6 @@ function autenticacion(): KioskAuthService {
   });
 }
 
-/** Firma un cuerpo arbitrario igual que `signGrant`, para poder fabricar casos. */
 function concesionFirmada(cuerpo: Record<string, unknown>): string {
   const b64 = Buffer.from(JSON.stringify(cuerpo)).toString("base64url");
   const firma = createHmac("sha256", SECRETO).update(b64).digest("base64url");
@@ -42,11 +33,6 @@ function concesionFirmada(cuerpo: Record<string, unknown>): string {
 }
 
 describe("auditoría · concesión del quiosco", () => {
-  /**
-   * La comprobación de vencimiento vivía dentro del `try`, de modo que su propio
-   * `throw` lo atrapaba el `catch` de abajo: una concesión vencida se reportaba
-   * como «ilegible» y quien depurara leía la causa equivocada.
-   */
   it("una concesión vencida se reporta como vencida y no como ilegible", () => {
     const auth = autenticacion();
     const vencida = concesionFirmada({
@@ -66,10 +52,6 @@ describe("auditoría · concesión del quiosco", () => {
     );
   });
 
-  /**
-   * `Date.parse(undefined)` da `NaN` y `NaN < ahora` es falso: sin guarda, una
-   * concesión firmada sin `expiresAt` no vencía nunca.
-   */
   it("una concesión sin fecha de vencimiento se rechaza en vez de no vencer nunca", () => {
     const auth = autenticacion();
     const sinVencimiento = concesionFirmada({ role: "REGISTRO_QUIOSCO", nonce: "abc" });
@@ -77,7 +59,6 @@ describe("auditoría · concesión del quiosco", () => {
     assert.throws(() => auth.verifyGrant(sinVencimiento), KioskAuthError);
   });
 
-  /** Una concesión válida sigue pasando, con su alcance intacto. */
   it("una concesión vigente devuelve su alcance", () => {
     const auth = autenticacion();
     const vigente = concesionFirmada({
@@ -93,7 +74,6 @@ describe("auditoría · concesión del quiosco", () => {
     });
   });
 
-  /** Un cuerpo firmado sin alcance dejaba pasar `role: undefined`. */
   it("una concesión sin alcance declarado se rechaza", () => {
     const auth = autenticacion();
     const sinAlcance = concesionFirmada({
@@ -118,12 +98,6 @@ describe("auditoría · concesión del quiosco", () => {
 });
 
 describe("auditoría · paridad de adaptadores en sesiones operativas", () => {
-  /**
-   * `listOperativeSessions` devolvía el nombre del curso en `trainingId`
-   * porque la consulta no seleccionaba ninguna columna de identidad. El
-   * adaptador de memoria sí lo devolvía bien, así que las pruebas —que corren
-   * contra memoria— no lo veían.
-   */
   it("trainingId es la identidad del curso y no su nombre", async () => {
     const fila = {
       sesion_id: "s-1",
@@ -152,10 +126,6 @@ describe("auditoría · paridad de adaptadores en sesiones operativas", () => {
     assert.notEqual(sesion.trainingId, sesion.trainingName);
   });
 
-  /**
-   * `act.nombre_visible` llega por `LEFT JOIN` y el contrato promete texto: sin
-   * respaldo, la pantalla imprimía «null».
-   */
   it("una sesión sin nombre de capacitador devuelve texto vacío y no null", async () => {
     const fila = {
       sesion_id: "s-2",
@@ -181,14 +151,9 @@ describe("auditoría · paridad de adaptadores en sesiones operativas", () => {
     assert.ok(sesion);
     assert.equal(sesion.instructor, "");
     assert.equal(sesion.totalAttendances, 0);
-    // Sin `clave_curso` la identidad cae al UUID, que sigue siendo identidad.
     assert.equal(sesion.trainingId, "11111111-1111-1111-1111-111111111111");
   });
 
-  /**
-   * `metadato_curso_dc3` entra por `LEFT JOIN`: un curso sin metadatos daba
-   * `null` donde el contrato declara el campo opcional.
-   */
   it("un curso sin metadatos DC-3 no devuelve una duración nula", async () => {
     const ejecutor: SqlExecutor = {
       query: () =>
@@ -215,10 +180,6 @@ describe("auditoría · paridad de adaptadores en sesiones operativas", () => {
 });
 
 describe("auditoría · hora de sesión", () => {
-  /**
-   * `String(["08:00"])` da `"08:00"`, así que un campo repetido en el formulario
-   * entraba como hora válida por una puerta que el contrato no declara.
-   */
   it("rechaza un arreglo aunque su texto parezca una hora", () => {
     const servicio = new SessionService({
       repository: new MemoryKioskSessionRepository({ activeWorkers: [] }),
@@ -244,7 +205,6 @@ describe("auditoría · hora de sesión", () => {
 });
 
 describe("auditoría · categoría por puesto", () => {
-  /** Las ramas cubren todos los casos; sólo se congela que sigan cubriéndolos. */
   it("cada puesto cae en su categoría y ninguno queda sin explicación", () => {
     const casos: readonly [string, string][] = [
       ["GERENTE DE PLANTA", "GERENCIAL"],

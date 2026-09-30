@@ -1,4 +1,3 @@
-/** Validacion de frontera y saneamiento para evitar formulas y HTML inyectado. */
 var KcmValidation = (function () {
   "use strict";
 

@@ -1,13 +1,3 @@
-/**
- * Los cinco ajustes pedidos para la corrida piloto: cancelar reserva desde
- * `/salas`, contraseña para agendar, contraseña del quiosco antes del número de
- * sesión, planta en `/trabajadores` y acceso con usuario y contraseña en
- * `/acceso`.
- *
- * La prueba que más importa no es ninguna de las cinco: es la que comprueba que
- * estas credenciales no pueden existir en producción.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
@@ -107,17 +97,6 @@ describe("Ajustes del piloto · planta", () => {
 });
 
 describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
-  /**
-   * Servidor del piloto con la sesión ya abierta.
-   *
-   * El guardia cierra `/salas`, `/trabajadores` y las escrituras de agenda, así
-   * que cada inyección viaja con la cookie que deja `/acceso`. Envolver
-   * `inject` una vez evita repetir la cabecera en veinte llamadas y deja que
-   * cada prueba hable de lo suyo —contraseña de agenda, nómina, planta— y no de
-   * la puerta, que se prueba en `guardia.test.ts`. Un entorno sin credencial
-   * declarada no autentica: la cookie queda vacía y la petición va sin sesión,
-   * que es justo lo que esas pruebas quieren ver.
-   */
   async function servidor(entorno: Record<string, string> = { ...ENTORNO_PILOTO }) {
     const app = await buildServer({
       config: loadConfig(entorno),
@@ -159,7 +138,6 @@ describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
     assert.match(cookie, /^kcm_sesion=/u);
     assert.match(cookie, /HttpOnly/u);
     assert.match(cookie, /SameSite=Lax/u);
-    // Sin HTTPS no se marca `Secure`, o el navegador descartaría la cookie.
     assert.equal(cookie.includes("Secure"), false);
   });
 
@@ -241,12 +219,6 @@ describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
     assert.equal(reservations.length, 1, "la reserva sin contraseña no se guardó");
   });
 
-  /**
-   * La base exige nómina o contacto (`reserva_solicitante_identificado`, 0021) y
-   * el formulario había dejado de pedir ambos: toda reserva hecha desde la
-   * pantalla moría con un 500 de la restricción. La persistencia en memoria no
-   * tiene restricciones, así que la regla vive en el dominio o no se prueba.
-   */
   it("agendar sin nómina ya no se rechaza: el nombre identifica a quien reserva", async () => {
     const app = await servidor();
     const enJson = await app.inject({
@@ -368,8 +340,6 @@ describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
     const { grant } = JSON.parse(desbloqueo.body) as { grant: string };
     assert.ok(grant);
 
-    // Con la concesión ya se consulta la sesión: el código sintético no existe,
-    // y lo que se comprueba es que el rechazo ya no es por falta de contraseña.
     const conConcesion = await app.inject({
       method: "POST",
       url: "/api/kiosk/token",
@@ -385,7 +355,6 @@ describe("Ajustes del piloto · acceso, salas, quiosco y padrón", () => {
 
     assert.equal(res.statusCode, 200);
     assert.match(res.body, /<th scope="col">Planta<\/th>/u);
-    // El nombre largo se conserva como título del dato; el visible es el corto.
     assert.match(res.body, /title="ECATEPEC I"/u);
     assert.match(res.body, /MANTTO INGENIERIA/u);
   });

@@ -1,11 +1,3 @@
-/**
- * Revisiones pendientes en `sistema.revision_pendiente` (migración `0044`).
- *
- * Una fila por tipo. La vigencia se decide en la consulta con `now()` de la
- * base y no con el reloj de cada instancia: dos instancias con relojes
- * desfasados no pueden discrepar sobre si una revisión sigue viva.
- */
-
 import type {
   RevisionGuardada,
   RevisionesCompartidasPort,

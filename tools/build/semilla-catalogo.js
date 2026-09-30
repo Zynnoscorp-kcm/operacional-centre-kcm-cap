@@ -1,20 +1,4 @@
 #!/usr/bin/env node
-/**
- * Genera el TSV de `CAPACITACIONES` y `EMPLEADOS` a partir de un snapshot HC privado.
- *
- * Es un atajo para dejar la plataforma operable sin depender todavía de la importación HC
- * completa. Llena los dos catálogos que el sistema consulta en caliente —el desplegable de
- * cursos y el padrón contra el que valida el quiosco— y nada más.
- *
- * NO sustituye a `importKcmOperationalHcSnapshotFromDrive_()`: no escribe `HC_REGISTROS`,
- * `HC_IMPORTACIONES` ni las 9,363 fechas históricas, así que `HC` no queda reconstruible desde
- * el ledger. Para eso sigue haciendo falta la importación real.
- *
- * El `trainingId` se deriva con la misma regla que `KcmOperationalHcService` y que
- * `build-matrix-mapping.js`, de modo que los tres coinciden.
- *
- *   npm run build:semilla-catalogo -- [--snapshot referencias/privado/hc-snapshot-....json]
- */
 import crypto from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -39,7 +23,6 @@ function parseArguments(argv) {
   return options;
 }
 
-/** Entrada y salida comparten frontera: nada de este catálogo sale de `referencias/privado/`. */
 function insidePrivate(candidate, subject) {
   const resolved = path.resolve(candidate);
   if (resolved !== PRIVATE_DIR && !resolved.startsWith(`${PRIVATE_DIR}${path.sep}`)) {
@@ -60,7 +43,6 @@ function trainingIdFor(sourceKey) {
   return `HC-${crypto.createHash("sha256").update(sourceKey, "utf8").digest("hex").slice(0, 20).toUpperCase()}`;
 }
 
-/** Un TSV no debe poder inyectar fórmulas ni romper la fila al pegarse en Sheets. */
 function tsvCell(value) {
   const text = String(value === undefined || value === null ? "" : value)
     .replace(/[\t\r\n]+/g, " ").trim();

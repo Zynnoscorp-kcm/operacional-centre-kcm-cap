@@ -32,9 +32,6 @@ export class MemoryExcelRepository implements ExcelRepository {
   }) {
     this.#pending = (seed?.pendingReleases ?? []).map((row) => ({ ...row }));
     this.#workers = (seed?.workers ?? []).map((row) => ({ ...row }));
-    // El vencimiento del nonce se mide con el mismo reloj que fija el servicio.
-    // Con `new Date()` la purga usaba la hora real y podía borrar un nonce recién
-    // aceptado, apagando el rechazo de replay según la hora del día.
     this.#clock = seed?.clock ?? { now: () => new Date(), nowIso: () => new Date().toISOString() };
   }
 

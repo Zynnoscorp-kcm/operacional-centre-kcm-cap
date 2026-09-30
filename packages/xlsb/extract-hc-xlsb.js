@@ -421,7 +421,6 @@ function parseRelationships(buffer, ownerPart) {
       try {
         decodedTarget = decodeURIComponent(decodedTarget);
       } catch {
-        // El nombre literal sigue siendo valido si no es una secuencia URI.
       }
       decodedTarget = decodedTarget.replaceAll("\\", "/");
       target = path.posix.normalize(
@@ -442,7 +441,6 @@ function parseRelationships(buffer, ownerPart) {
   return relationships;
 }
 
-/** Exportada para verificar que el cliente VBA derive exactamente el mismo `sourceKey`. */
 export function normalizedLabel(value) {
   return String(value ?? "")
     .normalize("NFKD")

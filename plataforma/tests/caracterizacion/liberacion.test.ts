@@ -1,19 +1,6 @@
-/**
- * Caracterizacion de la liberacion contra el nucleo de referencia.
- *
- * Congelan el comportamiento observable del nucleo en `packages/core` y
- * comprueban que el puerto en Node decide lo mismo.
- *
- * Donde el puerto se aparta del nucleo lo hace a proposito y la prueba lo
- * declara: la sobrescritura gobernada era antes un bloqueo duro
- * (`MATRIZ_CON_FECHA_EXISTENTE`), y el retiro del OCR elimino una rama de
- * exclusiones que aqui ya no existe.
- */
-
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-// El nucleo se importa tal cual, sin adaptarlo: es la referencia, no un ayudante.
 import { createInMemoryCore } from "../../../packages/core/create-in-memory-core.js";
 import { BLOCKING_REASONS, evaluateEligibility } from "../../../packages/core/eligibility.js";
 import {
@@ -41,7 +28,6 @@ import {
   fixedClock,
 } from "../apoyo/fixtures-liberacion.ts";
 
-/** La forma que el legado espera: el objeto sesión, no su identificador. */
 const LEGACY_SESSION = Object.freeze({ sessionId: SESSION_ID, authorized: true });
 
 function buildPort(attendances = [buildAttendance("10001"), buildAttendance("10002")]) {
@@ -56,8 +42,6 @@ function buildPort(attendances = [buildAttendance("10001"), buildAttendance("100
   const service = new ReleaseService({ repository, gateway, clock, secret: SECRET });
   return { repository, service };
 }
-
-// ---------------------------------------------------------------------------
 
 describe("E10 · caracterización de la clave idempotente", () => {
   it("reproduce byte a byte la clave del legado", () => {
@@ -90,8 +74,6 @@ describe("E10 · caracterización de la clave idempotente", () => {
     assert.equal(claves.size, 5, "los cuatro componentes participan de la identidad del efecto");
   });
 });
-
-// ---------------------------------------------------------------------------
 
 describe("E10 · caracterización de la elegibilidad", () => {
   const casos: readonly {
@@ -225,7 +207,6 @@ describe("E10 · caracterización de la elegibilidad", () => {
       });
     }
 
-    // 10002 no entregó examen.
     legado.exams.reconcile({
       sessionId: SESSION_ID,
       receivedExamCount: 1,
@@ -247,7 +228,6 @@ describe("E10 · caracterización de la elegibilidad", () => {
     assert.equal(previewLegado.excluded[0]?.employeeId, "10002");
     assert.ok(previewLegado.excluded[0]?.reasons.includes(BLOCKING_REASONS.EXAM_NOT_FOUND));
 
-    // El puerto separa el mismo caso con los mismos motivos.
     const { eligible, excluded } = splitEligibility(
       [buildAttendance("10001"), buildAttendance("10002", { examStatus: "EXAMEN_NO_ENCONTRADO" })],
       buildSession(),
@@ -261,11 +241,8 @@ describe("E10 · caracterización de la elegibilidad", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · caracterización de la idempotencia efectiva", () => {
   it("el legado no escribe dos veces la misma celda y el puerto tampoco", async () => {
-    // --- Legado ---
     const legado = createInMemoryCore({
       employees: [
         {
@@ -314,7 +291,6 @@ describe("E10 · caracterización de la idempotencia efectiva", () => {
     assert.equal(segundoLegado.status, "SIN_CAMBIOS");
     assert.equal(legado.matrix.writeCount, 1);
 
-    // --- Puerto en Node ---
     const { repository, service } = buildPort([buildAttendance("10001")]);
 
     const primero = await service.release(
@@ -339,11 +315,8 @@ describe("E10 · caracterización de la idempotencia efectiva", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("E10 · desviaciones declaradas respecto del legado", () => {
   it("el legado bloqueaba toda fecha existente; el puerto lo hace sólo bajo NO_OVERWRITE", async () => {
-    // Legado: una celda ocupada produce MATRIZ_CON_FECHA_EXISTENTE, sin excepción.
     const legado = createInMemoryCore({
       employees: [
         {
@@ -389,16 +362,12 @@ describe("E10 · desviaciones declaradas respecto del legado", () => {
       "el legado no admitía ninguna sobrescritura",
     );
 
-    // El puerto conserva ese bloqueo bajo NO_OVERWRITE: sólo la política del
-    // destino habilita el segundo valor, y siempre con motivo.
     const { service } = buildPort([buildAttendance("10001")]);
     const preview = await service.preview(SESSION_ID);
     assert.equal(preview.mapping.overwritePolicy, "NO_OVERWRITE");
   });
 
   it("el tope del lote sigue atado al tope de la sesión del legado", () => {
-    // Son el mismo número por la misma razón: el quiosco no admite un registro
-    // cuarenta y uno, así que un lote de cuarenta y uno no puede existir.
     assert.equal(MAX_ENTRIES_PER_BATCH, MAX_PARTICIPANTS_PER_SESSION);
     assert.equal(MAX_ENTRIES_PER_BATCH, 40);
   });

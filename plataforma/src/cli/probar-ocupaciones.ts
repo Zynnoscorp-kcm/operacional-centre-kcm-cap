@@ -1,29 +1,4 @@
 #!/usr/bin/env node
-/**
- * Prueba el agente de ocupaciones desde la línea de comandos, con las llaves
- * del `.env`. Sirve para dos cosas antes de usarlo en serio:
- *
- *   npm run ia:ocupaciones -- --puesto "*OPERARIO 2°" --centro "HIGIENICOS"
- *
- *     Un caso. Imprime la sugerencia completa con su traza, nodo por nodo.
- *
- *   npm run ia:ocupaciones -- --padron "~/Documents/KCM Anexos/sem 31 CAP.xlsx" --limite 20
- *
- *     La evaluación. Toma del padrón cada combinación de puesto y centro de
- *     costos —de la más frecuente a la menos—, la clasifica desde cero y
- *     escribe un CSV con la clave que ya trae el padrón al lado, para medir el
- *     acierto contra la llenada manual. Una combinación se evalúa una sola vez
- *     porque la entrada del agente es la misma para todos sus trabajadores.
- *
- *   npm run ia:ocupaciones -- --padron "~/Documents/KCM Anexos/sem 31 CAP.xlsx" --limite 12 --lote
- *
- *     La misma evaluación, pero por lotes, como la hace el botón «Clasificar
- *     faltantes»: varias combinaciones por petición. Dice cuántas peticiones
- *     gastó en total.
- *
- * Del padrón sólo se usan puesto y centro de costos: nombres, CURP, RFC y
- * números de trabajador se leen del archivo local y no salen del equipo.
- */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -146,14 +121,11 @@ async function unoPorUno(
   return respuestas;
 }
 
-/** Como el botón «Clasificar faltantes»: el lote avanza por pasos hasta terminar. */
 async function porLotes(
   parametros: NonNullable<ReturnType<typeof leerAgenteDelEntorno>>,
   pares: readonly Combinacion[],
 ): Promise<(Respuesta | undefined)[]> {
   const lotes = armarClasificadorPorLotes(parametros);
-  // La misma puerta y el mismo tope que el botón: lo que parece un dato personal
-  // no sale del equipo, y la corrida no pasa de su tope.
   const tope = parametros.lote.casosPorCorrida;
   const casos: CasoEnLote[] = [];
   const parDelCaso = new Map<string, number>();

@@ -1,21 +1,3 @@
-/**
- * Adaptador PostgreSQL del puente VBA y Power Query (Funciones 10 y 11).
- *
- * Es el que hace que la credencial sobreviva a un reinicio y que un acuse quede
- * en el ledger. Todo lo que toca vive en `database/migrations/0025`.
- *
- * Dos cosas que no son evidentes al leer el puerto:
- *
- * 1. `listPendingReleases` no consulta tablas: llama a
- *    `lectura.obtener_liberaciones_pendientes`, que resuelve la liberación
- *    contra el mapeo vigente y el destino activo. Una liberación sin mapeo no se
- *    entrega, y esa regla vive en la base para que ningún adaptador pueda
- *    saltársela.
- * 2. El nonce se consume con un `INSERT ... ON CONFLICT DO NOTHING`. La
- *    unicidad de la llave primaria es la garantía de un solo uso; comprobar
- *    antes con un `SELECT` dejaría una ventana entre la lectura y la escritura.
- */
-
 import type { MatrixSnapshot } from "../../domain/importacion-matriz/tipos.ts";
 import type {
   Dc3BridgeEvent,
@@ -32,7 +14,6 @@ import type {
 } from "../../domain/excel/tipos.ts";
 import type { SqlExecutor } from "./matriz.ts";
 
-/** Actor bajo el que se emiten y revocan credenciales cuando no hay uno nominal. */
 const ACTOR_SISTEMA = "sistema.configuracion";
 
 interface FilaCredencial {
@@ -75,8 +56,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
     if (!id) throw new Error(`No fue posible resolver el actor ${identificador}`);
     return id;
   }
-
-  // ---------------------------------------------------------------- credenciales
 
   async insertCredential(credential: DeviceCredential): Promise<void> {
     const emisor = await this.#actorId();
@@ -134,14 +113,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
     }));
   }
 
-  /**
-   * Sólo se reescriben los tres campos que cambian en vida de una credencial:
-   * uso, revocación y su motivo. Reemplazar la fila completa permitiría alterar
-   * el hash o la caducidad desde una ruta que no es la de emisión.
-   */
   async replaceCredential(credential: DeviceCredential): Promise<void> {
-    // `credencial_revocacion_coherente` ata revocada_en a revocada_por: revocar
-    // sin dejar quién lo hizo no es revocar, es borrar el rastro.
     const revocador = credential.revokedAt ? await this.#actorId() : null;
     await this.#db.query(
       `UPDATE seguridad.credencial_equipo
@@ -159,8 +131,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
       ],
     );
   }
-
-  // ------------------------------------------------------------------ liberación
 
   async listPendingReleases(): Promise<readonly PendingExcelRelease[]> {
     const { rows } = await this.#db.query<{
@@ -180,18 +150,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
       nombre_trabajador: string | null;
       fecha_anterior_esperada: string | null;
     }>(
-      // El código de la sesión no sale de la función de lectura y se recoge
-      // aquí, no dentro de ella: cambiarle la firma obligaría a una migración
-      // para agregar un dato que ninguna de sus reglas necesita. El `LEFT JOIN`
-      // no puede quitar renglones —una liberación sin sesión no existe—, y si
-      // alguna vez faltara, la fila sigue viniendo con el código vacío en vez de
-      // desaparecer de la carga que Excel debe escribir.
-      //
-      // El nombre del padrón y la fecha que la liberación autorizó sobrescribir
-      // se recogen igual, para `RELEASE_CONTEXT_V1`. La fecha anterior es la
-      // vigente del historial: el historial no cambia hasta que Excel confirma,
-      // así que es la misma que la liberación vio y por la que pidió motivo.
-      // Sin registro vigente, la plataforma esperaba la celda libre.
       `SELECT p.*, s.codigo_sesion,
               t.nombre_completo AS nombre_trabajador,
               CASE WHEN h.fecha_capacitacion IS DISTINCT FROM l.fecha_efectiva
@@ -285,10 +243,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
       : undefined;
   }
 
-  /**
-   * El lote entero entra en una transacción: un acuse a medias dejaría al
-   * cliente sin saber cuáles quedaron registrados.
-   */
   async appendReleaseAcks(rows: readonly ExcelReleaseAck[]): Promise<void> {
     if (rows.length === 0) return;
     await this.#db.transaction(async (tx) => {
@@ -314,17 +268,12 @@ export class SupabaseExcelRepository implements ExcelRepository {
             row.receivedAt,
           ],
         );
-        // Con el acuse efectivo la fecha ya está en la matriz: sólo entonces
-        // entra al historial. Misma transacción, para que no haya acuse sin
-        // registro ni registro sin acuse.
         if (row.status === "APPLIED" || row.status === "RECOVERED") {
           await materializarLiberacion(tx, row.idempotencyKey);
         }
       }
     });
   }
-
-  // ------------------------------------------------------------------------ DC-3
 
   async listDc3Events(): Promise<readonly Dc3BridgeEvent[]> {
     const { rows } = await this.#db.query<{
@@ -392,11 +341,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
     });
   }
 
-  // ----------------------------------------------------------------------- nonce
-
   async useNonce(clientId: string, nonce: string, expiresAt: string): Promise<boolean> {
-    // La limpieza va antes del intento: una fila caducada no debe rechazar un
-    // nonce nuevo, y así la tabla no crece sin fin.
     await this.#db.query(`DELETE FROM seguridad.nonce WHERE expira_en < now();`);
     const { rows } = await this.#db.query<{ nonce: string }>(
       `INSERT INTO seguridad.nonce (cliente_id, nonce, expira_en)
@@ -407,8 +352,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
     );
     return rows.length > 0;
   }
-
-  // ----------------------------------------------------------------- Power Query
 
   async listPowerQueryWorkers(): Promise<readonly PowerQueryWorkerRow[]> {
     const { rows } = await this.#db.query<{
@@ -427,8 +370,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
     }));
   }
 
-  // -------------------------------------------------------------------- snapshot
-
   async saveImportSnapshot(importId: string, snapshot: MatrixSnapshot): Promise<void> {
     await this.#db.query(
       `INSERT INTO matriz.importacion_contenido (importacion_id, contenido)
@@ -446,11 +387,7 @@ export class SupabaseExcelRepository implements ExcelRepository {
     return rows[0]?.snapshot ?? null;
   }
 
-  // ------------------------------------------------------------ envío en partes
-
   async saveUploadPart(part: UploadPart, now: string): Promise<void> {
-    // Como con los nonces, la limpieza va antes: la tabla no crece con envíos
-    // que se interrumpieron y nadie repitió.
     await this.#db.query(`DELETE FROM sistema.envio_parte WHERE vence_en <= $1;`, [now]);
     await this.#db.query(
       `INSERT INTO sistema.envio_parte
@@ -480,7 +417,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
     envio: UploadKey,
     now: string,
   ): Promise<readonly UploadPartSummary[]> {
-    // Sin `contenido`: mientras falten partes, cada llegada sólo cuenta cuáles hay.
     const { rows } = await this.#db.query<{
       numero_parte: number;
       total_partes: number;
@@ -538,13 +474,6 @@ export class SupabaseExcelRepository implements ExcelRepository {
   }
 }
 
-/**
- * Pasa al historial una fecha liberada que Excel ya escribió en la matriz.
- *
- * Idempotente: si el historial ya tiene la clave, no hace nada. Si había una
- * fecha vigente distinta, primero asienta el cambio `SOBRESCRITA` con el motivo
- * y el actor del lote, después retira la vigente y al final agrega la nueva.
- */
 async function materializarLiberacion(
   tx: { query: SqlExecutor["query"] },
   clave: string,

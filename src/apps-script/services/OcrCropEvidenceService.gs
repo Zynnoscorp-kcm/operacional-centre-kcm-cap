@@ -1,4 +1,3 @@
-/** Productor idempotente de recortes OCR: binarios en Drive, referencias en Sheets. */
 var KcmOcrCropEvidenceService = (function () {
   "use strict";
   var MAX_PAIRS = 200;
@@ -294,7 +293,7 @@ var KcmOcrCropEvidenceService = (function () {
   }
 
   function auditSafe(identity, input) {
-    try { KcmServiceSupport.audit(identity, input); } catch (ignored) { /* La recuperacion no depende de una segunda escritura. */ }
+    try { KcmServiceSupport.audit(identity, input); } catch (ignored) {  }
   }
 
   function auditOnce(identity, repo, input) {

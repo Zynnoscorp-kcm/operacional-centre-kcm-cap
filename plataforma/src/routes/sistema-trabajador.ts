@@ -1,7 +1,3 @@
-/**
- * Rutas web y API para la Función 8: Sistema General por Trabajador.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppConfig } from "../config/environment.ts";
 import { tryParseWorkerNumber } from "../domain/comun/numero-trabajador.ts";
@@ -20,7 +16,6 @@ export function registerWorkerSystemRoutes(
 ): void {
   const service = new WorkerSystemService(repository);
 
-  // 1. Directorio de trabajadores (HTML)
   app.get("/trabajadores", async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as {
       q?: string;
@@ -63,12 +58,6 @@ export function registerWorkerSystemRoutes(
     return reply.type("text/html; charset=utf-8").send(htmlContent);
   });
 
-  // 2. Resumen por departamento (HTML)
-  // 1b. Tablero DNC: cobertura por trabajador con filtros y concordancia.
-  //
-  // Se declara antes de `/trabajadores/:workerNumber` a propósito: Fastify
-  // resuelve la ruta estática primero, pero dejarlas juntas hace evidente que
-  // «cobertura» no puede confundirse nunca con un número de trabajador.
   app.get("/trabajadores/cobertura", async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as {
       planta?: string;
@@ -119,7 +108,6 @@ export function registerWorkerSystemRoutes(
     return reply.type("text/html; charset=utf-8").send(htmlContent);
   });
 
-  // 3. Perfil de cobertura por curso (HTML)
   app.get("/trabajadores/cursos", async (_request: FastifyRequest, reply: FastifyReply) => {
     const courses = await service.getCourseCoverageSummary();
     const htmlContent = renderCourseCoveragePage({
@@ -129,13 +117,10 @@ export function registerWorkerSystemRoutes(
     return reply.type("text/html; charset=utf-8").send(htmlContent);
   });
 
-  // 4. La comparativa de planta repetía las cifras de Departamentos en tarjetas;
-  // las dos vistas son ahora una. La dirección vieja lleva a la nueva.
   app.get("/trabajadores/comparativa", (_request: FastifyRequest, reply: FastifyReply) =>
     reply.redirect("/trabajadores/departamentos", 301),
   );
 
-  // 5. Ficha individual por trabajador (HTML)
   app.get("/trabajadores/:workerNumber", async (request: FastifyRequest, reply: FastifyReply) => {
     const params = request.params as { workerNumber?: string };
     const workerNumber = tryParseWorkerNumber(params.workerNumber);
@@ -157,7 +142,6 @@ export function registerWorkerSystemRoutes(
     return reply.type("text/html; charset=utf-8").send(htmlContent);
   });
 
-  // 6. Endpoint de API JSON para consulta programática
   app.get(
     "/api/v1/trabajadores/:workerNumber/dnc",
     async (request: FastifyRequest, reply: FastifyReply) => {

@@ -1,4 +1,3 @@
-/** Serializa primitivas de escritura incluso cuando el servicio llamador no tomo el lock. */
 function KcmWithRepositoryWriteLock(callback) {
   var lock;
   if (typeof KcmScriptLock !== "undefined") {
@@ -14,7 +13,6 @@ function KcmWithRepositoryWriteLock(callback) {
   finally { lock.releaseLock(); }
 }
 
-/** Repositorio por encabezados; todas las escrituras se agrupan con setValues. */
 var KcmSheetsRepository = (function () {
   "use strict";
 
@@ -179,7 +177,6 @@ var KcmSheetsRepository = (function () {
     return changed;
   }
 
-  /** Reemplaza una fila completa en un solo setValues; requerido para sobres firmados. */
   function replaceOne(name, keyField, replacement) {
     if (!replacement || typeof replacement !== "object" || Array.isArray(replacement)) {
       KcmValidation.fail("INVALID_INPUT", "El reemplazo de fila no es valido");
@@ -243,7 +240,6 @@ var KcmSheetsRepository = (function () {
   });
 }());
 
-/** Almacen simulado persistente, limitado a datos sinteticos y sin credenciales. */
 var KcmMockRepository = (function () {
   "use strict";
   var PREFIX = "KCM_MOCK_TABLE_";

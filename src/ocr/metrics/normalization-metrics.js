@@ -63,10 +63,6 @@ export function translationHomography(deltaX, deltaY) {
   return Object.freeze([1, 0, deltaX, 0, 1, deltaY, 0, 0, 1]);
 }
 
-/**
- * Compara una homografia estimada contra la verdad del fixture sobre las 200
- * casillas. Los errores estan en pixeles de la fotografia deformada.
- */
 export function measureNormalizationAlignment({
   expectedHomography,
   estimatedHomography,

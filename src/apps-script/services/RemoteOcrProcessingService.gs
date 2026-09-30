@@ -1,4 +1,3 @@
-/** Orquestacion reanudable del worker remoto sin devolver binarios al cliente. */
 var KcmRemoteOcrProcessingService = (function () {
   "use strict";
 
@@ -255,7 +254,6 @@ var KcmRemoteOcrProcessingService = (function () {
         }]);
       }
     } catch (ignored) {
-      /* Una concesion no liberada expira y puede recuperarse sin otro requestId. */
     } finally {
       if (acquired) lock.releaseLock();
     }

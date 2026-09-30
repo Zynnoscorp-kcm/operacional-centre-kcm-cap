@@ -1,11 +1,3 @@
-/**
- * Fixtures sintéticos para las pruebas de liberación.
- *
- * Todas las identidades son inventadas. La frontera de privacidad del proyecto
- * prohíbe usar la matriz, el padrón o el DNC como fixture, y estos números de
- * cinco dígitos no corresponden a ninguna persona.
- */
-
 import { parseWorkerNumber, type WorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
 import type { HcRecord } from "../../src/domain/importacion-matriz/tipos.ts";
 import type { AttendanceRecord, SessionRecord } from "../../src/domain/quiosco/tipos.ts";
@@ -17,7 +9,6 @@ export const TRAINING_ID = "CAP-SINT-001";
 export const MAPPING_VERSION = "operational-hc-v1";
 export const SESSION_DATE = "2026-07-15";
 
-/** Reloj fijo: ninguna prueba de este proyecto depende del reloj de la máquina. */
 export function fixedClock(iso = "2026-07-15T18:00:00.000Z"): Clock {
   return {
     now: () => new Date(iso),
@@ -88,7 +79,6 @@ export function buildMapping(
   };
 }
 
-/** Registro previo en la réplica, como el que dejaría una importación XLSB. */
 export function buildHcRecord(
   employeeId: string,
   completionDate: string,

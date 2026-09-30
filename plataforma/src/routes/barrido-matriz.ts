@@ -1,17 +1,3 @@
-/**
- * Rutas del barrido de la matriz.
- *
- * Cinco rutas y una regla: `GET` no escribe, y de los cuatro `POST` sólo
- * `/matriz/aplicar` toca la base. Encargar un barrido deja una orden en el
- * proceso; recibirlo produce una revisión; descartarlo y cancelarlo sólo borran
- * memoria.
- *
- * Exige sesión por la misma razón que el padrón: aquí sí se escribe. Aplicar un
- * barrido mueve fechas de capacitación de mil setecientas personas y da de alta
- * capacitaciones nuevas; eso no puede quedar detrás de una URL que cualquiera
- * adivine. Sin sesión se manda a `/acceso` con el destino puesto.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config/environment.ts";
@@ -25,7 +11,6 @@ export interface MatrixScanRouteDeps {
   readonly config: AppConfig;
   readonly clock: Clock;
   readonly sessions: ConsoleSessionCodec;
-  /** Ausente cuando no hay base: la pantalla lo explica y no ofrece barrer. */
   readonly service?: MatrixScanService;
 }
 
@@ -49,14 +34,10 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
         }),
       );
 
-  /** Lo que hay ahora mismo, para no repetirlo en cada respuesta. */
   const estado = (): Omit<DatosDeBarrido, "entorno" | "sinBase"> => {
     if (!service) return {};
     const informe = service.ultimoBarrido();
     const resultado = service.ultimoResultado();
-    // Resuelta al recibir el barrido: la pantalla se dibuja en cada recarga y en
-    // cada vuelta del vigilante, y consultar la base en cada dibujo sería una
-    // consulta por visita contra un enlace medido en kilobytes por segundo.
     const comparacion = service.comparacion();
     return {
       ...(informe ? { informe } : {}),
@@ -65,7 +46,6 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
     };
   };
 
-  /** `false` cuando ya se respondió con la redirección al acceso. */
   const conSesion = (peticion: FastifyRequest, respuesta: FastifyReply): boolean => {
     if (config.pilot.openAccess) return true;
     if (sessions.leer(peticion.headers.cookie, clock.now())) return true;
@@ -73,7 +53,6 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
     return false;
   };
 
-  /** Con acceso abierto no hay quién firme: se dice así en vez de inventarlo. */
   const actor = (peticion: FastifyRequest): string =>
     sessions.leer(peticion.headers.cookie, clock.now())?.usuario ?? "acceso-abierto";
 
@@ -104,7 +83,6 @@ export function registerMatrixScanRoutes(app: FastifyInstance, deps: MatrixScanR
     const barridoId = typeof cuerpo.barridoId === "string" ? cuerpo.barridoId : "";
 
     try {
-      // La revisión pudo llegar a otra instancia: se trae antes de aplicarla.
       await service.sincronizar();
       const resultado = await service.aplicar(barridoId, actor(peticion));
       peticion.log.info(

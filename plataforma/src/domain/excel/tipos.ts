@@ -25,7 +25,6 @@ export interface DeviceCredential {
   readonly salt: string;
   readonly credentialHash: string;
   readonly issuedAt: string;
-  /** `null` significa credencial permanente. Siempre puede revocarse. */
   readonly expiresAt: string | null;
   readonly revokedAt?: string;
   readonly revocationReason?: string;
@@ -36,12 +35,6 @@ export interface PendingExcelRelease {
   readonly idempotencyKey: string;
   readonly batchId: string;
   readonly sessionId: string;
-  /**
-   * El código legible de la sesión, el mismo que se ve en la consola. No entra
-   * en el TSV de `RELEASE_PULL_V1` —el contrato de esa acción no se toca— pero
-   * es lo único con lo que una persona reconoce una sesión: el UUID no lo lee
-   * nadie, y el panel del libro tiene que poder decir cuál llegó.
-   */
   readonly sessionCode: string;
   readonly employeeId: string;
   readonly trainingId: string;
@@ -52,36 +45,15 @@ export interface PendingExcelRelease {
   readonly destinationHeader: string;
   readonly targetMappingVersion: string;
   readonly overwritePolicy: "NO_OVERWRITE" | "OVERWRITE_WITH_HISTORY";
-  /**
-   * Nombre del trabajador en el padrón. No viaja en `RELEASE_PULL_V1`: lo pide
-   * Excel con `RELEASE_CONTEXT_V1` para comprobar que el renglón de la matriz
-   * con esa nómina es la misma persona antes de escribir.
-   */
   readonly workerName?: string;
-  /**
-   * La fecha que la plataforma esperaba encontrar en la celda cuando la
-   * liberación autorizó sobrescribir (con motivo). Vacía si esperaba la celda
-   * libre: una fecha distinta que sólo Excel ve es un conflicto, no una
-   * sobrescritura.
-   */
   readonly expectedPreviousDate?: string;
 }
 
-/**
- * Una sesión con liberaciones esperando a Excel, ya resumida.
- *
- * Es lo que alimenta el subpanel del libro controlador: la lista de lo que ha
- * llegado, para poder escoger qué se escribe. Se resume en el servidor y no en
- * la macro porque el cliente ya tiene bastante con abrir la matriz.
- */
 export interface PendingReleaseSession {
   readonly sessionId: string;
   readonly sessionCode: string;
-  /** `clave_curso`. La sesión es de un solo curso. */
   readonly trainingId: string;
-  /** La fecha que se escribiría. Es la misma para toda la sesión. */
   readonly completionDate: string;
-  /** Renglones que faltan por escribir en esa sesión. */
   readonly pending: number;
 }
 
@@ -100,10 +72,6 @@ export interface ExcelReleaseAck {
   readonly receivedAt: string;
 }
 
-/**
- * El último envío chico: un acuse de Excel con las fechas que escribió en la
- * matriz. Se agrupa por solicitud porque un acuse trae varias fechas a la vez.
- */
 export interface UltimoLoteAplicado {
   readonly recibidoEn: string;
   readonly fechas: number;
@@ -146,36 +114,19 @@ export interface ExcelImportPreview {
   readonly reactivated: number;
 }
 
-/**
- * Una parte de un envío que no cabe en una sola petición.
- *
- * La nube corta cada petición en 4.5 MB. Excel parte lo que pase de ahí y manda
- * las partes una tras otra; cada una puede caer en una instancia distinta, así
- * que esperan en la base hasta que llega la última y el envío se procesa
- * completo, como si hubiera llegado de una vez.
- */
 export interface UploadPart {
-  /**
-   * Cliente, solicitud y largo total identifican el envío: dos envíos distintos
-   * nunca comparten partes.
-   */
   readonly clientId: string;
   readonly requestId: string;
-  /** Largo del envío completo, en caracteres base64 web-safe. */
   readonly totalCharacters: number;
-  /** Número de esta parte, desde 1. */
   readonly partNumber: number;
   readonly totalParts: number;
-  /** La acción que se ejecuta al juntar las partes. */
   readonly action: string;
   readonly content: string;
   readonly expiresAt: string;
 }
 
-/** Lo que se sabe de una parte sin leer su contenido. */
 export type UploadPartSummary = Pick<UploadPart, "partNumber" | "totalParts" | "action">;
 
-/** Lo que identifica un envío en partes. */
 export interface UploadKey {
   readonly clientId: string;
   readonly requestId: string;
@@ -191,7 +142,6 @@ export interface ExcelRepository {
   replaceCredential(credential: DeviceCredential): Promise<void>;
   listPendingReleases(): Promise<readonly PendingExcelRelease[]>;
   listReleaseAcks(): Promise<readonly ExcelReleaseAck[]>;
-  /** El acuse más reciente con fechas escritas de verdad; nada si no hay ninguno. */
   lastAppliedReleaseBatch(): Promise<UltimoLoteAplicado | undefined>;
   appendReleaseAcks(rows: readonly ExcelReleaseAck[]): Promise<void>;
   listDc3Events(): Promise<readonly Dc3BridgeEvent[]>;
@@ -200,16 +150,9 @@ export interface ExcelRepository {
   listPowerQueryWorkers(): Promise<readonly PowerQueryWorkerRow[]>;
   saveImportSnapshot(importId: string, snapshot: MatrixSnapshot): Promise<void>;
   getImportSnapshot(importId: string): Promise<MatrixSnapshot | null>;
-  /** Guarda una parte; repetirla la sustituye. De paso borra las vencidas de cualquier envío. */
   saveUploadPart(part: UploadPart, now: string): Promise<void>;
-  /** Las partes vigentes de un envío, en cualquier orden. */
   listUploadParts(envio: UploadKey, now: string): Promise<readonly UploadPart[]>;
-  /**
-   * Qué partes vigentes tiene un envío, sin su contenido: basta para saber si
-   * ya está completo sin leer megas de más en cada parte.
-   */
   listUploadPartNumbers(envio: UploadKey, now: string): Promise<readonly UploadPartSummary[]>;
-  /** Borra todas las partes de un envío. */
   discardUploadParts(envio: UploadKey): Promise<void>;
 }
 
@@ -221,12 +164,8 @@ export interface BridgeRequest {
   readonly nonce: string;
   readonly credential: string;
   readonly payload: string;
-  /** Sólo en `UPLOAD_PART_V1`: la acción del envío completo. */
   readonly target?: string;
-  /** Sólo en `UPLOAD_PART_V1`: número de esta parte, desde 1. */
   readonly part?: string;
-  /** Sólo en `UPLOAD_PART_V1`: cuántas partes forman el envío. */
   readonly parts?: string;
-  /** Sólo en `UPLOAD_PART_V1`: largo del envío completo. */
   readonly length?: string;
 }

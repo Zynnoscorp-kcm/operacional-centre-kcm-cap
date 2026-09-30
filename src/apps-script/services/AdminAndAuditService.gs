@@ -1,4 +1,3 @@
-/** Operaciones administrativas y consulta de auditoria, siempre autorizadas. */
 var KcmAdminAndAuditService = (function () {
   "use strict";
 

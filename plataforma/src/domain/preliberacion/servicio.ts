@@ -1,13 +1,3 @@
-/**
- * Servicio de preliberación — cálculos puros de elegibilidad y vista previa.
- *
- * Porta las funciones `blockingReasons`, `participantAttendance` y `preview`
- * del servicio de preliberación. La compuerta de reconocimiento óptico
- * se retira porque el OCR quedó fuera de alcance .
- *
- * No muta estado: es consulta pura. Las mutaciones viven en WorkbenchService.
- */
-
 import type { AttendanceRecord, SessionRecord } from "../quiosco/tipos.ts";
 import type {
   BlockingReason,
@@ -24,10 +14,6 @@ import type {
   PreReleaseReviewRecord,
   SessionHeader,
 } from "./tipos.ts";
-
-// ---------------------------------------------------------------------------
-// Motivos de bloqueo
-// ---------------------------------------------------------------------------
 
 export function blockingReasons(
   attendance: AttendanceRecord,
@@ -50,10 +36,6 @@ export function blockingReasons(
   return reasons;
 }
 
-// ---------------------------------------------------------------------------
-// Participant attendance DTO — porta la función homónima
-// ---------------------------------------------------------------------------
-
 export function participantAttendance(
   attendance: AttendanceRecord,
   session: SessionRecord,
@@ -74,10 +56,6 @@ export function participantAttendance(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Fila del listado de participantes
-// ---------------------------------------------------------------------------
-
 export function buildRosterRow(
   attendance: AttendanceRecord,
   session: SessionRecord,
@@ -86,8 +64,6 @@ export function buildRosterRow(
   const participant = participantAttendance(attendance, session);
   const examStatus = (attendance.examStatus || "EXAMEN_PENDIENTE") as ExamOutcome;
 
-  // En el banco de preliberación todo examen parte como entregado y aprobado.
-  // El valor sólo se vuelve durable cuando el revisor guarda la revisión completa.
   const effectiveExamStatus: ExamOutcome =
     examStatus === "EXAMEN_PENDIENTE" ? "EXAMEN_CONFIRMADO" : examStatus;
 
@@ -116,33 +92,10 @@ export function buildRosterRow(
     exclusionReason: participant.exclusionReason,
     released: participant.released,
     blockingReasons: reasons,
-    // Un examen que sigue en su valor por omisión no hace elegible a nadie,
-    // aunque se muestre como aprobado y aunque `reasons` venga vacío: la
-    // compuerta real, `splitEligibility`, evalúa el registro crudo y lo
-    // rechazaría igual. Anunciarlo aquí como «a liberar» sería prometer lo que
-    // liberación no va a cumplir. Lo provisional se lee en `examDefaulted`.
     eligible: reasons.length === 0 && examStatus !== "EXAMEN_PENDIENTE",
   };
 }
 
-// ---------------------------------------------------------------------------
-// Hallazgos derivados — el servidor los calcula, no se declaran a mano
-// ---------------------------------------------------------------------------
-
-/**
- * Las tres situaciones en que puede estar una fila del padrón, en el orden en
- * que mandan.
- *
- * Un motivo de bloqueo manda sobre lo provisional: a quien está excluido se le
- * dice excluido aunque su examen conserve el valor por omisión. Sólo después
- * viene lo pendiente, que es la fila cuyo examen todavía no se vuelve durable
- * porque nadie ha guardado la revisión. Llamar «Excluido» a esa fila —como
- * hacía el banco de trabajo— acusaba de exclusión a quien nadie excluyó, y sin
- * un motivo que mostrar al lado, porque no había ninguno.
- *
- * Vive aquí y no en cada vista porque el banco y el reporte tienen que decir lo
- * mismo de la misma fila; separados ya habían empezado a discrepar.
- */
 export type RosterSituation = "EXCLUIDO" | "PENDIENTE" | "A_LIBERAR";
 
 export const ROSTER_SITUATION_LABELS: Readonly<Record<RosterSituation, string>> = Object.freeze({
@@ -152,15 +105,6 @@ export const ROSTER_SITUATION_LABELS: Readonly<Record<RosterSituation, string>> 
 });
 
 export function rosterSituation(row: RosterRow): RosterSituation {
-  // Lo que guardar la revisión resuelve por sí solo, sin que nadie decida nada:
-  // el examen que sigue en su valor por omisión, y el cotejo de asistencia de
-  // quien sí está en el padrón activo —`save` lo confirma para toda identidad
-  // validada—. Recién registrada en el quiosco, una fila llega con los dos, y
-  // llamarla «Excluido» por eso describía como decisión lo que sólo era trabajo
-  // sin empezar.
-  //
-  // La distinción importa en el caso contrario: para quien no está en el padrón
-  // el cotejo no se resuelve guardando, y ahí sí es un bloqueo de verdad.
   const resueltoAlGuardar = new Set<string>();
   if (row.examDefaulted) resueltoAlGuardar.add("EXAMEN_NO_CONFIRMADO");
   if (row.identityValidated) resueltoAlGuardar.add("ASISTENCIA_NO_COMPROBADA");
@@ -187,10 +131,6 @@ export function derivedFindings(roster: readonly RosterRow[], receivedExams: num
   return findings;
 }
 
-// ---------------------------------------------------------------------------
-// Contadores — porta counters() del legado
-// ---------------------------------------------------------------------------
-
 export function counters(roster: readonly RosterRow[], receivedExams: number): PreReleaseCounters {
   const approved = roster.filter((r) => r.examStatus === "EXAMEN_CONFIRMADO");
   const failed = roster.filter((r) => r.examStatus === "EXAMEN_REPROBADO");
@@ -208,10 +148,6 @@ export function counters(roster: readonly RosterRow[], receivedExams: number): P
     eligibleCount: roster.filter((r) => r.eligible).length,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Session header — encabezado sin identidades
-// ---------------------------------------------------------------------------
 
 export function sessionHeader(
   session: SessionRecord,
@@ -238,10 +174,6 @@ export function sessionHeader(
     pendingExamCount: pending,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Review DTO
-// ---------------------------------------------------------------------------
 
 export function reviewDto(review: PreReleaseReviewRecord | null): ReviewDto {
   if (!review) {
@@ -274,11 +206,6 @@ export function reviewDto(review: PreReleaseReviewRecord | null): ReviewDto {
   };
 }
 
-/**
- * Los hallazgos viajan como JSON en una columna. Un valor corrupto se lee como
- * lista vacía en vez de tumbar la revisión completa: el resto del estado sigue
- * siendo cierto y el revisor puede volver a declararlos.
- */
 function parseFindings(value: string): string[] {
   let parsed: unknown;
   try {

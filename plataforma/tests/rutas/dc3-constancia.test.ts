@@ -1,20 +1,3 @@
-/**
- * El módulo DC-3 de la consola.
- *
- * Lo que se fija aquí son las pantallas, los flujos y las compuertas, no el
- * trazo del PDF: el formato ya está cubierto por el banco del compositor.
- *
- * Las compuertas de siempre siguen aquí —nada sale sin fecha si no se declara,
- * mirar no asienta, el CSV no lleva CURP, el orden de reparto vive en la
- * consulta— y se suman las del módulo: la bandeja de lo que falta emitir desde
- * el corte, con los años anteriores aparte; la emisión que vuelve a la lista con
- * el acuse; varias constancias en un solo PDF, o la lista entera con sus
- * filtros; la descarga por número de solicitud; la reimpresión que sólo compone
- * lo ya asentado; el expediente por persona; la firma de cada emisión con la
- * cuenta de quien la hizo, y la emisión en cualquier instancia, local o en la
- * nube, con sus topes.
- */
-
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
@@ -51,7 +34,6 @@ import { buildServer } from "../../src/server/build-server.ts";
 
 const now = "2026-08-06T12:00:00.000Z";
 const clock: Clock = { now: () => new Date(now), nowIso: () => now };
-/** El día de la planta con ese reloj: a las seis de la mañana en la Ciudad de México. */
 const HOY = "2026-08-06";
 
 const abiertos: FastifyInstance[] = [];
@@ -104,7 +86,6 @@ function detalle(base: Dc3Candidate): Dc3CandidateDetail {
   };
 }
 
-/** Otro curso de la misma persona, tomado antes del corte: se consulta, no está pendiente. */
 const ANTERIOR: Dc3Candidate = {
   ...CON_FECHA,
   courseKey: "LOTO",
@@ -115,24 +96,16 @@ const ANTERIOR: Dc3Candidate = {
 
 const TODOS = [CON_FECHA, SIN_FECHA, INCOMPLETO];
 
-/** El número de solicitud que la emisión deja en la dirección de regreso. */
 const SOLICITUD = /solicitud=([0-9a-f-]{36})/u;
 
 class PadronFalso implements Dc3CertificatePort {
-  /** Cada filtro con que se preguntó algo: es lo que manda la pantalla. */
   readonly filtros: Dc3CandidateFilter[] = [];
-  /** El orden con que se pidió cada listado. */
   readonly ordenes: (Dc3CandidateOrder | undefined)[] = [];
-  /** El salto que pidió cada listado: es lo que pagina de verdad. */
   readonly saltos: number[] = [];
-  /** Cada asiento, en el orden en que llegó. */
   readonly emisiones: Dc3EmissionEntry[] = [];
-  /** Cuántas veces se asentó de golpe: una tanda es un solo viaje. */
   readonly viajesDeAsiento: number[] = [];
   readonly filtrosDeHistorial: Dc3EmissionFilter[] = [];
-  /** Claves `nomina:curso` que el falso da por ya emitidas. */
   readonly emitidas = new Set<string>();
-  /** Los números de solicitud por los que se preguntó. */
   readonly solicitudes: string[] = [];
 
   listDc3Courses() {
@@ -357,10 +330,6 @@ class PadronFalso implements Dc3CertificatePort {
   }
 }
 
-/**
- * Un padrón con más constancias que el tope de una emisión: cuenta y lista
- * tantas como se le pidan.
- */
 class PadronLargo extends PadronFalso {
   readonly #total: number;
 
@@ -414,7 +383,6 @@ async function servidor(
   return app;
 }
 
-/** La consola publicada: mismo módulo, otros topes. */
 const EN_LA_NUBE = {
   KCM_ENV: "development",
   KCM_ROLE: "nube",
@@ -437,7 +405,6 @@ describe("DC-3 · la bandeja", () => {
 
     assert.equal(pantalla.statusCode, 200);
     assert.match(pantalla.body, /TRABAJADOR SINTETICO/u);
-    // La bandeja es de pendientes y de cursos desde el corte, sin pedirlo.
     const listado = padron.filtros.find((f) => f.status === "listos" && f.emission);
     assert.equal(listado?.emission, "pendientes");
     assert.equal(listado?.period, "desde-corte");
@@ -463,11 +430,8 @@ describe("DC-3 · la bandeja", () => {
     }
     assert.match(pantalla.body, /Sindicalizados \(NS\)/u);
     assert.match(pantalla.body, /Empleados de confianza \(NQ\)/u);
-    // El curso es una opción de un clic, con su cuenta al lado.
     assert.match(pantalla.body, /href="\/dc3\?curso=QMS#plan"/u);
     assert.match(pantalla.body, /class="faceta-cuenta">1</u);
-    // Las cuentas por curso se piden sin el filtro de curso: si no, la opción
-    // elegida dejaría a las demás en cero.
     assert.ok(padron.filtros.some((f) => f.status === "listos" && f.courseKey === undefined));
   });
 
@@ -489,10 +453,8 @@ describe("DC-3 · la bandeja", () => {
     assert.equal(anteriores.statusCode, 200);
     assert.ok(padron.filtros.some((f) => f.status === "listos" && f.period === "anteriores"));
     assert.match(anteriores.body, /Listas para emitir · años anteriores/u);
-    // El periodo viaja con el formulario de área y personal, y con la emisión.
     assert.match(anteriores.body, /name="periodo" value="anteriores"/u);
 
-    // Un periodo que la pantalla no conoce es el de siempre.
     const padronDos = new PadronFalso();
     const appDos = await servidor(padronDos);
     await appDos.inject({ method: "GET", url: "/dc3?periodo=1999" });
@@ -521,7 +483,6 @@ describe("DC-3 · la bandeja", () => {
     assert.match(sinCurso.body, /OTRO SINTETICO/u);
     assert.match(sinCurso.body, /Sin fecha registrada/u);
     assert.match(sinCurso.body, /\/dc3\/constancia\/10002\/QMS\?enBlanco=1/u);
-    // Sin fecha no hay periodo que elegir.
     assert.doesNotMatch(sinCurso.body, /Años anteriores/u);
   });
 
@@ -532,7 +493,6 @@ describe("DC-3 · la bandeja", () => {
     assert.match(incompletos.body, /TERCERO SINTETICO/u);
     assert.match(incompletos.body, /boton-peligro/u);
     assert.match(incompletos.body, /\/dc3\/constancia\/10003\/QMS\?enBlanco=1/u);
-    // A todos les falta la ocupación: se dice una vez arriba, no en cada renglón.
     assert.match(
       incompletos.body,
       /El recuadro de <strong>ocupación específica<\/strong> sale en blanco/u,
@@ -545,13 +505,10 @@ describe("DC-3 · la bandeja", () => {
 
     const pantalla = await app.inject({ method: "GET", url: "/dc3?area=AREA+SINTETICA" });
 
-    // El botón abre un popover declarativo; el formulario del «sí» vive fuera
-    // del de la selección y se lleva la dirección de la lista para volver a ella.
     assert.match(pantalla.body, /popovertarget="emitir-10001-QMS"/u);
     assert.match(pantalla.body, /<div popover id="emitir-10001-QMS" class="confirmacion"/u);
     assert.match(pantalla.body, /action="\/dc3\/constancia\/10001\/QMS"/u);
     assert.match(pantalla.body, /name="volver" value="\/dc3\?area=AREA\+SINTETICA"/u);
-    // Y el respaldo para el navegador que no entiende `popover`.
     assert.match(pantalla.body, /class="boton-pequeno boton-emitir sin-popover/u);
     assert.equal(padron.emisiones.length, 0);
   });
@@ -575,7 +532,6 @@ describe("DC-3 · la bandeja", () => {
     const todas = await app.inject({ method: "GET", url: "/dc3?emision=todas" });
 
     assert.match(todas.body, /Emitida 5 ago 2026/u);
-    // «Todas» no filtra por la bitácora: el padrón recibe el listado sin emisión.
     assert.ok(padron.filtros.some((f) => f.status === "listos" && f.emission === undefined));
   });
 
@@ -619,7 +575,6 @@ describe("DC-3 · el orden", () => {
 
     assert.deepEqual(padron.ordenes, ["personal"]);
     assert.match(pantalla.body, /href="\/dc3#plan"/u);
-    // Y la pantalla dice en qué orden está, que un icono solo no lo explica.
     assert.match(pantalla.body, /confianza primero, después sindicalizados/u);
   });
 
@@ -675,7 +630,6 @@ describe("DC-3 · emitir y volver", () => {
 
     assert.equal(emision.statusCode, 303);
     const destino = String(emision.headers.location);
-    // Vuelve a la lista con sus filtros, sin las marcas y con el acuse.
     assert.match(destino, /^\/dc3\?area=AREA\+SINTETICA&pagina=2&emitidas=1&solicitud=/u);
     assert.match(destino, /clave=10001%3AQMS/u);
     assert.doesNotMatch(destino, /marcar=/u);
@@ -685,7 +639,6 @@ describe("DC-3 · emitir y volver", () => {
 
     const acuse = await app.inject({ method: "GET", url: destino });
     assert.match(acuse.body, /Constancia emitida: TRABAJADOR SINTETICO ·\s+QMS/u);
-    // El documento baja solo: una recarga a una respuesta adjunta, sin guiones.
     assert.ok(
       acuse.body.includes(
         `<meta http-equiv="refresh" content="1;url=/dc3/documentos?solicitud=${solicitud}" />`,
@@ -802,7 +755,6 @@ describe("DC-3 · varias a la vez", () => {
 
     assert.equal(envio.statusCode, 303);
     const destino = String(envio.headers.location);
-    // La dirección no lleva las claves: lleva cuántas y el número de la solicitud.
     assert.match(destino, /emitidas=2&solicitud=[0-9a-f-]{36}/u);
     assert.doesNotMatch(destino, /10001%3AQMS/u);
     assert.match(destino, /fallidas=99999%3AQMS%7ECANDIDATO_DC3_NO_ENCONTRADO/u);
@@ -813,7 +765,6 @@ describe("DC-3 · varias a la vez", () => {
     assert.match(acuse.body, /2\s+constancias emitidas/u);
     assert.match(acuse.body, /no está activo con ese curso/u);
 
-    // La descarga encuentra lo emitido por el número de la solicitud, en su orden.
     const solicitud = SOLICITUD.exec(destino)?.[1] ?? "";
     const documento = await app.inject({
       method: "GET",
@@ -839,7 +790,6 @@ describe("DC-3 · varias a la vez", () => {
     assert.match(String(documento.headers["content-type"]), /application\/pdf/u);
     assert.match(String(documento.headers["content-disposition"]), /attachment/u);
     const bytes = documento.rawPayload.toString("latin1");
-    // Hoja de entrega más dos constancias: tres páginas en un solo archivo.
     assert.match(bytes, /\/Type \/Pages \/Count 3 /u);
     assert.match(bytes, /RELACI\\323N DE CONSTANCIAS DC-3/u);
   });
@@ -944,7 +894,6 @@ describe("DC-3 · varias a la vez", () => {
       padron.emisiones.map((e) => `${e.workerNumber}:${e.courseKey}`),
       ["10001:QMS"],
     );
-    // La hoja de entrega sabe de qué va la lista.
     assert.match(String(envio.headers.location), /contexto=QMS/u);
   });
 
@@ -965,7 +914,6 @@ describe("DC-3 · varias a la vez", () => {
 
     assert.equal(envio.statusCode, 303);
     assert.deepEqual(padron.viajesDeAsiento, [1500]);
-    // Mil quinientas claves no caben en una dirección; el número de solicitud sí.
     assert.ok(String(envio.headers.location).length < 300);
   });
 
@@ -1050,7 +998,6 @@ describe("DC-3 · el expediente y la búsqueda", () => {
     assert.match(expediente.body, /Anterior a 2026/u);
     assert.match(expediente.body, /10 jun 2025/u);
     assert.match(expediente.body, /popovertarget="emitir-10001-LOTO"/u);
-    // Sólo QMS está pendiente: no se ofrece emitir «las pendientes» juntas.
     assert.doesNotMatch(expediente.body, /Emitir las \d+ pendientes/u);
   });
 
@@ -1139,7 +1086,6 @@ describe("DC-3 · emitidas, cobertura y datos del formato", () => {
     assert.match(historial.body, /Completa/u);
     assert.ok(padron.filtrosDeHistorial.some((f) => f.from === HOY));
     assert.match(historial.body, /href="\/dc3\/documentos\?claves=10001%3AQMS"/u);
-    // La hora es la de la planta: 17:30 UTC son las 11:30 en la Ciudad de México.
     assert.match(historial.body, /11:30/u);
     assert.doesNotMatch(historial.body, /asiento|bitácora/iu);
   });
@@ -1188,14 +1134,11 @@ describe("DC-3 · emitidas, cobertura y datos del formato", () => {
     assert.equal(panel.statusCode, 200);
     assert.match(panel.body, /Cobertura por curso/u);
     assert.match(panel.body, /Avance por área/u);
-    // El medidor es un elemento nativo: sin `style`, con el valor en atributos.
     assert.match(
       panel.body,
       /<progress[^>]*class="cobertura-barra cobertura-entrega"[^>]*value="0"[^>]*max="2"/u,
     );
-    // Cada celda con pendientes lleva a la bandeja filtrada por área y curso.
     assert.match(panel.body, /href="\/dc3\?curso=QMS&amp;area=AREA\+SINTETICA#plan"/u);
-    // Los años anteriores se cuentan aparte y llevan a su lista.
     assert.match(panel.body, /href="\/dc3\?curso=QMS&amp;periodo=anteriores#plan"/u);
     assert.ok(padron.filtros.some((f) => f.period === "desde-corte"));
     assert.doesNotMatch(panel.body, /vencid|lote/iu);
@@ -1211,9 +1154,7 @@ describe("DC-3 · emitidas, cobertura y datos del formato", () => {
     assert.match(datos.body, /AGENTE SINTETICO/u);
     assert.ok(datos.body.includes(LEYENDAS_DC3.employerName));
     assert.match(datos.body, /Constancias desde<\/dt>\s*<dd>1 ene 2026/u);
-    // El recuadro de datos del trabajador en blanco se retiró de esta pestaña.
     assert.doesNotMatch(datos.body, /Datos del trabajador que salen en blanco/u);
-    // Nada de nombres de tabla, archivos privados ni plazo.
     assert.doesNotMatch(
       datos.body,
       /\b(?:organizacion|catalogo|operacion|matriz|dnc|dc3|seguridad|sistema|comun|lectura)\.[a-z_]+\b|referencias\/privado|configuración privada|hábiles/u,
@@ -1307,7 +1248,6 @@ describe("DC-3 · compuertas del servicio", () => {
 
     const emitida = await servicioDc3.emitir(peticion);
     assert.equal(padron.emisiones.length, 1);
-    // Mismo generador, mismos datos: el documento que se miró es el que se emitió.
     assert.deepEqual([...emitida.pdf], [...mirada.pdf]);
   });
 
@@ -1354,7 +1294,6 @@ describe("DC-3 · compuertas del servicio", () => {
       requestId: "req-00004",
     });
 
-    // La repetida no se asienta dos veces; la de sin fecha no sale sin declararlo.
     assert.deepEqual(
       resultado.emitidas.map((e) => e.clave),
       ["10001:QMS"],
@@ -1389,14 +1328,6 @@ describe("DC-3 · compuertas del servicio", () => {
   });
 });
 
-/**
- * La consulta, donde de verdad ocurren el orden y los filtros.
- *
- * No se resuelven sobre las filas ya traídas porque la lista viene recortada,
- * así que reordenar en la pantalla barajaría a los que ya llegaron y dejaría
- * fuera a los mismos de siempre. Aquí se lee el SQL con que se pidió: es lo
- * único que se puede comprobar sin una base delante.
- */
 describe("DC-3 · la consulta", () => {
   async function sqlDe(
     pedir: (repositorio: SupabaseDc3CertificateRepository) => Promise<unknown>,

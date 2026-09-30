@@ -1,4 +1,3 @@
-/** Configuracion y contratos v1 para la capa Apps Script. */
 var KcmConfig = (function () {
   "use strict";
 
@@ -128,5 +127,4 @@ var KcmConfig = (function () {
   });
 }());
 
-/** Contexto efimero de una ejecucion; permite correlacionar todos sus eventos. */
 var KcmRequestContext = { requestId: "" };

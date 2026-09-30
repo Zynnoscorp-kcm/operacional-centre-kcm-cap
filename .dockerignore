@@ -1,12 +1,3 @@
-# Contexto de construcción enviado al constructor de imágenes.
-#
-# El Dockerfile ya enumera lo que entra a la imagen, así que este archivo no
-# decide qué se ejecuta: decide qué se sube. Importa por dos razones. La primera
-# es el tiempo de despliegue. La segunda es que en `referencias/` viven datos
-# personales reales que no tienen por qué cruzar la red hacia un constructor
-# remoto.
-
-# --- Nunca salen de la máquina ----------------------------------------------
 .git/
 .env
 .env.*
@@ -14,7 +5,6 @@
 .DS_Store
 **/.DS_Store
 
-# Material de referencia local: padrón, libro maestro, evidencias, logotipos.
 referencias/
 artifacts/
 tmp/
@@ -22,28 +12,20 @@ build/
 coverage/
 node_modules/
 
-# --- Documentación ----------------------------------------------------------
-# `.dockerignore` no cruza `/` con un solo `*`, así que hace falta la forma
-# anidada además de la raíz.
 docs/
 *.md
 **/*.md
 
-# --- Lo que no corre en el servidor -----------------------------------------
 clients/          # el cliente VBA se importa a mano en el libro de Excel
 tools/            # herramientas de línea de comandos
 database/         # las migraciones se aplican desde fuera del contenedor
 infra/            # el propio material de despliegue
 
-# --- De `packages/` entra casi todo, que es el punto de que exista -----------
-# Se niegan el banco de pruebas, la máquina de estados y el núcleo de
-# referencia, que ningún import de `plataforma/` alcanza.
 packages/tests/
 packages/dc3/testing/
 packages/contracts/state-machine.js
 packages/core/
 
-# --- Pruebas y utillaje de desarrollo ---------------------------------------
 plataforma/tests/
 plataforma/tsconfig.json
 eslint.config.js
@@ -51,7 +33,6 @@ eslint.config.js
 .prettierignore
 .github/
 
-# --- Skills de agentes: apoyo local, no forman parte de la imagen -----------
 .agents/
 .claude/
 skills-lock.json

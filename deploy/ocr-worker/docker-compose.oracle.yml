@@ -1,6 +1,3 @@
-# Docker Compose para despliegue en Oracle Cloud ARM
-# Levanta el worker OCR + Nginx reverse proxy + Certbot para HTTPS
-
 services:
   ocr-worker:
     build:
@@ -15,7 +12,6 @@ services:
       - KCM_OCR_WORKER_SECRET=${KCM_OCR_WORKER_SECRET}
     expose:
       - "8080"
-    # No se publica el puerto directamente; Nginx lo proxea
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s

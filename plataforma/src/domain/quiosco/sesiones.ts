@@ -1,8 +1,3 @@
-/**
- * Servicio de ciclo de vida de Sesiones de Capacitación (Funciones 2 y 3).
- * Fuente: MODELO_DATOS.md hoja SESIONES, AUDITORIA.
- */
-
 import { randomUUID } from "node:crypto";
 import type { Clock } from "../../ports/reloj.port.ts";
 import type { KioskSessionRepositoryPort } from "../../ports/quiosco.port.ts";
@@ -28,40 +23,17 @@ import type {
   SessionStatus,
 } from "./tipos.ts";
 
-/**
- * Hora de inicio de la sesión, en `HH:mm` de veinticuatro horas.
- *
- * Ocupa el lugar del antiguo «turno». Un turno decía «Matutino» y no permitía
- * saber a qué hora empezó realmente la sesión, que es lo que hace falta para
- * cotejar una lista física contra lo registrado. Se acepta vacío —hay sesiones
- * capturadas sin hora— y se rechaza cualquier otra cosa en lugar de guardarla
- * tal cual: un campo de hora que a veces trae texto libre deja de ser una hora.
- *
- * En la base sigue viviendo en la columna `turno`, que es de texto y ya
- * existía; renombrarla exigiría una migración sobre datos capturados y no
- * cambiaría nada de lo que se lee en pantalla.
- */
 const HORA_DEL_DIA = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 
-/**
- * Cuántas veces se pide otro consecutivo cuando el que tocaba ya lo tomó una
- * sesión creada al mismo tiempo. Dos a la vez ya es raro; cinco seguidas
- * significaría que algo más está mal, y entonces se deja ver el error.
- */
 const INTENTOS_POR_CODIGO = 5;
 
 function normalizeStartTime(valor: unknown): string {
   if (valor === undefined || valor === null) return "";
-  // `String()` sobre un objeto da `[object Object]` —que la expresión regular
-  // rechaza— pero sobre un arreglo de un elemento da el elemento, y un campo
-  // repetido en el formulario llega como arreglo. Aceptarlo dejaría entrar una
-  // hora por una puerta que el contrato no declara.
   if (typeof valor !== "string" && typeof valor !== "number") {
     throw new InvalidInputError("La hora de la sesión debe escribirse como HH:mm de 24 horas");
   }
   const texto = String(valor).trim();
   if (texto === "") return "";
-  // `<input type="time">` manda `HH:mm:ss` cuando el navegador incluye segundos.
   const recortado = texto.length === 8 && texto[5] === ":" ? texto.slice(0, 5) : texto;
   if (!HORA_DEL_DIA.test(recortado)) {
     throw new InvalidInputError("La hora de la sesión debe escribirse como HH:mm de 24 horas");
@@ -83,11 +55,6 @@ export class SessionService {
     this.clock = deps.clock;
   }
 
-  /**
-   * Guarda la sesión con el siguiente código `KC-NNNN`. Dos sesiones creadas a
-   * la vez pueden pedir el mismo número: la base lo impide con su unicidad y la
-   * segunda vuelve a pedir el siguiente.
-   */
   private async createWithNextCode(
     session: Omit<SessionRecord, "sessionCode">,
   ): Promise<SessionRecord> {
@@ -165,9 +132,6 @@ export class SessionService {
     }
   }
 
-  /**
-   * Crea una nueva sesión en estado BORRADOR con idempotencia por creationRequestId.
-   */
   async createSession(
     input: CreateSessionInput,
     identity: ActorIdentity,
@@ -180,17 +144,14 @@ export class SessionService {
     }
 
     return this.repo.withLock(`session:create:${opRequestId}`, async () => {
-      // Validar si el curso existe y está activo
       const training = await this.repo.getTrainingById(intended.trainingId);
       if (!training || !training.active) {
         throw new InvalidInputError("Seleccione un nombre válido de la lista.");
       }
 
-      // Comprobar idempotencia por requestId
       const existing = await this.repo.getSessionByCreationRequestId(opRequestId);
       if (existing) {
         this.assertSameCreation(existing, intended, identity.actor);
-        // Asegurar auditoría si faltaba
         const audits = await this.repo.listAuditEvents({
           sessionId: existing.sessionId,
           requestId: opRequestId,
@@ -237,7 +198,6 @@ export class SessionService {
 
       const created = await this.createWithNextCode(newSession);
 
-      // Auditoría append-only
       await this.repo.recordAudit({
         actor: identity.actor,
         role: identity.role,
@@ -256,9 +216,6 @@ export class SessionService {
     });
   }
 
-  /**
-   * Abre una sesión en estado BORRADOR pasando a ABIERTA.
-   */
   async openSession(
     sessionId: string,
     identity: ActorIdentity,
@@ -276,7 +233,6 @@ export class SessionService {
       }
 
       if (session.status === "ABIERTA") {
-        // Idempotente
         return session;
       }
 
@@ -288,7 +244,6 @@ export class SessionService {
 
       const nowIso = this.clock.now().toISOString();
 
-      // Auditoría antes del cambio de estado
       await this.repo.recordAudit({
         actor: identity.actor,
         role: identity.role,
@@ -310,9 +265,6 @@ export class SessionService {
     });
   }
 
-  /**
-   * Cierra una sesión en estado ABIERTA pasando a CERRADA y reconcilia los journals del quiosco.
-   */
   async closeSession(
     sessionId: string,
     identity: ActorIdentity,
@@ -326,23 +278,11 @@ export class SessionService {
         throw new SessionNotFoundError("La sesión no existe");
       }
 
-      /*
-       * Un capacitador sólo mueve lo suyo.
-       *
-       * El equipo de la sala no entra por aquí: actúa con el rol `KIOSK` y
-       * su autoridad es el token firmado para esa sesión concreta, no haber
-       * sido quien la creó. Cerraba como `CAPACITADOR` y esta guarda lo
-       * rechazaba en cuanto la sesión venía de la consola —que es el caso
-       * normal—: el instructor oprimía «cerrar» en la sala, veía un error, y
-       * alguien tenía que volver a cerrarla desde la plataforma.
-       */
       if (identity.role === "CAPACITADOR" && session.createdBy !== identity.actor) {
         throw new InvalidSessionStateError("La sesión no pertenece al capacitador");
       }
 
       if (session.status === "CERRADA") {
-        // Idempotente: que la sala y la consola cierren la misma sesión no es un
-        // conflicto, es lo normal cuando las dos ven que ya terminó.
         return session;
       }
 
@@ -352,14 +292,12 @@ export class SessionService {
         );
       }
 
-      // Reconciliar quiosco si se proporciona función o directamente desde repositorio
       if (reconcileFn) {
         await reconcileFn(sessionId);
       }
 
       const nowIso = this.clock.now().toISOString();
 
-      // Auditoría antes de mutación de estado
       await this.repo.recordAudit({
         actor: identity.actor,
         role: identity.role,
@@ -381,11 +319,6 @@ export class SessionService {
     });
   }
 
-  /**
-   * Autoriza una sesión operativa. Durante el piloto, el operador puede
-   * preautorizarla desde BORRADOR con el PIN de autorización; la liberación
-   * conserva las demás compuertas de estado, asistencia y examen.
-   */
   async authorizeSession(
     sessionId: string,
     identity: ActorIdentity,
@@ -453,9 +386,6 @@ export class SessionService {
     });
   }
 
-  /**
-   * Obtiene una sesión por su ID.
-   */
   async getSessionById(sessionId: string): Promise<SessionRecord> {
     const session = await this.repo.getSessionById(sessionId);
     if (!session) {
@@ -464,9 +394,6 @@ export class SessionService {
     return session;
   }
 
-  /**
-   * Obtiene una sesión por su código público.
-   */
   async getSessionByCode(sessionCode: string): Promise<SessionRecord> {
     const normalized = normalizarCodigoDeSesion(String(sessionCode || ""));
     const session = await this.repo.getSessionByCode(normalized);
@@ -476,19 +403,6 @@ export class SessionService {
     return session;
   }
 
-  /**
-   * Ficha de la sesión para confirmarla antes de registrar a nadie.
-   *
-   * Existe porque el código de sesión no dice nada: es un consecutivo que se
-   * dicta en voz alta y se teclea en una sala donde puede haber dos cursos el
-   * mismo día. Con sólo el código, quien capacita no tiene cómo saber que el
-   * quiosco quedó vinculado a la sesión que él está impartiendo, y un registro
-   * mal dirigido no se nota hasta la liberación, cuando ya hay asistencias
-   * colgadas del curso equivocado.
-   *
-   * El nombre del curso se resuelve aquí y no en la pantalla: `trainingId` es
-   * un identificador y ninguna persona puede reconocer una capacitación por él.
-   */
   async getSessionBrief(sessionId: string): Promise<KioskSessionBrief> {
     const session = await this.getSessionById(sessionId);
     const training = await this.repo.getTrainingById(session.trainingId);
@@ -496,8 +410,6 @@ export class SessionService {
       sessionId: session.sessionId,
       sessionCode: session.sessionCode,
       trainingId: session.trainingId,
-      // Un curso retirado del catálogo deja la sesión sin nombre. Se dice, en
-      // vez de enseñar el identificador crudo como si fuera un título.
       trainingName: training?.name ?? "Curso no encontrado en el catálogo",
       instructor: session.instructor,
       date: session.date,
@@ -510,9 +422,6 @@ export class SessionService {
     };
   }
 
-  /**
-   * Lista sesiones operativas (activas o recientemente cerradas dentro del corte de 14 días).
-   */
   async listOperativeSessions(cutoffDate?: string): Promise<readonly OperativeSessionSummary[]> {
     return this.repo.listOperativeSessions({ cutoffDate });
   }

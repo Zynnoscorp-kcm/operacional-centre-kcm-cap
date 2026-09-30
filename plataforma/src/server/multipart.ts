@@ -1,26 +1,3 @@
-/**
- * Lector de `multipart/form-data`.
- *
- * La consola no tenía forma de recibir un archivo: el analizador de formularios
- * de `build-server.ts` entiende `application/x-www-form-urlencoded`, que no
- * puede transportar bytes. Esto es lo mínimo para que una pantalla acepte un
- * `.xlsx`, y está escrito aquí por la misma razón que aquel: traer una
- * dependencia nueva por doscientas líneas engordaría una imagen que costó
- * trabajo dejar en 15 MB.
- *
- * Dos cosas que un lector ingenuo hace mal y este no:
- *
- * 1. El contenido nunca pasa por `string`. Un `.xlsx` es un ZIP; leerlo
- *    como texto y volverlo a codificar lo corrompe en silencio. Todo el
- *    recorrido trabaja con índices sobre el `Buffer` y sólo las cabeceras de
- *    cada parte —que son ASCII por definición— se convierten a texto.
- * 2. El `CRLF` que precede al delimitador es del delimitador, no del
- *    archivo. Quitarlo mal deja dos bytes de más al final y el ZIP no abre.
- *
- * Lo que no hace: `base64` por parte, cabeceras plegadas en varias líneas ni
- * archivos en disco. Nada de eso aparece en un formulario de navegador.
- */
-
 const MAXIMO_DE_PARTES = 20;
 const MAXIMO_DE_CAMPO = 10_000;
 
@@ -38,7 +15,6 @@ export interface FormularioMultiparte {
 
 export class MultipartError extends Error {}
 
-/** `undefined` si la cabecera no declara un multipart utilizable. */
 export function limiteDeMultipart(contentType: string | undefined): string | undefined {
   if (!contentType || !/^multipart\/form-data/i.test(contentType)) return undefined;
   const encontrado = /boundary=(?:"([^"]+)"|([^\s;]+))/i.exec(contentType);
@@ -64,7 +40,6 @@ export function parseMultipart(
     if (parte > MAXIMO_DE_PARTES) throw new MultipartError("El formulario trae demasiadas partes.");
 
     let inicio = posicion + separador.length;
-    // `--` cierra el formulario; cualquier otra cosa que no sea CRLF está rota.
     if (cuerpo[inicio] === 0x2d && cuerpo[inicio + 1] === 0x2d) break;
     if (cuerpo[inicio] !== 0x0d || cuerpo[inicio + 1] !== 0x0a) {
       throw new MultipartError("Una parte del formulario no está bien delimitada.");
@@ -93,8 +68,6 @@ export function parseMultipart(
       } else {
         archivos.push({
           campo,
-          // Sólo el nombre, nunca la ruta: un navegador de Windows manda la
-          // ruta completa y ese texto termina en pantalla y en la bitácora.
           nombre: nombre.split(/[\\/]/).pop()?.slice(0, 200) ?? "",
           tipo: (/content-type:([^\r\n]*)/i.exec(cabeceras)?.[1] ?? "").trim(),
           contenido,
@@ -108,10 +81,6 @@ export function parseMultipart(
   return { campos, archivos };
 }
 
-/**
- * `name="archivo"` o `name=archivo`, indistintamente. No intenta descifrar
- * `filename*=UTF-8''…`: un nombre así llega con su versión simple al lado.
- */
 function valorDeParametro(cabecera: string, parametro: string): string | undefined {
   const patron = new RegExp(`(?:^|;)\\s*${parametro}\\s*=\\s*(?:"([^"]*)"|([^;]*))`, "i");
   const encontrado = patron.exec(cabecera);

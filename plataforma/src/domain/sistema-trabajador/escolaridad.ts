@@ -1,7 +1,3 @@
-/**
- * Manejo de escolaridad declarada por omisión.
- */
-
 import type { DerivedSchooling } from "./tipos.ts";
 
 export function deriveSchooling(declaredSchooling?: string | null): DerivedSchooling {

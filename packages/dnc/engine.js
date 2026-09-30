@@ -1,7 +1,3 @@
-/**
- * Motor de evaluación DNC de la plataforma KCM Cap.
- */
-
 import { resolveCourse, UNIFIED_COURSES } from "./catalog.js";
 import { DncRuleRegistry, buildStandardDncRules } from "./rules.js";
 import { assertEmployeeId } from "../contracts/contracts.js";
@@ -15,19 +11,14 @@ export const DNC_STATUSES = Object.freeze({
   PROGRAMADO: "PROGRAMADO"
 });
 
-/**
- * Calcula la fecha de vencimiento dada una fecha de acreditación, meses de vigencia y días de gracia.
- */
 export function calculateExpirationDate(completionDate, validityMonths = 12, graceDays = 0) {
   if (!completionDate) return null;
   const date = new Date(completionDate);
   if (Number.isNaN(date.getTime())) return null;
 
-  // Añadir meses
   const exp = new Date(date.getTime());
   exp.setUTCMonth(exp.getUTCMonth() + validityMonths);
 
-  // Añadir días de gracia si existen
   if (graceDays > 0) {
     exp.setUTCDate(exp.getUTCDate() + graceDays);
   }
@@ -35,24 +26,11 @@ export function calculateExpirationDate(completionDate, validityMonths = 12, gra
   return exp.toISOString().slice(0, 10);
 }
 
-/**
- * Motor de evaluación DNC.
- */
 export class DncEngine {
   constructor(ruleRegistry = new DncRuleRegistry()) {
     this.ruleRegistry = ruleRegistry;
   }
 
-  /**
-   * Evalúa la situación de un curso para un trabajador específico.
-   *
-   * @param {Object} params
-   * @param {Object} params.employee - Objeto trabajador { employeeId, department, area, active }
-   * @param {string} params.trainingIdentifier - Nombre, alias, trainingId o sourceKey del curso
-   * @param {Object} [params.history] - Historial de acreditaciones { [trainingId]: completionDate } o fecha directa
-   * @param {Object} [params.scheduledSessions] - Sesiones agendadas { [trainingId]: sessionId }
-   * @param {Date|string} [params.asOfDate] - Fecha de corte para cálculo de vigencia (por defecto hoy)
-   */
   evaluateCourseForEmployee({
     employee,
     trainingIdentifier,
@@ -68,7 +46,6 @@ export class DncEngine {
     const evalDate = typeof asOfDate === "string" ? new Date(asOfDate) : asOfDate;
     const evalDateStr = evalDate.toISOString().slice(0, 10);
 
-    // 1. Verificación de integridad de datos del trabajador
     if (!employee || !employee.employeeId) {
       return this._createResult({
         employeeId: employee?.employeeId ? String(employee.employeeId) : "00000",
@@ -94,7 +71,6 @@ export class DncEngine {
       });
     }
 
-    // Si el trabajador carece de departamento Y de área, no es posible evaluar reglas
     const department = (employee.department || "").trim();
     const area = (employee.area || "").trim();
 
@@ -109,7 +85,6 @@ export class DncEngine {
       });
     }
 
-    // 2. Buscar regla de aplicabilidad en los dos niveles (Department y Area)
     const rule = this.ruleRegistry.findMatchingRule({
       trainingId: course.trainingId,
       department,
@@ -127,7 +102,6 @@ export class DncEngine {
       });
     }
 
-    // 3. Obtener fecha de acreditación histórica (si existe)
     let completionDate = null;
     if (typeof history === "string") {
       completionDate = history;
@@ -138,7 +112,6 @@ export class DncEngine {
         null;
     }
 
-    // 4. Si tiene acreditación, evaluar vigencia
     if (completionDate) {
       const expirationDate = calculateExpirationDate(
         completionDate,
@@ -173,7 +146,6 @@ export class DncEngine {
       }
     }
 
-    // 5. Si no está acreditado, verificar si está PROGRAMADO en la agenda
     const scheduledSessionId = scheduledSessions[course.trainingId] ||
       scheduledSessions[course.canonicalName] ||
       null;
@@ -191,7 +163,6 @@ export class DncEngine {
       });
     }
 
-    // 6. Si aplica y no está acreditado ni programado, está PENDIENTE
     return this._createResult({
       employeeId,
       course,
@@ -203,9 +174,6 @@ export class DncEngine {
     });
   }
 
-  /**
-   * Evalúa la matriz completa de cursos para un trabajador.
-   */
   evaluateAllCoursesForEmployee({
     employee,
     history = {},
@@ -253,12 +221,6 @@ export class DncEngine {
   }
 }
 
-/**
- * Calcula métricas agregadas garantizando el aislamiento estricto de DATOS_INSUFICIENTES.
- *
- * Invariante de negocio:
- * DATOS_INSUFICIENTES nunca se suma a la base de cálculo de porcentajes.
- */
 export function computeDncMetrics(evaluations = []) {
   let completados = 0;
   let reforzar = 0;
@@ -290,7 +252,6 @@ export function computeDncMetrics(evaluations = []) {
     }
   }
 
-  // Población exigible para métrica de cumplimiento (excluye NO_APLICA y DATOS_INSUFICIENTES)
   const poblacionExigible = completados + reforzar + pendientes + programados;
   const porcentajeCumplimiento = poblacionExigible > 0
     ? Number(((completados / poblacionExigible) * 100).toFixed(2))
@@ -306,7 +267,6 @@ export function computeDncMetrics(evaluations = []) {
     datosInsuficientes,
     poblacionExigible,
     porcentajeCumplimiento,
-    // Bandera explícita de auditoría
-    publicacionAutorizada: false // Los porcentajes no se publican sin aprobación
+    publicacionAutorizada: false
   });
 }
