@@ -236,6 +236,7 @@ Public Sub KcmEntradasMarcarTodas()
             hoja.Cells(renglon, COL_MARCA).Value2 = True
         End If
     Next renglon
+    KcmEntradasCasillas hoja
     Exit Sub
 
 MarcarError:
@@ -316,11 +317,14 @@ Private Sub KcmEntradasEncabezado(ByVal hoja As Worksheet)
     hoja.Columns("A").ColumnWidth = 3
     hoja.Columns("B").ColumnWidth = 8
     hoja.Columns("C").ColumnWidth = 22
-    hoja.Columns("D").ColumnWidth = 40
+    hoja.Columns("D").ColumnWidth = 70
     hoja.Columns("E").ColumnWidth = 13
     hoja.Columns("F").ColumnWidth = 13
     hoja.Columns("G").ColumnWidth = 14
+    ' El identificador se queda en la columna H porque es lo que viaja al
+    ' filtrar, pero oculto: nadie lo lee. El curso se ensancha lo que ocupaba.
     hoja.Columns("H").ColumnWidth = 30
+    hoja.Columns("H").Hidden = True
     hoja.Columns("I").ColumnWidth = 3
     For fila = 1 To 6
         hoja.Rows(fila).RowHeight = ENTRADAS_ALTO_FILA
@@ -339,7 +343,7 @@ Private Sub KcmEntradasEncabezado(ByVal hoja As Worksheet)
     hoja.Cells(7, COL_FECHA).Value2 = "FECHA"
     hoja.Cells(7, COL_PENDIENTES).Value2 = "POR ESCRIBIR"
     hoja.Cells(7, COL_ESTADO).Value2 = "ESTADO"
-    hoja.Cells(7, COL_SESION).Value2 = "IDENTIFICADOR"
+    hoja.Cells(7, COL_SESION).Value2 = ""
     KcmPaginaEncabezadoDeTabla hoja.Range(hoja.Cells(7, COL_MARCA), hoja.Cells(7, COL_SESION))
     hoja.Cells(7, COL_MARCA).HorizontalAlignment = xlCenter
     hoja.Cells(7, COL_PENDIENTES).HorizontalAlignment = xlCenter
@@ -480,7 +484,13 @@ Private Function KcmEntradasMarcada(ByVal hoja As Worksheet, ByVal renglon As Lo
     End If
 End Function
 
-''' Una casilla de verificacion por renglon pendiente, ligada a su celda de marca.
+''' Una casilla por renglon pendiente, encima de su celda de marca.
+'''
+''' La casilla es una forma con macro, el mismo mecanismo de los botones del
+''' panel, y no un control de formulario: los controles de formulario no se
+''' dibujaban en todos los Excel, y la columna seguia viendose como texto. Un
+''' clic la palomea o la despalomea (KcmEntradasAlternar); la celda de abajo
+''' guarda VERDADERO o FALSO y es lo que lee "Escribir marcadas".
 '''
 ''' Se quitan todas y se vuelven a poner en cada actualizacion: los renglones se
 ''' agregan, se borran y cambian de estado, y una casilla que se quedara flotando
@@ -498,18 +508,71 @@ Private Sub KcmEntradasCasillas(ByVal hoja As Worksheet)
         Set celda = hoja.Cells(renglon, COL_MARCA)
         If KcmEntradasTexto(hoja.Cells(renglon, COL_ESTADO).Value2) = ESTADO_PENDIENTE Then
             If VarType(celda.Value2) <> vbBoolean Then celda.Value2 = KcmEntradasMarcada(hoja, renglon)
-            Set casilla = hoja.Shapes.AddFormControl(xlCheckBox, _
+            Set casilla = hoja.Shapes.AddShape(msoShapeRoundedRectangle, _
                 celda.Left + (celda.Width - lado) / 2, celda.Top + (celda.Height - lado) / 2, lado, lado)
             casilla.Name = KCM_ENTRADAS_CASILLA & CStr(renglon)
-            casilla.ControlFormat.LinkedCell = celda.Address(False, False)
+            casilla.OnAction = "KcmEntradasAlternar"
             casilla.Placement = xlMove
-            On Error Resume Next
-            casilla.OLEFormat.Object.Caption = ""
-            On Error GoTo 0
+            KcmEntradasPintarCasilla casilla, CBool(celda.Value2)
         Else
             celda.Value2 = False
         End If
     Next renglon
+End Sub
+
+''' Palomeada: fondo azul y palomita blanca. Sin palomear: cuadro blanco con borde.
+Private Sub KcmEntradasPintarCasilla(ByVal casilla As Shape, ByVal marcada As Boolean)
+    casilla.Line.ForeColor.RGB = COLOR_MARCA
+    casilla.Line.Weight = 1.25
+    With casilla.TextFrame2
+        .MarginLeft = 0
+        .MarginRight = 0
+        .MarginTop = 0
+        .MarginBottom = 0
+        .VerticalAnchor = msoAnchorMiddle
+        .HorizontalAnchor = msoAnchorCenter
+        .WordWrap = msoFalse
+    End With
+    With casilla.TextFrame2.TextRange
+        .Font.Size = 10
+        .Font.Bold = msoTrue
+        .Font.Fill.ForeColor.RGB = COLOR_BLANCO
+        If marcada Then
+            .Text = ChrW(10003)
+        Else
+            .Text = ""
+        End If
+    End With
+    If marcada Then
+        casilla.Fill.ForeColor.RGB = COLOR_MARCA
+    Else
+        casilla.Fill.ForeColor.RGB = COLOR_BLANCO
+    End If
+End Sub
+
+''' Lo que corre al hacer clic en una casilla: cambia la marca de su renglon.
+''' El renglon sale del nombre de la forma, que KcmEntradasCasillas le pone.
+Public Sub KcmEntradasAlternar()
+    Dim hoja As Worksheet
+    Dim nombre As String
+    Dim renglon As Long
+    Dim marcada As Boolean
+
+    On Error GoTo AlternarError
+
+    nombre = CStr(Application.Caller)
+    If Left$(nombre, Len(KCM_ENTRADAS_CASILLA)) <> KCM_ENTRADAS_CASILLA Then Exit Sub
+    renglon = CLng(Val(Mid$(nombre, Len(KCM_ENTRADAS_CASILLA) + 1)))
+    If renglon < KCM_ENTRADAS_FILA_PRIMERA Then Exit Sub
+
+    Set hoja = KcmEntradasHoja()
+    marcada = Not KcmEntradasMarcada(hoja, renglon)
+    hoja.Cells(renglon, COL_MARCA).Value2 = marcada
+    KcmEntradasPintarCasilla hoja.Shapes(nombre), marcada
+    Exit Sub
+
+AlternarError:
+    KcmAvisoFallo "Ver liberaciones", "No se pudo cambiar la marca.", Err.Description
 End Sub
 
 Private Function KcmEntradasTexto(ByVal valor As Variant) As String

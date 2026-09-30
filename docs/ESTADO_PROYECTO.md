@@ -7,8 +7,10 @@ Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 La nota con el código de sesión que la macro deja en cada fecha ahora se
 achica a su texto (`KcmAjustarNota` en `KcmReleaseSync`): una línea corta queda
 en un recuadro de unos 65 × 16 puntos en vez del de 100 × 60 que pone Excel.
-En la hoja KCM_ENTRADAS la columna MARCA es una casilla de verificación ligada
-a su celda (`KcmEntradasCasillas`); una equis escrita a mano sigue contando.
+En la hoja KCM_ENTRADAS la columna MARCA es una casilla: una forma con macro
+(`KcmEntradasAlternar`), como los botones del panel, porque el control de
+formulario no se dibujó en el Excel del usuario. La columna del identificador
+queda oculta. Una equis escrita a mano sigue contando.
 Verificado con el analizador de VBA y `npm test`; falta importar los módulos
 `KcmEntradas` y `KcmReleaseSync` en el libro (ya copiados a
 `~/Desktop/KCM-VBA-CRLF`) y probarlo en Excel.
