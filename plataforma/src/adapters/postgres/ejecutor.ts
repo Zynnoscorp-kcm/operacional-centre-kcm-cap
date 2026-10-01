@@ -70,7 +70,11 @@ export class PostgresExecutor implements SqlExecutor {
          (SELECT count(*) FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
            WHERE n.nspname = 'organizacion' AND c.relkind = 'r')::int AS tablas,
-         (SELECT count(*) FROM sistema.corrida_piloto WHERE cerrada_en IS NULL)::int AS piloto`,
+         (CASE WHEN to_regclass('sistema.corrida_piloto') IS NULL THEN 0
+               ELSE (xpath('/row/n/text()', query_to_xml(
+                 'SELECT count(*) AS n FROM sistema.corrida_piloto WHERE cerrada_en IS NULL',
+                 false, true, '')))[1]::text::int
+          END) AS piloto`,
     );
     const fila = rows[0];
     return {
