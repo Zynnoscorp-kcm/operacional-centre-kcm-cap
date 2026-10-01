@@ -2,6 +2,21 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Base reconstruida para la matriz y el padrón definitivos · 2026-09-30
+
+Supabase se reinició según `database/RESET.md`: esquemas tirados y las 45
+migraciones reaplicadas (sin la 0026 del piloto). Verificado: 0 trabajadores,
+sin corrida piloto, `kcm_app` sin BYPASSRLS, ninguna tabla sin política, nonce
+del puente con permisos y vistas de cobertura presentes. Se restauraron las
+tres cuentas de consola, los PIN 2026 y la credencial de Excel KCM-OFFICE-01.
+Respaldo completo previo (13 737 filas) en
+`referencias/privado/respaldo-reset-2026-09-30/`, fuera de Git. El arranque de
+la plataforma exigía `sistema.corrida_piloto` y respondió 500 unos minutos;
+corregido en `ejecutor.ts` y publicado. Pendiente tras cargar la matriz y el
+padrón: mapeo de columnas (sin él no se libera), configuración DC-3 de QMS y
+LOTO, alias BPM y las 128 reglas DNC, todo desde el respaldo.
+Acta: `docs/actas/2026-09-30-reset-base.md`.
+
 ## Código sin comentarios · 2026-09-30
 
 A petición del usuario se quitaron los comentarios y divisores del código de
