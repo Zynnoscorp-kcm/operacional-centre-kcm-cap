@@ -204,7 +204,10 @@ export class MatrixImportService {
       recordsToUpdate: reconciled.recordsToUpdate,
       historyEntriesToInsert: reconciled.historyEntriesToInsert,
       ...(batch.scope === "FULL"
-        ? { workersSeen: snapshot.employees.map((empleado) => empleado.employeeId as string) }
+        ? {
+            workersSeen: snapshot.employees.map((empleado) => empleado.employeeId as string),
+            snapshot,
+          }
         : {}),
     });
 

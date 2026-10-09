@@ -509,6 +509,15 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
+      if (ops.snapshot) {
+        await tx.query(
+          `INSERT INTO matriz.importacion_contenido (importacion_id, contenido)
+           VALUES ($1, $2)
+           ON CONFLICT (importacion_id) DO UPDATE SET contenido = EXCLUDED.contenido;`,
+          [batch.importId, JSON.stringify(ops.snapshot)],
+        );
+      }
+
       if (ops.workersSeen) {
         await tx.query(
           `UPDATE organizacion.trabajador

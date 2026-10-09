@@ -3,7 +3,11 @@ import { describe, it } from "node:test";
 
 import { SupabaseMatrixRepository, type SqlExecutor } from "../../src/adapters/postgres/matriz.ts";
 import { parseWorkerNumber } from "../../src/domain/comun/numero-trabajador.ts";
-import type { ImportBatch, WorkerCatalogEntry } from "../../src/domain/importacion-matriz/tipos.ts";
+import type {
+  ImportBatch,
+  MatrixSnapshot,
+  WorkerCatalogEntry,
+} from "../../src/domain/importacion-matriz/tipos.ts";
 
 interface Consulta {
   readonly sql: string;
@@ -109,7 +113,13 @@ describe("Regresión · la matriz escribe puesto, departamento y área del traba
       recordsToInsert: [],
       recordsToUpdate: [],
       historyEntriesToInsert: [],
+      snapshot: { employees: [] } as unknown as MatrixSnapshot,
     });
+
+    assert.ok(
+      consultas.some((c) => c.sql.includes("INSERT INTO matriz.importacion_contenido")),
+      "la copia de la matriz queda guardada para la sincronía",
+    );
 
     const altas = consultas.filter((c) => c.sql.includes("INSERT INTO organizacion.trabajador"));
     assert.equal(altas.length, 1, "un solo INSERT para todos los trabajadores");

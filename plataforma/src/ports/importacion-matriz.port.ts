@@ -16,6 +16,7 @@ export interface AtomicBatchOperations {
   readonly recordsToUpdate: readonly HcRecord[];
   readonly historyEntriesToInsert: readonly HcRecordHistory[];
   readonly workersSeen?: readonly string[];
+  readonly snapshot?: MatrixSnapshot;
 }
 
 export interface MatrixRepositoryPort {
