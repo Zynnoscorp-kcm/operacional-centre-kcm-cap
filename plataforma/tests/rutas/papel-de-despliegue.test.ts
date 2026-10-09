@@ -95,26 +95,6 @@ describe("papel del despliegue · qué corre en la nube y qué en el equipo", ()
     assert.notEqual(respuesta.statusCode, 413);
   });
 
-  it("en la nube, un padrón que no cabe en el navegador dice por dónde sí cabe", async () => {
-    const app = await servidor("nube");
-    const respuesta = await app.inject({
-      method: "POST",
-      url: "/padron",
-      headers: { "content-type": "multipart/form-data; boundary=limite" },
-      payload: Buffer.concat([
-        Buffer.from(
-          '--limite\r\nContent-Disposition: form-data; name="archivo"; filename="sem.xlsx"\r\n\r\n',
-          "utf8",
-        ),
-        Buffer.alloc(4_300_000, 0x41),
-        Buffer.from("\r\n--limite--\r\n", "utf8"),
-      ]),
-    });
-    assert.equal(respuesta.statusCode, 413);
-    contiene(respuesta.body, "Padrón de la semana", "el botón de Excel que lo manda en partes");
-    noContiene(respuesta.body, "localhost", "la computadora que ya no hace falta encender");
-  });
-
   it("la etiqueta de la barra dice en qué máquina está parada la persona", async () => {
     const nube = await servidor("nube");
     contiene(
@@ -131,11 +111,11 @@ describe("papel del despliegue · qué corre en la nube y qué en el equipo", ()
     );
   });
 
-  it("el padrón ofrece el formulario en los dos papeles", () => {
+  it("el padrón sólo remite a Excel en los dos papeles", () => {
     for (const papel of ["local", "nube"] as const) {
       const pantalla = renderRosterPage({ entorno: "development", papel, sinBase: false });
-      contiene(pantalla, 'type="file"', `el selector de archivo (${papel})`);
-      noContiene(pantalla, "Esta carga se hace en la computadora", "la instrucción vieja");
+      contiene(pantalla, "Padrón de la semana", `el botón de Excel (${papel})`);
+      noContiene(pantalla, 'type="file"', `el selector de archivo (${papel})`);
     }
   });
 

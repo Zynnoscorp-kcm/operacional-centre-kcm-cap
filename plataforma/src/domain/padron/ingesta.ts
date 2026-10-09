@@ -503,7 +503,7 @@ export class RosterIngestService {
       });
       throw new DomainError(
         "ROSTER_PLAN_NOT_FOUND",
-        "La revisión ya no está disponible. Vuelva a subir el archivo para confirmar qué cambiaría.",
+        "La revisión ya no está disponible: un envío nuevo desde Excel vuelve a mostrar qué cambiaría.",
       );
     }
     this.#planes.delete(planId);
@@ -511,7 +511,7 @@ export class RosterIngestService {
     if (this.#revisiones && !(await this.#revisiones.retirar("PADRON", planId))) {
       throw new DomainError(
         "ROSTER_PLAN_NOT_FOUND",
-        "La revisión ya no está disponible. Vuelva a subir el archivo para confirmar qué cambiaría.",
+        "La revisión ya no está disponible: un envío nuevo desde Excel vuelve a mostrar qué cambiaría.",
       );
     }
 

@@ -463,25 +463,10 @@ describe("Padrón · rutas", () => {
     return String(res.headers["set-cookie"]).split(";")[0] ?? "";
   }
 
-  function subida(nombre: string): { headers: Record<string, string>; payload: Buffer } {
-    const limite = "----KCMprueba";
-    return {
-      headers: { "content-type": `multipart/form-data; boundary=${limite}` },
-      payload: Buffer.concat([
-        Buffer.from(
-          `--${limite}\r\nContent-Disposition: form-data; name="archivo"; filename="${nombre}"\r\n\r\n`,
-        ),
-        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
-        Buffer.from(`\r\n--${limite}--\r\n`),
-      ]),
-    };
-  }
-
   it("sin sesión manda al acceso con el destino puesto", async () => {
     const app = await servidor();
     for (const [method, url] of [
       ["GET", "/padron"],
-      ["POST", "/padron"],
       ["POST", "/padron/aplicar"],
     ] as const) {
       const res = await app.inject({ method, url });
@@ -490,26 +475,17 @@ describe("Padrón · rutas", () => {
     }
   });
 
-  it("con sesión muestra el formulario y no escribe nada al revisar", async () => {
+  it("con sesión no ofrece subir el archivo: la revisión sólo llega desde Excel", async () => {
     const app = await servidor();
     const cookie = await sesion(app);
 
-    const formulario = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
-    assert.equal(formulario.statusCode, 200);
-    assert.doesNotMatch(formulario.body, /Leer no cambia nada/u);
-    assert.match(formulario.body, /Carga manual del archivo/u);
-    assert.match(formulario.body, /enctype="multipart\/form-data"/u);
+    const pantalla = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
+    assert.equal(pantalla.statusCode, 200);
+    assert.match(pantalla.body, /Padrón de la semana/u);
+    assert.doesNotMatch(pantalla.body, /Carga manual del archivo|enctype="multipart\/form-data"/u);
 
-    const revision = await app.inject({
-      method: "POST",
-      url: "/padron",
-      headers: { cookie, ...subida("sem 30 CAP.xlsx").headers },
-      payload: subida("sem 30 CAP.xlsx").payload,
-    });
-    assert.equal(revision.statusCode, 200);
-    assert.match(revision.body, /sem 30 CAP\.xlsx · /u);
-    assert.match(revision.body, /Aplicar los cambios/u);
-    assert.match(revision.body, /Revisión sin aplicar/u);
+    const subida = await app.inject({ method: "POST", url: "/padron", headers: { cookie } });
+    assert.equal(subida.statusCode, 404);
   });
 
   it("una revisión que ya no existe no escribe: responde 409", async () => {
@@ -522,36 +498,14 @@ describe("Padrón · rutas", () => {
       payload: new URLSearchParams({ planId: "no-existe" }).toString(),
     });
     assert.equal(res.statusCode, 409);
-    assert.match(res.body, /Vuelva a subir el archivo/u);
+    assert.match(res.body, /un envío nuevo desde Excel/u);
   });
 
-  it("un POST sin archivo se rechaza con 400", async () => {
-    const app = await servidor();
-    const cookie = await sesion(app);
-    const limite = "----vacio";
-    const res = await app.inject({
-      method: "POST",
-      url: "/padron",
-      headers: { cookie, "content-type": `multipart/form-data; boundary=${limite}` },
-      payload: Buffer.from(`--${limite}--\r\n`),
-    });
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body, /No se recibió ningún archivo/u);
-  });
-
-  it("sin base la pantalla lo dice y el POST responde 503", async () => {
+  it("sin base la pantalla lo dice", async () => {
     const app = await servidor(false);
     const cookie = await sesion(app);
 
     const pantalla = await app.inject({ method: "GET", url: "/padron", headers: { cookie } });
     assert.match(pantalla.body, /Sin conexión con la base de datos/u);
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/padron",
-      headers: { cookie, ...subida("sem 30 CAP.xlsx").headers },
-      payload: subida("sem 30 CAP.xlsx").payload,
-    });
-    assert.equal(res.statusCode, 503);
   });
 });

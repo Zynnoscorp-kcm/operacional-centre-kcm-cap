@@ -1,4 +1,5 @@
 import { parseWorkerNumber } from "../../domain/comun/numero-trabajador.ts";
+import { normalizeText } from "../../domain/importacion-matriz/reconciliador.ts";
 import type {
   BatchPhase,
   CandidateCourse,
@@ -387,11 +388,14 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
     await this.db.transaction(async (tx) => {
       await this.saveBatch(batch);
 
+      const adscripcion = await resolverAdscripciones(tx, ops.workersToUpsert);
       for (const w of ops.workersToUpsert) {
+        const ids = adscripcion(w);
         await tx.query(
           `INSERT INTO organizacion.trabajador (
-            numero_trabajador, nombre_completo, fecha_alta, tipo_nomina, planta, activo, hash_fuente
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            numero_trabajador, nombre_completo, fecha_alta, tipo_nomina, planta, activo, hash_fuente,
+            puesto_id, departamento_id, area_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (numero_trabajador) DO UPDATE SET
             nombre_completo = EXCLUDED.nombre_completo,
             fecha_alta = EXCLUDED.fecha_alta,
@@ -399,6 +403,9 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
             planta = EXCLUDED.planta,
             activo = EXCLUDED.activo,
             hash_fuente = EXCLUDED.hash_fuente,
+            puesto_id = EXCLUDED.puesto_id,
+            departamento_id = EXCLUDED.departamento_id,
+            area_id = EXCLUDED.area_id,
             actualizado_en = now()`,
           [
             w.workerNumber,
@@ -408,6 +415,9 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
             w.plant,
             w.active,
             w.sourceHash,
+            ids.puesto,
+            ids.departamento,
+            ids.area,
           ],
         );
       }
@@ -558,6 +568,109 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       ],
     );
   }
+}
+
+function nombreDeCatalogo(valor: string | null): string | null {
+  return valor === null || valor.trim() === "" ? null : valor;
+}
+
+async function resolverAdscripciones(
+  tx: SqlExecutor,
+  trabajadores: readonly WorkerCatalogEntry[],
+): Promise<
+  (w: WorkerCatalogEntry) => {
+    puesto: string | null;
+    departamento: string | null;
+    area: string | null;
+  }
+> {
+  const puestos = new Set<string>();
+  const departamentos = new Set<string>();
+  const areas = new Map<string, readonly [string, string]>();
+  for (const w of trabajadores) {
+    const puesto = nombreDeCatalogo(w.position);
+    const departamento = nombreDeCatalogo(w.department);
+    const area = nombreDeCatalogo(w.area);
+    if (puesto) puestos.add(puesto);
+    if (departamento) departamentos.add(departamento);
+    if (departamento && area) areas.set(`${departamento}\u0000${area}`, [departamento, area]);
+  }
+
+  const idDePuesto = new Map<string, string>();
+  if (puestos.size) {
+    const nombres = [...puestos];
+    const { rows } = await tx.query<{ puesto_id: string; nombre: string }>(
+      `WITH nuevos AS (
+         INSERT INTO organizacion.puesto (nombre, nombre_normalizado)
+         SELECT unnest($1::text[]), unnest($2::text[])
+         ON CONFLICT (nombre) DO NOTHING
+         RETURNING puesto_id, nombre
+       )
+       SELECT puesto_id, nombre FROM nuevos
+       UNION ALL
+       SELECT puesto_id, nombre FROM organizacion.puesto WHERE nombre = ANY($1::text[]);`,
+      [nombres, nombres.map(normalizeText)],
+    );
+    for (const fila of rows) idDePuesto.set(fila.nombre, fila.puesto_id);
+  }
+
+  const idDeDepartamento = new Map<string, string>();
+  if (departamentos.size) {
+    const nombres = [...departamentos];
+    const { rows } = await tx.query<{ departamento_id: string; nombre: string }>(
+      `WITH nuevos AS (
+         INSERT INTO organizacion.departamento (nombre, nombre_normalizado)
+         SELECT unnest($1::text[]), unnest($2::text[])
+         ON CONFLICT (nombre) DO NOTHING
+         RETURNING departamento_id, nombre
+       )
+       SELECT departamento_id, nombre FROM nuevos
+       UNION ALL
+       SELECT departamento_id, nombre FROM organizacion.departamento
+        WHERE nombre = ANY($1::text[]);`,
+      [nombres, nombres.map(normalizeText)],
+    );
+    for (const fila of rows) idDeDepartamento.set(fila.nombre, fila.departamento_id);
+  }
+
+  const idDeArea = new Map<string, string>();
+  const pares = [...areas.entries()].filter(([, [departamento]]) =>
+    idDeDepartamento.has(departamento),
+  );
+  if (pares.length) {
+    const deptos = pares.map(([, [departamento]]) => idDeDepartamento.get(departamento) ?? "");
+    const nombres = pares.map(([, [, area]]) => area);
+    const { rows } = await tx.query<{ area_id: string; departamento_id: string; nombre: string }>(
+      `WITH nuevos AS (
+         INSERT INTO organizacion.area (departamento_id, nombre, nombre_normalizado)
+         SELECT unnest($1::uuid[]), unnest($2::text[]), unnest($3::text[])
+         ON CONFLICT (departamento_id, nombre) DO NOTHING
+         RETURNING area_id, departamento_id, nombre
+       )
+       SELECT area_id, departamento_id, nombre FROM nuevos
+       UNION ALL
+       SELECT a.area_id, a.departamento_id, a.nombre
+         FROM organizacion.area a
+         JOIN unnest($1::uuid[], $2::text[]) AS v(departamento_id, nombre)
+           ON v.departamento_id = a.departamento_id AND v.nombre = a.nombre;`,
+      [deptos, nombres, nombres.map(normalizeText)],
+    );
+    for (const fila of rows)
+      idDeArea.set(`${fila.departamento_id}\u0000${fila.nombre}`, fila.area_id);
+  }
+
+  return (w) => {
+    const puesto = nombreDeCatalogo(w.position);
+    const departamento = nombreDeCatalogo(w.department);
+    const area = nombreDeCatalogo(w.area);
+    const departamentoId = departamento ? (idDeDepartamento.get(departamento) ?? null) : null;
+    return {
+      puesto: puesto ? (idDePuesto.get(puesto) ?? null) : null,
+      departamento: departamentoId,
+      area:
+        departamentoId && area ? (idDeArea.get(`${departamentoId}\u0000${area}`) ?? null) : null,
+    };
+  };
 }
 
 async function resolverActor(tx: SqlExecutor, identificador: string): Promise<string> {

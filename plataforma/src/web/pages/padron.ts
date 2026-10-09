@@ -139,7 +139,7 @@ function renderResultado(resultado: ResultadoDePadron): Html {
         ${
           resultado.plan.origen.tipo === "PUENTE_VBA"
             ? html`Barrido por <code>${resultado.plan.origen.actor}</code>.`
-            : html`Subido por ${resultado.plan.origen.actor}.`
+            : html`Enviado por ${resultado.plan.origen.actor}.`
         }
       </p>
       <div class="kpi-tira">
@@ -166,7 +166,7 @@ function renderResultado(resultado: ResultadoDePadron): Html {
   `;
 }
 
-function renderFormulario(datos: DatosDePadron): Html {
+function renderEncargo(datos: DatosDePadron): Html {
   if (datos.sinBase === true) {
     return html`
       <section class="tarjeta">
@@ -179,18 +179,15 @@ function renderFormulario(datos: DatosDePadron): Html {
   }
   return html`
     <section class="tarjeta">
-      <h2>Carga manual del archivo</h2>
+      <h2>Barrer el padrón semanal</h2>
       <p class="texto-nota">
-        El archivo <code>sem NN CAP.xlsx</code>, con sus hojas <code>SND ACTIVOS</code> y
-        <code>EMP ACTIVOS</code>.
+        El barrido lee el padrón de la semana y enseña las diferencias con lo registrado en la
+        plataforma. <strong>Leer no cambia nada.</strong>
       </p>
-      <form method="POST" action="/padron" enctype="multipart/form-data" class="formulario">
-        <label>
-          Archivo del padrón
-          <input type="file" name="archivo" accept=".xlsx" required />
-        </label>
-        <button type="submit">Revisar sin aplicar</button>
-      </form>
+      <p class="texto-nota">
+        Se envía desde Excel con <strong>Padrón de la semana</strong>. La revisión aparece aquí y
+        espera aprobación.
+      </p>
     </section>
   `;
 }
@@ -199,7 +196,7 @@ export function renderRosterPage(datos: DatosDePadron): string {
   const contenido = html`
     ${datos.error ? html`<p class="aviso-error" role="alert">${datos.error}</p>` : ""}
     ${datos.resultado ? renderResultado(datos.resultado) : ""}
-    ${datos.plan ? renderRevision(datos.plan) : renderFormulario(datos)}
+    ${datos.plan ? renderRevision(datos.plan) : renderEncargo(datos)}
     ${
       datos.plan
         ? ""
@@ -219,7 +216,7 @@ export function renderRosterPage(datos: DatosDePadron): string {
   return renderLayout({
     titulo: "Padrón semanal",
     rutaActiva: "/padron",
-    subtitulo: "Carga del padrón activo y cuadre contra la matriz",
+    subtitulo: "Lectura del padrón activo y cuadre contra la matriz",
     entorno: datos.entorno,
     ...(datos.papel ? { papel: datos.papel } : {}),
     contenido,

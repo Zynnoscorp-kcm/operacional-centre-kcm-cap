@@ -2,6 +2,16 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Puesto y área desde la matriz; padrón sólo desde Excel · 2026-10-08
+
+Los trabajadores llegaban sin puesto, departamento ni área: el adaptador de
+Postgres de la matriz descartaba esos campos al escribir. Ahora da de alta lo
+que falte en los catálogos y liga a cada trabajador. Se quitó la carga manual
+del padrón en la plataforma; la pantalla sólo muestra la leyenda hasta que
+Excel manda una revisión. Verificado con prueba de regresión y la batería
+completa. Pendiente: publicar y reenviar la matriz desde Excel.
+Acta: `docs/actas/2026-10-08-puesto-y-area-de-la-matriz.md`.
+
 ## Base reconstruida para la matriz y el padrón definitivos · 2026-09-30
 
 Supabase se reinició según `database/RESET.md`: esquemas tirados y las 45

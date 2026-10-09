@@ -556,10 +556,11 @@ describe("Barrido de padrón · pantalla", () => {
     assert.match(html, /PERSONA SINTETICA/u);
   });
 
-  it("sin revisión remite a Excel y ofrece subir a mano", () => {
+  it("sin revisión sólo remite a Excel, como el barrido de matriz", () => {
     const html = renderRosterPage({ entorno: "development" });
-    assert.doesNotMatch(html, /Leer no cambia nada/u);
-    assert.match(html, /Carga manual del archivo/u);
+    assert.match(html, /Leer no cambia nada/u);
+    assert.match(html, /Padrón de la semana/u);
+    assert.doesNotMatch(html, /Carga manual del archivo|multipart\/form-data|type="file"/u);
     assert.doesNotMatch(html, /Solicitar barrido|Cancelar encargo/u);
   });
 });
@@ -596,7 +597,7 @@ describe("Barrido de padrón · rutas", () => {
     const app = await servidor();
     const cookie = await sesion(app);
 
-    for (const url of ["/padron/barrido", "/padron/cancelar"]) {
+    for (const url of ["/padron", "/padron/barrido", "/padron/cancelar"]) {
       const res = await app.inject({ method: "POST", url, headers: { cookie } });
       assert.equal(res.statusCode, 404);
     }

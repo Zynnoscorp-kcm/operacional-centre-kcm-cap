@@ -1,0 +1,9 @@
+# Acta · Trabajadores sin puesto ni área y padrón sólo desde Excel · 2026-10-08
+
+- Evidencia: tras enviar matriz y padrón desde Excel, `organizacion.trabajador` tenía 1 684 filas con `puesto_id`, `departamento_id` y `area_id` en nulo, y los catálogos `puesto`, `departamento` y `area` vacíos (antes del reset los había llenado la carga piloto: 101 puestos, 23 departamentos, 38 áreas).
+- Causa: el reconciliador de la matriz sí trae puesto, departamento y área en `workersToUpsert`, pero `SupabaseMatrixRepository.applyBatchAtomic` sólo insertaba nombre, alta, nómina, planta y activo. El repositorio en memoria guardaba el objeto completo, por eso ninguna prueba lo notó. El padrón no escribe puesto: sólo lo coteja.
+- Arreglo: antes de escribir trabajadores, el adaptador da de alta en lote los puestos, departamentos y áreas que falten (por nombre exacto, `nombre_normalizado` con `normalizeText`) y liga cada trabajador a sus identificadores. Un área sin departamento queda sin ligar porque el catálogo la exige subordinada.
+- Datos: `matriz.importacion_contenido` está vacío, así que no hay de dónde rellenar. Al publicar, un envío nuevo de la matriz desde Excel mostrará a todos «con cambios» de puesto y área en el panel; al aplicarlo quedan escritos.
+- Padrón: se retiró la carga manual desde la plataforma (`POST /padron` responde 404, sin formulario ni selector de archivo). La pantalla queda como la del barrido de matriz: una leyenda que remite a **Padrón de la semana** en Excel hasta que llega una revisión al panel de cambios.
+- Evidencia: `tests/regresiones/adscripcion-de-la-matriz.test.ts` falla antes y pasa después; 784 pruebas de plataforma y 118 de `npm test` sin fallas; ESLint limpio en los archivos tocados.
+- Pendiente: publicar en Vercel y volver a enviar la matriz desde Excel.
