@@ -2,6 +2,16 @@
 
 Actualizado: 2026-07-22 23:11 CST (America/Mexico_City).
 
+## Matriz completa en una carga y limpieza reutilizable · 2026-10-09
+
+Aplicar la matriz escribe en bloque (≈9 s con la matriz real, antes rebasaba
+120 s), guarda la copia para la sincronía, mantiene el mapeo de columnas que
+pide la liberación y ya no junta dos columnas con el mismo encabezado (LOTO
+2025 y 2026). DC-3 de QMS y LOTO con agente y LOTO ligado a la columna 2026.
+La base quedó en blanco con `database/limpieza-demostracion.sql`, que conserva
+cuentas, PIN y configuración DC-3 y puede repetirse antes de cada prueba.
+Acta: `docs/actas/2026-10-08-puesto-y-area-de-la-matriz.md`.
+
 ## Puesto y área desde la matriz; padrón sólo desde Excel · 2026-10-08
 
 Los trabajadores llegaban sin puesto, departamento ni área: el adaptador de

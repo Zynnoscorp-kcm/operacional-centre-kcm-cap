@@ -56,3 +56,7 @@
 
 - Antes de borrar se devolvió al curso con DC-3 de LOTO la clave de la columna 2026. Se borraron, además de lo de siempre, la sesión de prueba (asistencias, quiosco, preliberación), la reserva de sala, el mapeo y su destino, y todos los asientos de bitácora salvo configuración y metadatos DC-3 (incluidas 12 DC-3 emitidas individualmente, que sólo vivían en la bitácora). Credencial borrada de Supabase y del llavero; 0 disparadores deshabilitados.
 - Ensayo con la instantánea real sobre la base limpia, deshecho al final: 8.8 s; LOTO 2026 (DC-3) en columna L con 1 151 fechas, LOTO 2025 aparte en M con 494, QMS (DC-3) en AB; 27 mapeos en 27 columnas distintas.
+
+## Quinta limpieza y guion reutilizable · 2026-10-09
+
+- Tras las pruebas del usuario (liberación con lote y acuses, sesión, asistencias, DC-3) se limpió con el guion nuevo `database/limpieza-demostracion.sql`, documentado en `database/RESET.md`. Además de lo anterior cubre liberaciones, lotes, acuses, constancias y eventos DC-3. Resultado: sólo quedan cuentas, PIN, salas, patrón, áreas temáticas, configuración DC-3 (LOTO en la clave 2026, con agentes) y 5 asientos de configuración; 0 disparadores deshabilitados; credencial borrada de Supabase y del llavero.

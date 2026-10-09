@@ -114,3 +114,33 @@ importaciones de matriz y su auditoría.
 No se pierde nada del repositorio: migraciones, código y documentación son la
 fuente. Si algo del piloto merece sobrevivir, se traduce a una migración
 **antes** del reset; lo que quede sólo en la base, se va.
+
+## Limpieza para pruebas y demostraciones (sin reconstruir esquemas)
+
+`database/limpieza-demostracion.sql` deja la plataforma en blanco sin tocar
+migraciones, cuentas ni configuración. Corre en una sola transacción y apaga
+los disparadores de solo agregar únicamente dentro de ella.
+
+Borra: trabajadores, puestos, departamentos y áreas; historial de capacitación
+y sus cambios; importaciones, copia de la matriz, mapeo de columnas y destino;
+sesiones, asistencias, quiosco, preliberaciones, reservas de sala;
+liberaciones, lotes y acuses; constancias y eventos DC-3; revisiones
+pendientes, partes de envío, nonces, credenciales de Excel y la bitácora salvo
+`CONFIGURACION` y `METADATO_DC3`; y los cursos que no tienen configuración
+DC-3.
+
+Conserva: cuentas de consola, PIN, salas, patrón, áreas temáticas y la
+configuración DC-3 con sus cursos (Inducción, QMS y LOTO de la columna 2026).
+
+Después hay que borrar la credencial del llavero de macOS
+(`security delete-generic-password -a KCM_PUENTE_VBA -s KCM_VBA_BRIDGE_TOKEN`),
+emitir una nueva en Excel y enviar primero la matriz y luego el padrón. El
+barrido de la matriz vuelve a crear puestos, áreas, cursos y el mapeo de
+columnas.
+
+Comprobación: sólo deben quedar filas en `catalogo.capacitacion` (3),
+`catalogo.sala`, `dc3.area_tematica`, `dc3.curso_configuracion`,
+`organizacion.patron`, `seguridad.actor`, `seguridad.actor_rol`,
+`seguridad.credencial_consola`, `seguridad.secreto` y la bitácora de
+configuración; `SELECT count(*) FROM pg_trigger WHERE tgenabled = 'D' AND NOT
+tgisinternal` debe dar 0.
