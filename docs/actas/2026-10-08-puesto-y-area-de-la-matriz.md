@@ -23,3 +23,9 @@
 - Arreglo: trabajadores, fechas nuevas, fechas corregidas e historial se escriben con un `INSERT … SELECT unnest(…)` (o `UPDATE … FROM unnest`) cada uno, con actores resueltos una vez por identificador; el lote se guarda dentro de la misma transacción. Las fechas vacías se guardan nulas.
 - Evidencia: ensayo contra Supabase con la instantánea real de 1 686 trabajadores dentro de una transacción deshecha al final: 18 s, 54 consultas, 1 686 trabajadores, 1 674 con puesto, departamento y área (los 12 restantes vienen en blanco en la matriz), 100 puestos, 23 departamentos, 36 áreas, 9 363 fechas. Prueba de regresión ampliada (lote dentro de la transacción y consultas acotadas con 5 000 fechas); 785 pruebas de plataforma y 118 de `npm test` sin fallas. Publicado `e27384f`.
 - Datos: se borraron el lote huérfano y la revisión de padrón hecha contra la base vacía; la base quedó otra vez en cero.
+
+## Sincronía sin matriz
+
+- Causa: la sincronía coteja contra `matriz.importacion_contenido`, que sólo llenaba el flujo de importación anterior; el barrido desde Excel nunca guardaba la copia.
+- Arreglo: al aplicar un barrido completo, la copia se guarda en la misma transacción que los datos.
+- Evidencia: ensayo con la instantánea real deshecho al final: aplicar 19 s y la sincronía coteja a los 1 686 trabajadores. Prueba de regresión ampliada; 785 + 118 pruebas sin fallas. Publicado `636e285`.
