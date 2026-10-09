@@ -209,57 +209,8 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
     };
   }
 
-  async saveBatch(batch: ImportBatch): Promise<void> {
-    const creadoPor = await resolverActor(this.db, batch.createdBy);
-    await this.db.query(
-      `INSERT INTO matriz.importacion (
-        importacion_id, solicitud_id, sha256_fuente, sha256_snapshot,
-        nombre_archivo_fuente, nombre_hoja_fuente, extraido_en,
-        estado, alcance, total_trabajadores, total_cursos, total_fechas,
-        total_insertados, total_corregidos, total_retirados, total_reactivados,
-        total_conflictos, total_pendientes_maestro, diagnosticos, creado_por,
-        creado_en, completado_en, version
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
-      )
-      ON CONFLICT (solicitud_id) DO UPDATE SET
-        estado = EXCLUDED.estado,
-        alcance = EXCLUDED.alcance,
-        total_insertados = EXCLUDED.total_insertados,
-        total_corregidos = EXCLUDED.total_corregidos,
-        total_retirados = EXCLUDED.total_retirados,
-        total_reactivados = EXCLUDED.total_reactivados,
-        total_conflictos = EXCLUDED.total_conflictos,
-        total_pendientes_maestro = EXCLUDED.total_pendientes_maestro,
-        diagnosticos = EXCLUDED.diagnosticos,
-        completado_en = EXCLUDED.completado_en,
-        version = EXCLUDED.version`,
-      [
-        batch.importId,
-        batch.requestId,
-        batch.sourceSha256,
-        batch.snapshotSha256,
-        batch.sourceFileName,
-        batch.sourceSheetName,
-        batch.sourceExtractedAt,
-        batch.phase,
-        batch.scope,
-        batch.counts.totalEmployees,
-        batch.counts.totalCourses,
-        batch.counts.totalCompletions,
-        batch.counts.insertedCount,
-        batch.counts.correctedCount,
-        batch.counts.retiredCount,
-        batch.counts.reactivatedCount,
-        batch.counts.conflictCount,
-        batch.counts.pendingMasterCount,
-        JSON.stringify(batch.diagnostics),
-        creadoPor,
-        batch.createdAt,
-        batch.completedAt,
-        batch.version,
-      ],
-    );
+  saveBatch(batch: ImportBatch): Promise<void> {
+    return guardarLote(this.db, batch);
   }
 
   async updateBatch(batch: ImportBatch): Promise<void> {
@@ -386,16 +337,21 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
 
   async applyBatchAtomic(batch: ImportBatch, ops: AtomicBatchOperations): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await this.saveBatch(batch);
+      await guardarLote(tx, batch);
 
-      const adscripcion = await resolverAdscripciones(tx, ops.workersToUpsert);
-      for (const w of ops.workersToUpsert) {
-        const ids = adscripcion(w);
+      const trabajadores = ops.workersToUpsert;
+      if (trabajadores.length) {
+        const adscripcion = await resolverAdscripciones(tx, trabajadores);
+        const ids = trabajadores.map(adscripcion);
         await tx.query(
           `INSERT INTO organizacion.trabajador (
             numero_trabajador, nombre_completo, fecha_alta, tipo_nomina, planta, activo, hash_fuente,
             puesto_id, departamento_id, area_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          )
+          SELECT * FROM unnest(
+            $1::text[], $2::text[], $3::date[], $4::text[], $5::text[], $6::boolean[], $7::text[],
+            $8::uuid[], $9::uuid[], $10::uuid[]
+          )
           ON CONFLICT (numero_trabajador) DO UPDATE SET
             nombre_completo = EXCLUDED.nombre_completo,
             fecha_alta = EXCLUDED.fecha_alta,
@@ -408,16 +364,16 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
             area_id = EXCLUDED.area_id,
             actualizado_en = now()`,
           [
-            w.workerNumber,
-            w.displayName,
-            w.hireDate,
-            w.payrollType,
-            w.plant,
-            w.active,
-            w.sourceHash,
-            ids.puesto,
-            ids.departamento,
-            ids.area,
+            trabajadores.map((w) => w.workerNumber),
+            trabajadores.map((w) => w.displayName),
+            trabajadores.map((w) => w.hireDate || null),
+            trabajadores.map((w) => w.payrollType),
+            trabajadores.map((w) => w.plant),
+            trabajadores.map((w) => w.active),
+            trabajadores.map((w) => w.sourceHash),
+            ids.map((i) => i.puesto),
+            ids.map((i) => i.departamento),
+            ids.map((i) => i.area),
           ],
         );
       }
@@ -446,77 +402,109 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
         );
       }
 
-      for (const r of ops.recordsToUpdate) {
+      const corregidos = ops.recordsToUpdate;
+      if (corregidos.length) {
         await tx.query(
-          `UPDATE operacion.historial_capacitacion SET
-            fecha_capacitacion = $1,
-            estado_registro = $2,
-            importacion_id = $3,
-            solicitud_id = $4,
-            version = version + 1
-          WHERE registro_id = $5`,
-          [r.completionDate || null, r.status, r.importId, r.requestId, r.recordId],
+          `UPDATE operacion.historial_capacitacion h SET
+            fecha_capacitacion = v.fecha,
+            estado_registro = v.estado,
+            importacion_id = v.importacion,
+            solicitud_id = v.solicitud,
+            version = h.version + 1
+          FROM unnest(
+            $1::date[], $2::comun.estado_historial[], $3::uuid[], $4::text[], $5::uuid[]
+          ) AS v(fecha, estado, importacion, solicitud, registro)
+          WHERE h.registro_id = v.registro`,
+          [
+            corregidos.map((r) => r.completionDate || null),
+            corregidos.map((r) => r.status),
+            corregidos.map((r) => r.importId),
+            corregidos.map((r) => r.requestId),
+            corregidos.map((r) => r.recordId),
+          ],
         );
       }
 
-      for (const r of ops.recordsToInsert) {
+      const nuevos = ops.recordsToInsert;
+      if (nuevos.length) {
         await tx.query(
           `INSERT INTO operacion.historial_capacitacion (
             registro_id, clave_idempotencia, trabajador_id, capacitacion_id,
             fecha_capacitacion, procedencia, estado_registro, sesion_id,
             liberacion_id, version_mapeo, lote_id, marcador, importacion_id, solicitud_id
-          ) VALUES (
-            $1, $2,
-            (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
-            (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
-            $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-          )`,
+          )
+          SELECT v.registro, v.clave, t.trabajador_id, c.capacitacion_id,
+                 v.fecha, v.procedencia, v.estado, v.sesion,
+                 v.liberacion, v.mapeo, v.lote, v.marcador, v.importacion, v.solicitud
+            FROM unnest(
+              $1::uuid[], $2::text[], $3::text[], $4::text[], $5::date[],
+              $6::comun.procedencia_fecha[], $7::comun.estado_historial[], $8::uuid[], $9::uuid[],
+              $10::text[], $11::uuid[], $12::text[], $13::uuid[], $14::text[]
+            ) WITH ORDINALITY AS v(registro, clave, numero, curso, fecha, procedencia, estado,
+                                   sesion, liberacion, mapeo, lote, marcador, importacion,
+                                   solicitud, orden)
+            LEFT JOIN organizacion.trabajador t ON t.numero_trabajador = v.numero
+            LEFT JOIN catalogo.capacitacion c ON c.clave_curso = v.curso
+           ORDER BY v.orden`,
           [
-            r.recordId,
-            r.idempotencyKey,
-            r.workerNumber,
-            r.trainingId,
-            r.completionDate,
-            r.provenance,
-            r.status,
-            r.sessionId,
-            r.releaseId,
-            r.mappingVersion,
-            r.batchId,
-            r.marker,
-            r.importId,
-            r.requestId,
+            nuevos.map((r) => r.recordId),
+            nuevos.map((r) => r.idempotencyKey),
+            nuevos.map((r) => r.workerNumber),
+            nuevos.map((r) => r.trainingId),
+            nuevos.map((r) => r.completionDate || null),
+            nuevos.map((r) => r.provenance),
+            nuevos.map((r) => r.status),
+            nuevos.map((r) => r.sessionId),
+            nuevos.map((r) => r.releaseId),
+            nuevos.map((r) => r.mappingVersion),
+            nuevos.map((r) => r.batchId),
+            nuevos.map((r) => r.marker),
+            nuevos.map((r) => r.importId),
+            nuevos.map((r) => r.requestId),
           ],
         );
       }
 
-      for (const h of ops.historyEntriesToInsert) {
+      const cambios = ops.historyEntriesToInsert;
+      if (cambios.length) {
+        const actores = new Map<string, string>();
+        for (const identificador of new Set(cambios.map((h) => h.actorId))) {
+          actores.set(identificador, await resolverActor(tx, identificador));
+        }
         await tx.query(
           `INSERT INTO operacion.historial_capacitacion_cambio (
             historial_id, registro_id, trabajador_id, capacitacion_id,
             tipo_cambio, fecha_anterior, fecha_nueva, estado_anterior,
             estado_nuevo, procedencia, actor_id, motivo, solicitud_id, importacion_id
-          ) VALUES (
-            $1, $2,
-            (SELECT trabajador_id FROM organizacion.trabajador WHERE numero_trabajador = $3),
-            (SELECT capacitacion_id FROM catalogo.capacitacion WHERE clave_curso = $4),
-            $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-          )`,
+          )
+          SELECT v.historial, v.registro, t.trabajador_id, c.capacitacion_id,
+                 v.tipo, v.anterior, v.nueva, v.estado_anterior,
+                 v.estado_nuevo, v.procedencia, v.actor, v.motivo, v.solicitud, v.importacion
+            FROM unnest(
+              $1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::comun.tipo_cambio_historial[],
+              $6::date[], $7::date[], $8::comun.estado_historial[], $9::comun.estado_historial[],
+              $10::comun.procedencia_fecha[], $11::uuid[], $12::text[], $13::text[], $14::uuid[]
+            ) WITH ORDINALITY AS v(historial, registro, numero, curso, tipo, anterior, nueva,
+                                   estado_anterior, estado_nuevo, procedencia, actor, motivo,
+                                   solicitud, importacion, orden)
+            LEFT JOIN organizacion.trabajador t ON t.numero_trabajador = v.numero
+            LEFT JOIN catalogo.capacitacion c ON c.clave_curso = v.curso
+           ORDER BY v.orden`,
           [
-            h.historyId,
-            h.recordId,
-            h.workerNumber,
-            h.trainingId,
-            h.changeType,
-            h.previousCompletionDate,
-            h.completionDate,
-            h.previousStatus,
-            h.status,
-            h.provenance,
-            await resolverActor(tx, h.actorId),
-            h.reason,
-            h.requestId,
-            h.importId,
+            cambios.map((h) => h.historyId),
+            cambios.map((h) => h.recordId),
+            cambios.map((h) => h.workerNumber),
+            cambios.map((h) => h.trainingId),
+            cambios.map((h) => h.changeType),
+            cambios.map((h) => h.previousCompletionDate || null),
+            cambios.map((h) => h.completionDate || null),
+            cambios.map((h) => h.previousStatus),
+            cambios.map((h) => h.status),
+            cambios.map((h) => h.provenance),
+            cambios.map((h) => actores.get(h.actorId) ?? null),
+            cambios.map((h) => h.reason),
+            cambios.map((h) => h.requestId),
+            cambios.map((h) => h.importId),
           ],
         );
       }
@@ -568,6 +556,59 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
       ],
     );
   }
+}
+
+async function guardarLote(db: SqlExecutor, batch: ImportBatch): Promise<void> {
+  const creadoPor = await resolverActor(db, batch.createdBy);
+  await db.query(
+    `INSERT INTO matriz.importacion (
+      importacion_id, solicitud_id, sha256_fuente, sha256_snapshot,
+      nombre_archivo_fuente, nombre_hoja_fuente, extraido_en,
+      estado, alcance, total_trabajadores, total_cursos, total_fechas,
+      total_insertados, total_corregidos, total_retirados, total_reactivados,
+      total_conflictos, total_pendientes_maestro, diagnosticos, creado_por,
+      creado_en, completado_en, version
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+    )
+    ON CONFLICT (solicitud_id) DO UPDATE SET
+      estado = EXCLUDED.estado,
+      alcance = EXCLUDED.alcance,
+      total_insertados = EXCLUDED.total_insertados,
+      total_corregidos = EXCLUDED.total_corregidos,
+      total_retirados = EXCLUDED.total_retirados,
+      total_reactivados = EXCLUDED.total_reactivados,
+      total_conflictos = EXCLUDED.total_conflictos,
+      total_pendientes_maestro = EXCLUDED.total_pendientes_maestro,
+      diagnosticos = EXCLUDED.diagnosticos,
+      completado_en = EXCLUDED.completado_en,
+      version = EXCLUDED.version`,
+    [
+      batch.importId,
+      batch.requestId,
+      batch.sourceSha256,
+      batch.snapshotSha256,
+      batch.sourceFileName,
+      batch.sourceSheetName,
+      batch.sourceExtractedAt,
+      batch.phase,
+      batch.scope,
+      batch.counts.totalEmployees,
+      batch.counts.totalCourses,
+      batch.counts.totalCompletions,
+      batch.counts.insertedCount,
+      batch.counts.correctedCount,
+      batch.counts.retiredCount,
+      batch.counts.reactivatedCount,
+      batch.counts.conflictCount,
+      batch.counts.pendingMasterCount,
+      JSON.stringify(batch.diagnostics),
+      creadoPor,
+      batch.createdAt,
+      batch.completedAt,
+      batch.version,
+    ],
+  );
 }
 
 function nombreDeCatalogo(valor: string | null): string | null {
