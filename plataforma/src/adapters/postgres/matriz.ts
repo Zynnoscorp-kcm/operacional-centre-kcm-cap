@@ -10,6 +10,7 @@ import type {
   HcRecordHistory,
   ImportBatch,
   ImportScope,
+  MatrixSnapshot,
   RecordStatus,
   SnapshotDiagnostics,
   WorkerCatalogEntry,
@@ -516,6 +517,7 @@ export class SupabaseMatrixRepository implements MatrixRepositoryPort {
            ON CONFLICT (importacion_id) DO UPDATE SET contenido = EXCLUDED.contenido;`,
           [batch.importId, JSON.stringify(ops.snapshot)],
         );
+        await mantenerMapeo(tx, batch, ops.snapshot);
       }
 
       if (ops.workersSeen) {
@@ -617,6 +619,77 @@ async function guardarLote(db: SqlExecutor, batch: ImportBatch): Promise<void> {
       batch.completedAt,
       batch.version,
     ],
+  );
+}
+
+const DESTINO_DE_LA_MATRIZ = "MATRIZ_HC";
+const FILA_DE_ENCABEZADO = 3;
+
+async function mantenerMapeo(
+  tx: SqlExecutor,
+  batch: ImportBatch,
+  snapshot: MatrixSnapshot,
+): Promise<void> {
+  const columnas = snapshot.courses.filter(
+    (curso) => curso.sourceColumn.trim() !== "" && curso.displayName.trim() !== "",
+  );
+  const hoja = snapshot.source.sheetName;
+  const { rows } = await tx.query<{ destino_id: string }>(
+    `INSERT INTO matriz.destino (nombre_destino, identificador_archivo, descripcion)
+     VALUES ($1, $2, 'Matriz de competencias que envía Excel')
+     ON CONFLICT (nombre_destino) DO UPDATE
+       SET identificador_archivo = EXCLUDED.identificador_archivo, activo = true
+     RETURNING destino_id;`,
+    [DESTINO_DE_LA_MATRIZ, snapshot.source.fileName],
+  );
+  const destino = rows[0]?.destino_id;
+  if (destino === undefined) throw new Error("No fue posible registrar el destino de la matriz");
+
+  const vigentes = `
+    SELECT DISTINCT ON (c.capacitacion_id) c.capacitacion_id, v.columna, v.encabezado
+      FROM unnest($2::text[], $3::text[], $4::text[]) AS v(clave, columna, encabezado)
+      JOIN catalogo.capacitacion c ON c.clave_origen = v.clave
+     ORDER BY c.capacitacion_id, v.columna`;
+  const parametros = [
+    destino,
+    columnas.map((curso) => curso.sourceKey),
+    columnas.map((curso) => curso.sourceColumn),
+    columnas.map((curso) => curso.displayName),
+    hoja,
+  ];
+
+  await tx.query(
+    `WITH v AS (${vigentes})
+     UPDATE matriz.mapeo_columna m
+        SET vigente_hasta = now()
+      WHERE m.destino_id = $1
+        AND m.vigente_hasta IS NULL
+        AND m.vigente_desde < now()
+        AND NOT EXISTS (
+              SELECT 1 FROM v
+               WHERE v.capacitacion_id = m.capacitacion_id
+                 AND v.columna = m.columna
+                 AND v.encabezado = m.encabezado_esperado
+                 AND m.hoja = $5);`,
+    parametros,
+  );
+
+  const aprobador = await resolverActor(tx, batch.createdBy);
+  await tx.query(
+    `WITH v AS (${vigentes})
+     INSERT INTO matriz.mapeo_columna (
+       destino_id, capacitacion_id, version_mapeo, hoja, columna, encabezado_esperado,
+       fila_encabezado, politica_sobrescritura, aprobado_por
+     )
+     SELECT $1, v.capacitacion_id, $6, $5, v.columna, v.encabezado,
+            $7, 'OVERWRITE_WITH_HISTORY', $8
+       FROM v
+      WHERE NOT EXISTS (
+              SELECT 1 FROM matriz.mapeo_columna m
+               WHERE m.destino_id = $1
+                 AND m.capacitacion_id = v.capacitacion_id
+                 AND m.vigente_hasta IS NULL);`,
+    [...parametros, `matriz-${batch.sourceSha256.slice(0, 12)}`, FILA_DE_ENCABEZADO, aprobador],
   );
 }
 

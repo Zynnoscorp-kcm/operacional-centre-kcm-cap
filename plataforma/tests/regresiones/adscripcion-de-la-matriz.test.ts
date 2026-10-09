@@ -41,6 +41,9 @@ function baseFalsa(consultas: Consulta[]): SqlExecutor {
           })) as T[],
         });
       }
+      if (sql.includes("INSERT INTO matriz.destino")) {
+        return Promise.resolve({ rows: [{ destino_id: "destino" }] as T[] });
+      }
       if (sql.includes("seguridad.actor")) {
         return Promise.resolve({ rows: [{ actor_id: "actor" }] as T[] });
       }
@@ -113,13 +116,27 @@ describe("Regresión · la matriz escribe puesto, departamento y área del traba
       recordsToInsert: [],
       recordsToUpdate: [],
       historyEntriesToInsert: [],
-      snapshot: { employees: [] } as unknown as MatrixSnapshot,
+      snapshot: {
+        source: { fileName: "matriz.xlsb", sheetName: "HC", sha256: "abc", byteSize: 1 },
+        employees: [],
+        courses: [
+          {
+            sourceKey: "hc-course:qms",
+            sourceColumn: "AB",
+            displayName: "QMS",
+            normalizedName: "QMS",
+          },
+        ],
+      } as unknown as MatrixSnapshot,
     });
 
     assert.ok(
       consultas.some((c) => c.sql.includes("INSERT INTO matriz.importacion_contenido")),
       "la copia de la matriz queda guardada para la sincronía",
     );
+    const mapeo = consultas.find((c) => c.sql.includes("INSERT INTO matriz.mapeo_columna"));
+    assert.ok(mapeo, "el mapeo de columnas se mantiene con el barrido");
+    assert.deepEqual(mapeo.params.slice(1, 5), [["hc-course:qms"], ["AB"], ["QMS"], "HC"]);
 
     const altas = consultas.filter((c) => c.sql.includes("INSERT INTO organizacion.trabajador"));
     assert.equal(altas.length, 1, "un solo INSERT para todos los trabajadores");

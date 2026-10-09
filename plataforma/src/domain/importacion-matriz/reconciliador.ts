@@ -159,6 +159,13 @@ export function resolveCourseMappings(
   const existingBySourceKey = new Map(existingCourses.map((c) => [c.sourceKey, c]));
   const existingByTrainingId = new Map(existingCourses.map((c) => [c.trainingId, c]));
   const existingByNormName = new Map(existingCourses.map((c) => [c.normalizedName, c]));
+  const reclamados = new Set<string>();
+  for (const sc of snapshotCourses) {
+    const mapeado = mappingMap.get(sc.sourceKey);
+    if (mapeado && existingByTrainingId.has(mapeado)) reclamados.add(mapeado);
+    const porClave = existingBySourceKey.get(sc.sourceKey);
+    if (porClave) reclamados.add(porClave.trainingId);
+  }
 
   for (const sc of snapshotCourses) {
     const mappedTrainingId = mappingMap.get(sc.sourceKey);
@@ -199,7 +206,8 @@ export function resolveCourseMappings(
 
     const normName = normalizeText(sc.displayName);
     const byName = existingByNormName.get(normName);
-    if (byName) {
+    if (byName && !reclamados.has(byName.trainingId)) {
+      reclamados.add(byName.trainingId);
       sourceKeyToTrainingId.set(sc.sourceKey, byName.trainingId);
       const aliases = new Set(byName.aliases);
       if (byName.sourceName && byName.sourceName !== sc.displayName) {
