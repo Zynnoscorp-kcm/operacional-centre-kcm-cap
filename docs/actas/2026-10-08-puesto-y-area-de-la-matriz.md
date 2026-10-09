@@ -51,3 +51,8 @@
 - Causa 2: la limpieza borra los cursos sin DC-3, entre ellos LOTO 2025. Al recargar, la columna M (2025) no encontró su clave y `resolveCourseMappings` la casó por nombre con el curso de LOTO 2026, ya reclamado por la columna L: un curso con las dos columnas, la clave cambiada a la de 2025 y 1 224 fechas mezcladas.
 - Arreglo 2: un curso reclamado por clave exacta (o por mapeo) ya no se asigna por nombre a otra columna; el cambio de clave por nombre sigue funcionando cuando la clave vieja no viene. `tests/regresiones/columnas-con-el-mismo-nombre.test.ts` falla antes (2 de 3) y pasa después; 788 + 118 pruebas sin fallas. Publicado `be2087a`.
 - Datos: la carga actual de LOTO está mezclada y su mapeo apunta a la columna M; hace falta limpiar y recargar, devolviendo antes la clave de la columna 2026 al curso con DC-3.
+
+## Cuarta limpieza
+
+- Antes de borrar se devolvió al curso con DC-3 de LOTO la clave de la columna 2026. Se borraron, además de lo de siempre, la sesión de prueba (asistencias, quiosco, preliberación), la reserva de sala, el mapeo y su destino, y todos los asientos de bitácora salvo configuración y metadatos DC-3 (incluidas 12 DC-3 emitidas individualmente, que sólo vivían en la bitácora). Credencial borrada de Supabase y del llavero; 0 disparadores deshabilitados.
+- Ensayo con la instantánea real sobre la base limpia, deshecho al final: 8.8 s; LOTO 2026 (DC-3) en columna L con 1 151 fechas, LOTO 2025 aparte en M con 494, QMS (DC-3) en AB; 27 mapeos en 27 columnas distintas.
