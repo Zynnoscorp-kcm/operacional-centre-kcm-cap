@@ -29,3 +29,7 @@
 - Causa: la sincronía coteja contra `matriz.importacion_contenido`, que sólo llenaba el flujo de importación anterior; el barrido desde Excel nunca guardaba la copia.
 - Arreglo: al aplicar un barrido completo, la copia se guarda en la misma transacción que los datos.
 - Evidencia: ensayo con la instantánea real deshecho al final: aplicar 19 s y la sincronía coteja a los 1 686 trabajadores. Prueba de regresión ampliada; 785 + 118 pruebas sin fallas. Publicado `636e285`.
+
+## Segunda limpieza
+
+- A petición del usuario, con la misma transacción de la primera limpieza: se borraron la credencial KCM-OFFICE-01, 4 nonces y 2 asientos de cargas (no había trabajadores, fechas ni importaciones). Quedan sólo cursos de DC-3 (3), salas, patrón, áreas temáticas, configuración DC-3, cuentas de consola y PIN; 0 disparadores deshabilitados. Credencial borrada también del llavero (`security` responde 44).
