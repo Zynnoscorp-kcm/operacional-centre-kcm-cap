@@ -43,3 +43,11 @@
 ## Tercera limpieza
 
 - Misma transacción que las anteriores: 0 trabajadores, fechas, importaciones y credenciales de Excel; quedan 3 cuentas, 2 PIN y la configuración DC-3 de Inducción, QMS y LOTO (ya ligada a la columna 2026, con agente). Credencial borrada del llavero; 0 disparadores deshabilitados.
+
+## «No existe un mapeo vigente» y LOTO 2025 dentro de LOTO 2026
+
+- Causa 1: `matriz.mapeo_columna` y `matriz.destino` sólo se habían cargado a mano en el piloto; nada en el código los crea y el reset los borró. Sin mapeo no se libera.
+- Arreglo 1: al aplicar un barrido completo, el adaptador registra el destino `MATRIZ_HC` y mantiene un mapeo por curso (hoja, columna y encabezado de la copia; fila 3, como `tools/build/mapeo-matriz.js`; `OVERWRITE_WITH_HISTORY`, como el piloto). Si la columna o el encabezado cambian, el mapeo viejo se cierra y se abre uno nuevo. Se generó el mapeo de la carga actual desde su copia: 26 cursos, mismas columnas que el respaldo.
+- Causa 2: la limpieza borra los cursos sin DC-3, entre ellos LOTO 2025. Al recargar, la columna M (2025) no encontró su clave y `resolveCourseMappings` la casó por nombre con el curso de LOTO 2026, ya reclamado por la columna L: un curso con las dos columnas, la clave cambiada a la de 2025 y 1 224 fechas mezcladas.
+- Arreglo 2: un curso reclamado por clave exacta (o por mapeo) ya no se asigna por nombre a otra columna; el cambio de clave por nombre sigue funcionando cuando la clave vieja no viene. `tests/regresiones/columnas-con-el-mismo-nombre.test.ts` falla antes (2 de 3) y pasa después; 788 + 118 pruebas sin fallas. Publicado `be2087a`.
+- Datos: la carga actual de LOTO está mezclada y su mapeo apunta a la columna M; hace falta limpiar y recargar, devolviendo antes la clave de la columna 2026 al curso con DC-3.
