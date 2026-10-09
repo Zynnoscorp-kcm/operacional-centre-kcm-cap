@@ -15,3 +15,11 @@
 - Se borró la credencial de Excel KCM-OFFICE-01 de `seguridad.credencial_equipo` y del llavero de macOS (servicio `KCM_VBA_BRIDGE_TOKEN`); `security find-generic-password` responde 44 (no existe).
 - Los puestos y áreas no se restauran de ningún respaldo: los crea el barrido de la matriz con los nombres que traiga, incluidos los nuevos.
 - Publicación: el token anterior de `~/.kcm-vercel-token` ya no tenía acceso al equipo (`Not authorized`); con el token nuevo del usuario se publicó `967d83e` en producción desde un clon limpio con `HOME` aislado. `/healthz` responde 200 en los tres dominios y el código fuente no se sirve (redirige al acceso).
+
+## El padrón decía «1 683 no están en la base»
+
+- Evidencia: tras enviar matriz y padrón, 0 trabajadores; `matriz.importacion` con un lote CONFIRMADO de 9 730 fechas sin ninguna fila escrita; en Vercel, `POST /matriz/aplicar` → «Task timed out after 120 seconds». El padrón cuadró contra una base vacía.
+- Causa: `applyBatchAtomic` escribía fila por fila (~31 000 consultas: trabajadores, fechas, historial y un `resolverActor` por asiento). La carga del 09-30 ya había tardado ~105 s; con la adscripción rebasó el tope y la transacción se deshizo. Además `saveBatch` usaba otra conexión, fuera de la transacción, y dejó un lote confirmado huérfano que habría hecho pasar un reenvío por repetido.
+- Arreglo: trabajadores, fechas nuevas, fechas corregidas e historial se escriben con un `INSERT … SELECT unnest(…)` (o `UPDATE … FROM unnest`) cada uno, con actores resueltos una vez por identificador; el lote se guarda dentro de la misma transacción. Las fechas vacías se guardan nulas.
+- Evidencia: ensayo contra Supabase con la instantánea real de 1 686 trabajadores dentro de una transacción deshecha al final: 18 s, 54 consultas, 1 686 trabajadores, 1 674 con puesto, departamento y área (los 12 restantes vienen en blanco en la matriz), 100 puestos, 23 departamentos, 36 áreas, 9 363 fechas. Prueba de regresión ampliada (lote dentro de la transacción y consultas acotadas con 5 000 fechas); 785 pruebas de plataforma y 118 de `npm test` sin fallas. Publicado `e27384f`.
+- Datos: se borraron el lote huérfano y la revisión de padrón hecha contra la base vacía; la base quedó otra vez en cero.
