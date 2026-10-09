@@ -7,3 +7,11 @@
 - Padrón: se retiró la carga manual desde la plataforma (`POST /padron` responde 404, sin formulario ni selector de archivo). La pantalla queda como la del barrido de matriz: una leyenda que remite a **Padrón de la semana** en Excel hasta que llega una revisión al panel de cambios.
 - Evidencia: `tests/regresiones/adscripcion-de-la-matriz.test.ts` falla antes y pasa después; 784 pruebas de plataforma y 118 de `npm test` sin fallas; ESLint limpio en los archivos tocados.
 - Pendiente: publicar en Vercel y volver a enviar la matriz desde Excel.
+
+## Limpieza para la demostración
+
+- A petición del usuario se borraron, en una transacción, trabajadores (1 684), historial de capacitación (11 408) y su historial de cambios (9 730), la importación de matriz, los 26 cursos que había creado la matriz, los catálogos de puesto, departamento y área (vacíos), nonces del puente y los cinco asientos de bitácora de cargas. Los disparadores de solo agregar se desactivaron sólo dentro de la transacción; al cerrar quedan 0 deshabilitados.
+- Se conservan cuentas de consola, PIN de quiosco y apertura, salas, patrón, áreas temáticas y la configuración DC-3 de Inducción, LOTO y QMS. Se asentó `DATOS_BORRADOS` en la bitácora.
+- Se borró la credencial de Excel KCM-OFFICE-01 de `seguridad.credencial_equipo` y del llavero de macOS (servicio `KCM_VBA_BRIDGE_TOKEN`); `security find-generic-password` responde 44 (no existe).
+- Los puestos y áreas no se restauran de ningún respaldo: los crea el barrido de la matriz con los nombres que traiga, incluidos los nuevos.
+- Publicación: el token de `~/.kcm-vercel-token` ya no tiene acceso al equipo «kcm-sistema-de-capacitacion» (`Not authorized`); falta un token nuevo para publicar `967d83e`.
