@@ -33,3 +33,9 @@
 ## Segunda limpieza
 
 - A petición del usuario, con la misma transacción de la primera limpieza: se borraron la credencial KCM-OFFICE-01, 4 nonces y 2 asientos de cargas (no había trabajadores, fechas ni importaciones). Quedan sólo cursos de DC-3 (3), salas, patrón, áreas temáticas, configuración DC-3, cuentas de consola y PIN; 0 disparadores deshabilitados. Credencial borrada también del llavero (`security` responde 44).
+
+## DC-3 sin constancias de QMS y LOTO
+
+- Causa: tras el reset del 09-30 la configuración DC-3 de QMS y LOTO venía de las migraciones sin agente capacitador (constancia incompleta) y la de LOTO apuntaba al curso semilla `hc-course:LOTO`, que ninguna columna de la matriz alimenta; las fechas de 2026 entran por la columna «2026» (`hc-course:2026/…-loto`). Era el pendiente «configuración DC-3 de QMS y LOTO» del reset.
+- Arreglo en datos: la configuración de LOTO pasó al curso de la columna 2026 (como en el respaldo; la columna 2025 no emite), QMS y LOTO recuperaron su agente capacitador del respaldo y se borró el curso semilla LOTO vacío. Como la limpieza conserva los cursos con configuración DC-3, el próximo barrido vuelve a llenar ese mismo curso.
+- Evidencia: listas con corte 2026: LOTO 1 149, QMS 449, Inducción 139; 5 y 3 sin CURP.
