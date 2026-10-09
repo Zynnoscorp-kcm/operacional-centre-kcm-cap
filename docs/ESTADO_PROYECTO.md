@@ -9,7 +9,10 @@ Postgres de la matriz descartaba esos campos al escribir. Ahora da de alta lo
 que falte en los catálogos y liga a cada trabajador. Se quitó la carga manual
 del padrón en la plataforma; la pantalla sólo muestra la leyenda hasta que
 Excel manda una revisión. Verificado con prueba de regresión y la batería
-completa. Pendiente: publicar y reenviar la matriz desde Excel.
+completa y publicado en Vercel. La base quedó en blanco para la demostración
+(cuentas, PIN y configuración DC-3 intactos) y se borró la credencial
+KCM-OFFICE-01 de Supabase y del llavero. Pendiente: credencial nueva de Excel,
+luego matriz y después padrón.
 Acta: `docs/actas/2026-10-08-puesto-y-area-de-la-matriz.md`.
 
 ## Base reconstruida para la matriz y el padrón definitivos · 2026-09-30

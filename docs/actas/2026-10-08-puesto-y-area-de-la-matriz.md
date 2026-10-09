@@ -6,7 +6,7 @@
 - Datos: `matriz.importacion_contenido` está vacío, así que no hay de dónde rellenar. Al publicar, un envío nuevo de la matriz desde Excel mostrará a todos «con cambios» de puesto y área en el panel; al aplicarlo quedan escritos.
 - Padrón: se retiró la carga manual desde la plataforma (`POST /padron` responde 404, sin formulario ni selector de archivo). La pantalla queda como la del barrido de matriz: una leyenda que remite a **Padrón de la semana** en Excel hasta que llega una revisión al panel de cambios.
 - Evidencia: `tests/regresiones/adscripcion-de-la-matriz.test.ts` falla antes y pasa después; 784 pruebas de plataforma y 118 de `npm test` sin fallas; ESLint limpio en los archivos tocados.
-- Pendiente: publicar en Vercel y volver a enviar la matriz desde Excel.
+- Pendiente: emitir una credencial nueva de Excel y enviar matriz y luego padrón desde Excel.
 
 ## Limpieza para la demostración
 
@@ -14,4 +14,4 @@
 - Se conservan cuentas de consola, PIN de quiosco y apertura, salas, patrón, áreas temáticas y la configuración DC-3 de Inducción, LOTO y QMS. Se asentó `DATOS_BORRADOS` en la bitácora.
 - Se borró la credencial de Excel KCM-OFFICE-01 de `seguridad.credencial_equipo` y del llavero de macOS (servicio `KCM_VBA_BRIDGE_TOKEN`); `security find-generic-password` responde 44 (no existe).
 - Los puestos y áreas no se restauran de ningún respaldo: los crea el barrido de la matriz con los nombres que traiga, incluidos los nuevos.
-- Publicación: el token de `~/.kcm-vercel-token` ya no tiene acceso al equipo «kcm-sistema-de-capacitacion» (`Not authorized`); falta un token nuevo para publicar `967d83e`.
+- Publicación: el token anterior de `~/.kcm-vercel-token` ya no tenía acceso al equipo (`Not authorized`); con el token nuevo del usuario se publicó `967d83e` en producción desde un clon limpio con `HOME` aislado. `/healthz` responde 200 en los tres dominios y el código fuente no se sirve (redirige al acceso).
